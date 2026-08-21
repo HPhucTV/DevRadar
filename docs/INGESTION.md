@@ -56,6 +56,8 @@ policy_review:
 
 Đây là contract minh họa, không phải config chạy được và domain `.test` không phải source thật.
 
+V1 implementation nằm tại [source registry](../src/devradar/ingestion/source_registry.py). Registry active chỉ có `vng-careers`, `naver-vietnam-greenhouse`, `momo-careers`; config copy đúng boundary trong từng approval record. Caller resolve bằng `source_key`, không truyền adapter key/URL. GeoComply/Lever không nằm trong active registry và giữ `candidate/permission_required`.
+
 ## 3. Crawler adapter boundary
 
 Ba operation logic đủ cho V1:
@@ -79,6 +81,8 @@ parse(snapshot) -> ParsedJob | ParseFailure
 - `ParseFailure`: stable error code, stage và safe summary; không chứa toàn bộ HTML hoặc secret.
 
 Adapter không tự commit Job hoặc quyết định retry. Application workflow persist snapshot, validate output và điều khiển transaction/retry.
+
+Contract code tại [ingestion contracts](../src/devradar/ingestion/contracts.py) dùng immutable typed input/output và stable `ParseFailure`; không trả ORM model, raw exception hoặc dynamic module path qua boundary.
 
 ### 3.1. Raw snapshot storage V1
 
