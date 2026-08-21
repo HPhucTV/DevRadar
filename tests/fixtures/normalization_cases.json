@@ -1,0 +1,152 @@
+{
+  "text": [
+    {
+      "raw": "  Kỹ sư\u00a0phần mềm  ",
+      "expected": "Kỹ sư phần mềm"
+    },
+    {
+      "raw": "Line one\r\n\r\n  Line   two\u200b ",
+      "expected": "Line one\nLine two"
+    },
+    {
+      "raw": "   ",
+      "expected": null
+    }
+  ],
+  "url": [
+    {
+      "raw": "/jobs/123?utm_source=demo&id=7#apply",
+      "base_url": "https://careers.example.test/root",
+      "allowed_hosts": ["careers.example.test"],
+      "remove": ["utm_source"],
+      "expected": "https://careers.example.test/jobs/123?id=7"
+    },
+    {
+      "raw": "https://careers.example.test/jobs/123?b=2&a=1",
+      "base_url": "https://careers.example.test",
+      "allowed_hosts": ["careers.example.test"],
+      "remove": [],
+      "expected": "https://careers.example.test/jobs/123?b=2&a=1"
+    }
+  ],
+  "location": [
+    {
+      "raw": "Ho Chi Minh City, Vietnam (Hybrid)",
+      "city": "Ho Chi Minh City",
+      "province": "Ho Chi Minh City",
+      "work_mode": "hybrid",
+      "warnings": []
+    },
+    {
+      "raw": "Vietnam",
+      "city": null,
+      "province": null,
+      "work_mode": null,
+      "warnings": []
+    },
+    {
+      "raw": "Hanoi / HCMC",
+      "city": null,
+      "province": null,
+      "work_mode": null,
+      "warnings": ["ambiguous_location"]
+    },
+    {
+      "raw": "Remote - Vietnam",
+      "city": null,
+      "province": null,
+      "work_mode": "remote",
+      "warnings": []
+    }
+  ],
+  "salary": [
+    {
+      "raw": "30-50 triệu VND/tháng",
+      "minimum": "30000000",
+      "maximum": "50000000",
+      "currency": "VND",
+      "period": "month",
+      "warnings": []
+    },
+    {
+      "raw": "Up to 2,000 USD/month",
+      "minimum": null,
+      "maximum": "2000",
+      "currency": "USD",
+      "period": "month",
+      "warnings": []
+    },
+    {
+      "raw": "30 - 50 triệu/tháng",
+      "minimum": "30000000",
+      "maximum": "50000000",
+      "currency": null,
+      "period": "month",
+      "warnings": []
+    },
+    {
+      "raw": "$1000/month",
+      "minimum": null,
+      "maximum": null,
+      "currency": null,
+      "period": null,
+      "warnings": ["ambiguous_currency_symbol", "insufficient_salary_evidence"]
+    },
+    {
+      "raw": "Thỏa thuận",
+      "minimum": null,
+      "maximum": null,
+      "currency": null,
+      "period": null,
+      "warnings": ["salary_not_numeric"]
+    },
+    {
+      "raw": "5000 - 3000 USD/month",
+      "minimum": null,
+      "maximum": null,
+      "currency": null,
+      "period": null,
+      "warnings": ["salary_range_reversed"]
+    }
+  ],
+  "levels": [
+    {
+      "raw": "Junior / Mid",
+      "expected": ["junior", "mid"]
+    },
+    {
+      "raw": "5 years of experience",
+      "expected": []
+    },
+    {
+      "raw": "Senior Tech Lead",
+      "expected": ["senior", "lead"]
+    }
+  ],
+  "experience": [
+    {
+      "raw": "3+ years",
+      "minimum": "3",
+      "maximum": null,
+      "warnings": []
+    },
+    {
+      "raw": "1-3 năm kinh nghiệm",
+      "minimum": "1",
+      "maximum": "3",
+      "warnings": []
+    },
+    {
+      "raw": "Senior level",
+      "minimum": null,
+      "maximum": null,
+      "warnings": ["experience_unit_missing"]
+    }
+  ],
+  "skills": [
+    {
+      "raw": [" Python ", "Node.js", "  "],
+      "expected": ["Python", "Node.js", null]
+    }
+  ]
+}

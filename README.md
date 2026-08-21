@@ -10,9 +10,9 @@
 | Phase hiện tại | `v1` — Crawler MVP và REST API (`in_progress`) |
 | Mô hình sử dụng ban đầu | Portfolio cá nhân, single-operator |
 | Thị trường ưu tiên | Job IT Việt Nam, nội dung Việt/Anh, lương VND |
-| Code chạy được | Có — scaffold, PostgreSQL schema, approved source registry và adapter contract; crawler/API chưa có |
+| Code chạy được | Có — scaffold, schema, source registry, adapter contract và deterministic normalization/hash; crawler/API chưa có |
 
-Repository đã có FastAPI scaffold tối thiểu, dependency lock, PostgreSQL schema/migration cho bốn entity V1, approved source registry, typed adapter contract, integration test trên database thật và Docker Compose local. Chưa có safe fetcher, concrete source adapter, job/source/run endpoint hoặc ingestion workflow; các capability đó tiếp tục theo task V1 tương ứng.
+Repository đã có FastAPI scaffold tối thiểu, dependency lock, PostgreSQL schema/migration cho bốn entity V1, approved source registry, typed adapter contract, deterministic normalization/canonical hash, integration test trên database thật và Docker Compose local. Chưa có safe fetcher, concrete source adapter, job/source/run endpoint hoặc ingestion workflow; các capability đó tiếp tục theo task V1 tương ứng.
 
 ## Mục tiêu
 
@@ -81,6 +81,7 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [V1 scaffold evidence](docs/evidence/V1-001-scaffold.md): clean install, test/static gates, live API và Docker Compose smoke.
 - [V1 PostgreSQL evidence](docs/evidence/V1-002-postgresql-schema.md): schema invariants, fresh migration, integration test và container migration smoke.
 - [V1 source registry evidence](docs/evidence/V1-003-source-registry.md): active allow-list, typed adapter contract và fail-closed resolution.
+- [V1 normalization evidence](docs/evidence/V1-005-normalization-and-hashing.md): raw-preserving normalization fixtures, false-inference guards và versioned canonical hash.
 - [Roadmap](docs/ROADMAP.md): kế hoạch V1–V6 và definition of done.
 - [Architecture Decision Records](docs/decisions/README.md): quyết định đã chấp nhận và quyết định còn đề xuất.
 - [Ý tưởng ban đầu](DevRadar_Agentic_Job_Market_Intelligence.md): tài liệu tham khảo gốc, không phải bằng chứng trạng thái triển khai.

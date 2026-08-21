@@ -154,8 +154,12 @@ Không chạy cả browser và LLM theo mặc định. Mỗi fallback phải ghi
 ### Level, experience và skill
 
 - `level_raw`/`levels` và experience là field riêng; không suy “Senior” thành số năm nếu nguồn không nêu;
-- skill alias được map qua taxonomy có version và giữ raw mention/evidence;
+- từ V3, skill alias được map qua taxonomy có version và giữ raw mention/evidence;
 - required/preferred/optional chỉ được gán khi câu chữ hỗ trợ.
+
+V1 implementation tại [normalization module](../src/devradar/ingestion/normalization.py) giữ `raw/value/warnings`. Location alias chỉ gồm evidence đã có fixture; URL chỉ bỏ query key do caller allow-list; ký hiệu currency mơ hồ, range đảo và input thiếu unit bị reject/warn thay vì đoán. Skill V1 chỉ cleanup raw mention, chưa merge alias hoặc tạo taxonomy trước V3.
+
+Canonical hash schema `job-content-v1` gồm source URL; title/company/description; location raw + structured; salary raw + structured; level raw + ordered levels; experience range. Fetch timestamp, run ID, selector và warning bị loại. Đổi field set/semantics phải tạo version mới và reprocessing plan.
 
 ## 7. Idempotency và deduplication
 
