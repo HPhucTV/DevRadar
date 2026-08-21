@@ -2,7 +2,9 @@ from fastapi import FastAPI
 
 from devradar.api.errors import install_error_handlers
 from devradar.api.router import api_router
+from devradar.platform.observability import configure_structured_logging
 
+configure_structured_logging()
 app = FastAPI(
     title="DevRadar API",
     version="0.1.0",

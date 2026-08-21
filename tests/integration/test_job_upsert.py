@@ -12,6 +12,7 @@ from sqlalchemy import create_engine, func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
+import devradar.catalog.job_upsert as job_upsert_module
 from devradar.catalog.job_upsert import (
     JobUpsertError,
     JobUpsertOutcome,
@@ -136,6 +137,12 @@ def test_upsert_is_idempotent_updates_current_state_and_never_applies_stale_repl
     fresh_postgresql_url: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    observation_events: list[dict[str, object]] = []
+
+    def capture_observation(**fields: object) -> None:
+        observation_events.append(fields)
+
+    monkeypatch.setattr(job_upsert_module, "record_job_observation", capture_observation)
     engine = _migrated_engine(fresh_postgresql_url, monkeypatch)
     now = datetime.now(UTC)
     with Session(engine) as session:
@@ -271,6 +278,16 @@ def test_upsert_is_idempotent_updates_current_state_and_never_applies_stale_repl
         assert slug_result.job.canonical_url == slug_changed.raw.canonical_url
         assert session.scalar(select(func.count()).select_from(Job)) == 1
         assert crawl_run.items_updated == 2
+        assert [event["outcome"] for event in observation_events] == [
+            "created",
+            "replayed",
+            "unchanged",
+            "updated",
+            "stale",
+            "updated",
+        ]
+        assert all(event["run_id"] == crawl_run.id for event in observation_events)
+        assert all("title" not in event for event in observation_events)
         session.commit()
 
     engine.dispose()

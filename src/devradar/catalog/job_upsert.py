@@ -32,6 +32,7 @@ from devradar.ingestion.normalization import (
     normalize_text,
 )
 from devradar.ingestion.source_registry import SourceConfig
+from devradar.platform.observability import record_job_observation
 
 
 class JobUpsertError(RuntimeError):
@@ -54,6 +55,24 @@ class JobUpsertResult:
     job: Job
     outcome: JobUpsertOutcome
     job_content_hash: str
+
+
+def _result(
+    job: Job,
+    outcome: JobUpsertOutcome,
+    job_content_hash: str,
+    *,
+    crawl_run: CrawlRun,
+    snapshot: RawJobSnapshot,
+) -> JobUpsertResult:
+    record_job_observation(
+        run_id=crawl_run.id,
+        source_id=crawl_run.source_id,
+        snapshot_id=snapshot.id,
+        job_id=job.id,
+        outcome=outcome.value,
+    )
+    return JobUpsertResult(job, outcome, job_content_hash)
 
 
 def _require_aware(value: datetime, field_name: str) -> None:
@@ -329,7 +348,13 @@ def upsert_parsed_job(
                 "snapshot_already_processed",
                 "Parsed snapshot could not be replayed against current canonical state.",
             )
-        return JobUpsertResult(job, JobUpsertOutcome.REPLAYED, job.job_content_hash)
+        return _result(
+            job,
+            JobUpsertOutcome.REPLAYED,
+            job.job_content_hash,
+            crawl_run=database_run,
+            snapshot=database_snapshot,
+        )
     if database_snapshot.parse_status is not ParseStatus.PENDING:
         raise JobUpsertError(
             "snapshot_not_pending",
@@ -393,4 +418,10 @@ def upsert_parsed_job(
     database_snapshot.parse_status = ParseStatus.PARSED
     database_snapshot.error_code = None
     session.flush()
-    return JobUpsertResult(job, outcome, content_hash)
+    return _result(
+        job,
+        outcome,
+        content_hash,
+        crawl_run=database_run,
+        snapshot=database_snapshot,
+    )

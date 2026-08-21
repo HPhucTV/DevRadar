@@ -2,7 +2,7 @@
 
 ## 1. Mục tiêu
 
-Tài liệu này định nghĩa bằng chứng cần có để nói DevRadar chạy đúng, an toàn và có thể chẩn đoán. Scaffold, PostgreSQL schema/migration, safe HTTP/raw snapshot boundary, ba V1 source adapters, current-state Job upsert và read-only domain API đã có verified test/static/live evidence; structured observability và run-level orchestration vẫn chưa pass.
+Tài liệu này định nghĩa bằng chứng cần có để nói DevRadar chạy đúng, an toàn và có thể chẩn đoán. Scaffold, PostgreSQL schema/migration, safe HTTP/raw snapshot boundary, ba V1 source adapters, current-state Job upsert, read-only domain API và structured observability đã có verified test/static/live evidence; run-level orchestration vẫn chưa pass.
 
 ## 2. Environment
 
@@ -15,7 +15,7 @@ Tài liệu này định nghĩa bằng chứng cần có để nói DevRadar ch�
 
 Kết quả kiểm tra capability máy phát triển trước V1 được ghi riêng tại [PRE-007 local prerequisites evidence](evidence/PRE-007-local-prerequisites.md); đây không phải Quick Start hoặc runtime proof của ứng dụng.
 
-Kết quả scaffold nằm tại [V1-001 evidence](evidence/V1-001-scaffold.md); fresh PostgreSQL migration/schema integration nằm tại [V1-002 evidence](evidence/V1-002-postgresql-schema.md); safe fetch/raw snapshot boundary nằm tại [V1-004 evidence](evidence/V1-004-safe-fetch-and-snapshot.md); NAVER/VNG/MoMo adapters nằm tại [V1-006](evidence/V1-006-naver-greenhouse-adapter.md), [V1-007](evidence/V1-007-vng-adapter.md) và [V1-008](evidence/V1-008-momo-adapter.md); current-state persistence nằm tại [V1-009 evidence](evidence/V1-009-job-upsert.md); PostgreSQL-backed read contract nằm tại [V1-010 evidence](evidence/V1-010-read-api.md). Health endpoint chỉ chứng minh API process sống; API database behavior được kiểm tra bằng integration test riêng và browser vẫn chưa chạy trong container.
+Kết quả scaffold nằm tại [V1-001 evidence](evidence/V1-001-scaffold.md); fresh PostgreSQL migration/schema integration nằm tại [V1-002 evidence](evidence/V1-002-postgresql-schema.md); safe fetch/raw snapshot boundary nằm tại [V1-004 evidence](evidence/V1-004-safe-fetch-and-snapshot.md); NAVER/VNG/MoMo adapters nằm tại [V1-006](evidence/V1-006-naver-greenhouse-adapter.md), [V1-007](evidence/V1-007-vng-adapter.md) và [V1-008](evidence/V1-008-momo-adapter.md); current-state persistence nằm tại [V1-009 evidence](evidence/V1-009-job-upsert.md); PostgreSQL-backed read contract nằm tại [V1-010 evidence](evidence/V1-010-read-api.md); safe structured events nằm tại [V1-011 evidence](evidence/V1-011-observability.md). Health endpoint chỉ chứng minh API process sống; API database behavior được kiểm tra bằng integration test riêng và browser vẫn chưa chạy trong container.
 
 Không dùng production secret/data trong CI. Không gọi source/LLM thật từ default unit test; live integration phải opt-in, có budget và được gắn nhãn rõ.
 
@@ -148,6 +148,15 @@ Metric label không chứa URL query, title/company tùy ý, raw skill, CV field
 - debug payload chỉ dùng fixture/sanitized local mode, tắt ở public deployment.
 
 Redact authorization/cookie/token, database DSN credential, prompt/JD/CV content và provider response. Không dựa vào redact regex duy nhất; ưu tiên allow-list structured fields.
+
+V1 hiện ghi JSON line ra stderr bằng standard library, không thêm telemetry dependency hoặc public metrics endpoint. Event surface được khóa như sau:
+
+- `http_request_completed`: request ID, HTTP method, route template, status và duration; không ghi path parameter value, query, header hoặc body;
+- `api_error`: request ID, status, safe error code và exception class; không ghi exception message/stack/SQL;
+- `job_observation_processed`: run/source/snapshot/job ID, outcome và `transaction_state=caller_owned_uncommitted`; không được diễn giải event này thành commit thành công;
+- `crawl_run_summary`: run/source ID, status, coverage, duration, bounded counters và safe error code; runner chỉ emit summary cuối sau transaction outcome rõ.
+
+API request count/latency/status và run/job outcome được tính bằng cách aggregate event name + bounded numeric/enum field. Opaque correlation ID chỉ dùng trace lookup, không dùng làm metric label. Persisted run counters và source failure vẫn đọc qua `/api/v1/crawl-runs`; V1 chưa cần Prometheus client hoặc in-process metrics registry.
 
 ## 8. SLO và alerting
 

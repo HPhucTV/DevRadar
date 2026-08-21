@@ -10,9 +10,9 @@
 | Phase hiện tại | `v1` — Crawler MVP và REST API (`in_progress`) |
 | Mô hình sử dụng ban đầu | Portfolio cá nhân, single-operator |
 | Thị trường ưu tiên | Job IT Việt Nam, nội dung Việt/Anh, lương VND |
-| Code chạy được | Có — ba source adapters, snapshot persistence, idempotent Job upsert và sáu read-only domain endpoints |
+| Code chạy được | Có — ba source adapters, snapshot persistence, idempotent Job upsert, sáu read-only domain endpoints và structured JSON events |
 
-Repository đã có FastAPI scaffold tối thiểu, dependency lock, PostgreSQL schema/migration cho bốn entity V1, approved source registry, typed adapter contract, safe HTTPS fetcher, raw snapshot persistence, deterministic normalization/canonical hash, ba concrete source adapters, transactional current-state Job upsert và read-only Job/Source/CrawlRun API. Integration test chạy PostgreSQL thật và Docker Compose local. Structured observability cùng run-level ingestion orchestration tiếp tục theo task V1 tương ứng.
+Repository đã có FastAPI scaffold tối thiểu, dependency lock, PostgreSQL schema/migration cho bốn entity V1, approved source registry, typed adapter contract, safe HTTPS fetcher, raw snapshot persistence, deterministic normalization/canonical hash, ba concrete source adapters, transactional current-state Job upsert, read-only Job/Source/CrawlRun API và safe structured observability. Integration test chạy PostgreSQL thật và Docker Compose local. Run-level ingestion orchestration cùng container quality gate tiếp tục theo task V1 tương ứng.
 
 ## Mục tiêu
 
@@ -88,6 +88,7 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [V1 MoMo adapter evidence](docs/evidence/V1-008-momo-adapter.md): public-UI pagination, browser trust boundary, deterministic detail parsing và on-demand live evidence.
 - [V1 Job upsert evidence](docs/evidence/V1-009-job-upsert.md): source-scoped identity, replay/stale protection, current-state update và caller-owned rollback.
 - [V1 read API evidence](docs/evidence/V1-010-read-api.md): PostgreSQL-backed pagination/filter/sort, OpenAPI, safe error và data-exposure contract.
+- [V1 observability evidence](docs/evidence/V1-011-observability.md): JSON request/error/domain events, correlation, log-derived metrics và redaction boundary.
 - [Roadmap](docs/ROADMAP.md): kế hoạch V1–V6 và definition of done.
 - [Architecture Decision Records](docs/decisions/README.md): quyết định đã chấp nhận và quyết định còn đề xuất.
 - [Ý tưởng ban đầu](DevRadar_Agentic_Job_Market_Intelligence.md): tài liệu tham khảo gốc, không phải bằng chứng trạng thái triển khai.
