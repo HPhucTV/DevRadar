@@ -131,7 +131,7 @@ Mỗi request/run/extraction/agent/delivery có opaque ID. Log dùng structured 
 | Area | Metrics |
 |---|---|
 | Crawler | `crawl_runs_total`, `crawl_success_rate`, `crawl_duration_seconds`, `pages_fetched_total`, `response_bytes_total` |
-| Data | `jobs_new_total`, `jobs_updated_total`, `jobs_missing_total`, `jobs_removed_total`, `duplicates_candidate_total`, `parse_failures_total` |
+| Data | `jobs_new_total`, `jobs_updated_total`, `jobs_missing_total`, `jobs_removed_total`, `jobs_reactivated_total`, `duplicates_candidate_total`, `parse_failures_total` |
 | Source | `source_last_success_age`, `source_failure_rate`, `source_coverage_anomalies_total`, health state |
 | AI | `ai_requests_total`, `ai_cache_hits_total`, `ai_validation_failures_total`, `ai_latency_seconds`, input/output tokens, estimated cost |
 | Agent | `agent_runs_total`, decision/retry/review count, step-limit hit, failure rate |

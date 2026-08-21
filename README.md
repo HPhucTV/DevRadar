@@ -10,7 +10,7 @@
 | Phase hiện tại | `v2` — Automation, change detection và health (`in_progress`) |
 | Mô hình sử dụng ban đầu | Portfolio cá nhân, single-operator |
 | Thị trường ưu tiên | Job IT Việt Nam, nội dung Việt/Anh, lương VND |
-| Code chạy được | Có — ba source adapters, snapshot persistence, idempotent Job upsert, direct schedule/retry orchestration, sáu read-only domain endpoints và structured JSON events |
+| Code chạy được | Có — ba source adapters, snapshot persistence, idempotent Job/JobChange lifecycle, direct schedule/retry orchestration, sáu read-only domain endpoints và structured JSON events |
 
 V1 đã hoàn tất với FastAPI, PostgreSQL schema/migration, approved source registry, safe HTTPS fetcher, raw snapshot persistence, deterministic normalization/canonical hash, ba concrete source adapters, transactional current-state Job upsert, read-only Job/Source/CrawlRun API, structured observability và operator CLI. Ba source đã ingest toàn bộ inventory quan sát được: 78 canonical jobs với identity/provenance 1:1 và full replay không tạo update giả. Mục tiêu `>=500` được chuyển sang V3, trước khi tuyên bố semantic/trend analytics có quy mô. V2 đã defer Prefect sau compatibility/deployment spike và đang dùng direct PostgreSQL-backed orchestration; dự án chưa public release.
 
@@ -94,6 +94,7 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [V1 closeout evidence](docs/evidence/V1-closeout.md): product decision về dataset gate, exit-criteria mapping và chuyển phase sang V2.
 - [V2 Prefect spike evidence](docs/evidence/V2-001-prefect-spike.md): compatibility, retry/schedule, footprint và quyết định defer Prefect.
 - [V2 direct orchestration evidence](docs/evidence/V2-002-direct-orchestration.md): PostgreSQL claim/idempotency, scheduled slot và transient-only retry.
+- [V2 lifecycle evidence](docs/evidence/V2-003-job-change-and-absence-lifecycle.md): meaningful changes, two-run removal, false-removal guard và reactivation.
 - [Roadmap](docs/ROADMAP.md): kế hoạch V1–V6 và definition of done.
 - [Architecture Decision Records](docs/decisions/README.md): quyết định đã chấp nhận và quyết định còn đề xuất.
 - [Ý tưởng ban đầu](DevRadar_Agentic_Job_Market_Intelligence.md): tài liệu tham khảo gốc, không phải bằng chứng trạng thái triển khai.

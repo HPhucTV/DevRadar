@@ -32,7 +32,7 @@ Tài liệu này là ubiquitous language của DevRadar. Tên entity, enum và s
 | AlertRule | Tiêu chí người dùng muốn theo dõi. |
 | AlertDelivery | Một lần gửi thông báo có idempotency và trạng thái delivery. |
 
-Implementation V1 hiện map `Source`, `CrawlRun`, `RawJobSnapshot` vào module `ingestion`, `Job` và current-state upsert vào `catalog`, dùng UUID/PostgreSQL constraint để giữ provenance và source-scoped identity. Upsert chưa kích hoạt `JobChange` hoặc absence workflow; xem [ADR-005](decisions/0005-sqlalchemy-alembic-and-psycopg.md), [schema evidence](evidence/V1-002-postgresql-schema.md) và [upsert evidence](evidence/V1-009-job-upsert.md).
+Implementation hiện map `Source`, `CrawlRun`, `RawJobSnapshot` vào module `ingestion`; `Job`, `JobChange` và lifecycle vào `catalog`; dùng UUID/PostgreSQL constraint để giữ provenance, source-scoped identity và idempotent history. Xem [ADR-005](decisions/0005-sqlalchemy-alembic-and-psycopg.md), [V1 upsert evidence](evidence/V1-009-job-upsert.md) và [V2 lifecycle evidence](evidence/V2-003-job-change-and-absence-lifecycle.md).
 
 ## 4. Entity chính
 
@@ -64,7 +64,7 @@ Implementation V1 hiện map `Source`, `CrawlRun`, `RawJobSnapshot` vào module 
 | `started_at`, `finished_at` | Boundary thời gian. |
 | `status` | `pending`, `running`, `succeeded`, `partial`, `failed`, `cancelled`. |
 | `coverage_status` | `unknown`, `complete`, `incomplete`; tách khỏi technical status. |
-| counters | pages/items found/new/updated/missing/removed/failed. |
+| counters | pages/items found/new/updated/missing/removed/reactivated/failed. |
 | `error_code`, `error_summary` | Lỗi đã sanitize; không chứa raw response, secret hoặc PII. |
 | `adapter_version`, `config_version` | Khả năng tái hiện run. |
 
@@ -107,7 +107,7 @@ Snapshot là append-oriented. Reparse không sửa snapshot; nó tạo `Extracti
 
 | Field logic | Ý nghĩa |
 |---|---|
-| `id`, `job_id` | Định danh event. |
+| `id`, `job_id`, `crawl_run_id` | Định danh event, Job và run xác nhận thay đổi. |
 | `from_snapshot_id`, `to_snapshot_id` | Evidence hai phía. |
 | `field_name` | Field canonical đã đổi. |
 | `old_value`, `new_value` | Giá trị typed/serialized phù hợp. |
@@ -188,7 +188,7 @@ stateDiagram-v2
 
 Default là hai run complete liên tiếp để chuyển từ `active` sang `removed`: run đầu tạo `missing`, run tiếp theo tạo `removed`. Source có thể đề xuất threshold cao hơn trong approval record, nhưng không được thấp hơn mặc định nếu thiếu bằng chứng. `partial`, `failed`, `cancelled` hoặc coverage `unknown/incomplete` không tăng counter.
 
-Trong V1, Job luôn ở `active` sau observation hợp lệ; `missing`, `removed`, `reactivated` và `JobChange` chưa được kích hoạt.
+V1 chỉ giữ current state. V2 hiện đã kích hoạt lifecycle và JobChange; [integration evidence](evidence/V2-003-job-change-and-absence-lifecycle.md) khóa false-removal/replay behavior.
 
 ### 5.2. Source lifecycle
 

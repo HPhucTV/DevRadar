@@ -144,7 +144,7 @@ Detail chỉ fetch bằng `SafeHttpFetcher` cho exact canonical URL đã discove
 
 Operator entrypoint `python -m devradar.cli crawl` chỉ nhận exact source key trong V1 registry, deadline 1–360 phút và optional positive `--max-items`; không nhận URL, header, adapter path hoặc credential. Runner revalidate approved config trước discovery và fail closed nếu persisted `Source` drift khỏi registry.
 
-Network/browser work chạy ngoài database transaction. Mỗi raw snapshot được commit trước parse để malformed content vẫn còn cho replay; snapshot parse state, canonical Job và run counter sau đó được cập nhật trong transaction ngắn. Expected item failure cho run `partial/failed` với safe error code; unexpected failure dừng phần còn lại. Không path nào của V1 tăng `missing/removed`.
+Network/browser work chạy ngoài database transaction. Mỗi raw snapshot được commit trước parse để malformed content vẫn còn cho replay; snapshot parse state, canonical Job, JobChange và run counter sau đó được cập nhật trong transaction ngắn. Expected item failure cho run `partial/failed` với safe error code; unexpected failure dừng phần còn lại. Absence chỉ chạy ở finalization của run `succeeded + complete`.
 
 `--max-items` là bounded smoke: discovery vẫn ghi tổng `items_found`, chỉ xử lý N item đầu và finalize `succeeded` với coverage `incomplete`. Vì vậy run bounded không bao giờ là absence/removal signal. CLI trả exit `0` chỉ cho status `succeeded`, `1` cho partial/failed và `130` khi operator cancel. Implementation/Compose/PostgreSQL evidence nằm tại [V1-012](evidence/V1-012-compose-and-runner.md).
 
@@ -207,7 +207,7 @@ Canonical hash schema `job-content-v1` gồm source URL; title/company/descripti
 - cùng identity và cùng `job_content_hash`: update observation/last seen, không tạo Job mới;
 - cùng identity nhưng canonical hash khác: V1 transactionally update current Job và run counter; từ V2 mới tạo các JobChange có nghĩa.
 
-V1 implementation tại [Job upsert](../src/devradar/catalog/job_upsert.py) khóa row theo source-scoped external ID/canonical URL, ưu tiên external ID và fail closed nếu hai identity trỏ hai Job khác nhau. Function chỉ `flush`, không commit/rollback; create/update Job, snapshot `parse_status` và run counter nằm cùng transaction caller. Cùng snapshot replay không tăng counter; observation mới cùng hash chỉ cập nhật `last_seen_at/current_snapshot_id`; observation cũ hơn current state được đánh `stale` và không ghi đè. Chỉ `created/updated` tăng counter tương ứng; V1 reject Job đang ở absence state thay vì tự reactivation trước V2. Verification nằm tại [V1-009 evidence](evidence/V1-009-job-upsert.md).
+Implementation tại [Job upsert](../src/devradar/catalog/job_upsert.py) khóa row theo source-scoped external ID/canonical URL, ưu tiên external ID và fail closed nếu hai identity trỏ hai Job khác nhau. Function chỉ `flush`, không commit/rollback; Job, JobChange, snapshot `parse_status` và run counter nằm cùng transaction caller. Cùng snapshot replay không tăng counter/event; observation mới cùng hash chỉ cập nhật `last_seen_at/current_snapshot_id`; observation cũ hơn current state được đánh `stale` và không ghi đè. Observation hợp lệ mới hơn reactivation Job `missing/removed` và giữ event provenance. Verification: [V1 upsert](evidence/V1-009-job-upsert.md), [V2 lifecycle](evidence/V2-003-job-change-and-absence-lifecycle.md).
 
 ### Khác source
 
@@ -218,7 +218,7 @@ V1 implementation tại [Job upsert](../src/devradar/catalog/job_upsert.py) khó
 
 ## 8. Change detection và removal (V2)
 
-V1 dùng `job_content_hash` để bỏ qua bản không đổi và cập nhật current canonical state khi content đổi, nhưng chưa giữ change history hoặc absence lifecycle. V2 kích hoạt `JobChange` và các state dưới đây.
+V1 dùng `job_content_hash` để bỏ qua bản không đổi và cập nhật current canonical state. V2 hiện giữ `JobChange` và kích hoạt các state dưới đây.
 
 Field có thể tạo change event ban đầu: title, company representation, location/work mode, salary, level set/experience, description canonical text, skill set, source URL và status.
 
@@ -272,7 +272,7 @@ Mỗi run phải cung cấp:
 - parser/fallback usage và source health result;
 - run/config/adapter version correlation.
 
-Trong V1, các counter `missing`, `removed` và `reactivated` luôn bằng 0 vì lifecycle chưa được kích hoạt. Không dùng raw URL query chứa token, HTML, CV text hoặc response body làm metric label/log field.
+Từ V2, `missing`, `removed` và `reactivated` được persist/log bằng bounded counter; JobChange không được copy description đầy đủ vào structured log. Không dùng raw URL query chứa token, HTML, CV text hoặc response body làm metric label/log field.
 
 ## 12. Fixtures và acceptance scenarios
 

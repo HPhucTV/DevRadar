@@ -110,6 +110,7 @@ def test_domain_metric_events_are_bounded_and_correlation_only() -> None:
             items_updated=1,
             items_missing=0,
             items_removed=0,
+            items_reactivated=0,
             items_failed=1,
             error_code="source_timeout",
         )
@@ -136,6 +137,7 @@ def test_domain_metric_events_are_bounded_and_correlation_only() -> None:
         "items_updated",
         "items_missing",
         "items_removed",
+        "items_reactivated",
         "items_failed",
         "error_code",
     }

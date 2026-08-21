@@ -6,6 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from enum import Enum as PythonEnum
 from enum import StrEnum
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
@@ -46,6 +47,14 @@ class JobLevel(StrEnum):
     SENIOR = "senior"
     LEAD = "lead"
     MANAGER = "manager"
+
+
+class JobChangeType(StrEnum):
+    CREATED = "created"
+    UPDATED = "updated"
+    MISSING = "missing"
+    REMOVED = "removed"
+    REACTIVATED = "reactivated"
 
 
 class Job(Base):
@@ -176,3 +185,76 @@ class Job(Base):
     )
     current_snapshot_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True))
     job_content_hash: Mapped[str] = mapped_column(String(64))
+
+
+class JobChange(Base):
+    __tablename__ = "job_changes"
+    __table_args__ = (
+        CheckConstraint(
+            "change_type IN ('created', 'updated', 'missing', 'removed', 'reactivated')",
+            name="ck_job_changes_change_type",
+        ),
+        CheckConstraint(
+            "length(btrim(field_name)) > 0",
+            name="ck_job_changes_field_name_not_blank",
+        ),
+        CheckConstraint(
+            "from_snapshot_id IS NULL OR to_snapshot_id IS NULL "
+            "OR from_snapshot_id <> to_snapshot_id",
+            name="ck_job_changes_distinct_snapshots",
+        ),
+        UniqueConstraint(
+            "job_id",
+            "crawl_run_id",
+            "change_type",
+            "field_name",
+            name="uq_job_changes_run_type_field",
+        ),
+        Index("ix_job_changes_job_detected_at", "job_id", "detected_at"),
+        Index("ix_job_changes_crawl_run_id", "crawl_run_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True, default=uuid4)
+    job_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("jobs.id", ondelete="RESTRICT", name="fk_job_changes_job_id_jobs"),
+    )
+    crawl_run_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey(
+            "crawl_runs.id",
+            ondelete="RESTRICT",
+            name="fk_job_changes_crawl_run_id_crawl_runs",
+        ),
+    )
+    from_snapshot_id: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey(
+            "raw_job_snapshots.id",
+            ondelete="RESTRICT",
+            name="fk_job_changes_from_snapshot_id_raw_job_snapshots",
+        ),
+    )
+    to_snapshot_id: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey(
+            "raw_job_snapshots.id",
+            ondelete="RESTRICT",
+            name="fk_job_changes_to_snapshot_id_raw_job_snapshots",
+        ),
+    )
+    field_name: Mapped[str] = mapped_column(String(100))
+    old_value: Mapped[Any | None] = mapped_column(JSONB)
+    new_value: Mapped[Any | None] = mapped_column(JSONB)
+    change_type: Mapped[JobChangeType] = mapped_column(
+        Enum(
+            JobChangeType,
+            name="job_change_type",
+            native_enum=False,
+            create_constraint=False,
+            validate_strings=True,
+            values_callable=_enum_values,
+            length=16,
+        )
+    )
+    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

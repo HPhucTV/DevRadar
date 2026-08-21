@@ -1,4 +1,4 @@
-"""Transactional current-state Job upsert for deterministic V1 ingestion."""
+"""Transactional canonical Job upsert with V2 change/lifecycle history."""
 
 from __future__ import annotations
 
@@ -10,6 +10,12 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from devradar.catalog.job_changes import (
+    canonical_change_state,
+    record_created_change,
+    record_reactivated_change,
+    record_updated_changes,
+)
 from devradar.catalog.models import Job, JobLevel, JobStatus
 from devradar.ingestion.contracts import ParsedJob
 from devradar.ingestion.models import (
@@ -48,6 +54,7 @@ class JobUpsertOutcome(StrEnum):
     UNCHANGED = "unchanged"
     STALE = "stale"
     REPLAYED = "replayed"
+    REACTIVATED = "reactivated"
 
 
 @dataclass(frozen=True, slots=True)
@@ -383,13 +390,20 @@ def upsert_parsed_job(
             content_hash=content_hash,
         )
         session.add(job)
+        session.flush()
+        record_created_change(
+            session,
+            job=job,
+            crawl_run=database_run,
+            snapshot=database_snapshot,
+        )
         database_run.items_new += 1
         outcome = JobUpsertOutcome.CREATED
     else:
-        if job.status is not JobStatus.ACTIVE or job.consecutive_missing_count != 0:
+        if job.status is JobStatus.ACTIVE and job.consecutive_missing_count != 0:
             raise JobUpsertError(
-                "unsupported_job_state",
-                "V1 upsert cannot apply absence or reactivation lifecycle state.",
+                "invalid_job_state",
+                "Active Job cannot retain an absence counter.",
             )
         if database_snapshot.fetched_at < job.last_seen_at:
             outcome = JobUpsertOutcome.STALE
@@ -400,20 +414,56 @@ def upsert_parsed_job(
                     "Equal-time observations had different canonical content.",
                 )
             outcome = JobUpsertOutcome.REPLAYED
-        elif job.job_content_hash == content_hash:
-            job.last_seen_at = database_snapshot.fetched_at
-            job.current_snapshot_id = database_snapshot.id
-            outcome = JobUpsertOutcome.UNCHANGED
         else:
-            _apply_current_state(
-                job,
-                parsed_job=parsed_job,
-                content=content,
-                snapshot=database_snapshot,
-                content_hash=content_hash,
-            )
-            database_run.items_updated += 1
-            outcome = JobUpsertOutcome.UPDATED
+            old_status = job.status
+            old_snapshot_id = job.current_snapshot_id
+            old_state = canonical_change_state(job)
+            content_changed = job.job_content_hash != content_hash
+            reactivating = old_status is not JobStatus.ACTIVE
+            if reactivating and job.consecutive_missing_count < 1:
+                raise JobUpsertError(
+                    "invalid_job_state",
+                    "Absent Job must retain a positive missing counter.",
+                )
+            if content_changed:
+                _apply_current_state(
+                    job,
+                    parsed_job=parsed_job,
+                    content=content,
+                    snapshot=database_snapshot,
+                    content_hash=content_hash,
+                )
+                database_run.items_updated += 1
+                record_updated_changes(
+                    session,
+                    job=job,
+                    crawl_run=database_run,
+                    old_state=old_state,
+                    from_snapshot_id=old_snapshot_id,
+                    to_snapshot=database_snapshot,
+                )
+            else:
+                job.last_seen_at = database_snapshot.fetched_at
+                job.current_snapshot_id = database_snapshot.id
+
+            if reactivating:
+                job.status = JobStatus.ACTIVE
+                job.consecutive_missing_count = 0
+                job.removed_at = None
+                database_run.items_reactivated += 1
+                record_reactivated_change(
+                    session,
+                    job=job,
+                    crawl_run=database_run,
+                    old_status=old_status,
+                    from_snapshot_id=old_snapshot_id,
+                    to_snapshot=database_snapshot,
+                )
+                outcome = JobUpsertOutcome.REACTIVATED
+            elif content_changed:
+                outcome = JobUpsertOutcome.UPDATED
+            else:
+                outcome = JobUpsertOutcome.UNCHANGED
 
     database_snapshot.parse_status = ParseStatus.PARSED
     database_snapshot.error_code = None

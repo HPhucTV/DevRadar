@@ -74,7 +74,7 @@ flowchart TD
     I --> J["Finalize CrawlRun metrics"]
 ```
 
-V1 dừng ở current-state upsert và run counters; chưa persist `JobChange` hoặc chạy absence lifecycle. Từ V2, run chỉ được dùng để đánh dấu job vắng mặt khi run đó là `succeeded` và coverage được xác nhận là complete. Failure trước bước finalize không được làm thay đổi trạng thái hiện hữu.
+V2 hiện persist `JobChange` và chạy absence lifecycle trong catalog transaction. Run chỉ được dùng để đánh dấu job vắng mặt khi run đó là `succeeded` và coverage được xác nhận là complete. Failure trước bước finalize không được làm thay đổi trạng thái hiện hữu.
 
 ### 5.2. AI extraction
 

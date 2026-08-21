@@ -164,7 +164,7 @@ class CrawlRun(Base):
         CheckConstraint(
             "pages_found >= 0 AND items_found >= 0 AND items_new >= 0 "
             "AND items_updated >= 0 AND items_missing >= 0 AND items_removed >= 0 "
-            "AND items_failed >= 0",
+            "AND items_reactivated >= 0 AND items_failed >= 0",
             name="ck_crawl_runs_counters_non_negative",
         ),
         CheckConstraint(
@@ -278,6 +278,7 @@ class CrawlRun(Base):
     items_updated: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     items_missing: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     items_removed: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    items_reactivated: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     items_failed: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     error_code: Mapped[str | None] = mapped_column(String(100))
     error_summary: Mapped[str | None] = mapped_column(String(1000))

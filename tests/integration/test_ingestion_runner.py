@@ -16,7 +16,7 @@ from devradar.automation.orchestrator import (
     scheduled_slot,
     scheduled_trigger_key,
 )
-from devradar.catalog.models import Job
+from devradar.catalog.models import Job, JobChange, JobChangeType, JobStatus
 from devradar.ingestion.contracts import (
     FetchResult,
     FieldEvidence,
@@ -70,11 +70,13 @@ class FakeVngAdapter(JobSourceAdapter):
         fetched_at: datetime,
         invalid_ids: tuple[str, ...] = (),
         discovery_error: Exception | None = None,
+        title_prefix: str = "Backend Engineer",
     ) -> None:
         self._external_ids = external_ids
         self._fetched_at = fetched_at
         self._invalid_ids = frozenset(invalid_ids)
         self._discovery_error = discovery_error
+        self._title_prefix = title_prefix
         self.discovery_calls = 0
 
     @staticmethod
@@ -110,7 +112,7 @@ class FakeVngAdapter(JobSourceAdapter):
                 stage="parse",
                 safe_summary="Fixture parse failed safely.",
             )
-        title = f"Backend Engineer {snapshot.external_id}"
+        title = f"{self._title_prefix} {snapshot.external_id}"
         return ParsedJob(
             raw=RawJobFields(
                 external_id=snapshot.external_id,
@@ -431,5 +433,151 @@ def test_orchestration_does_not_retry_policy_error_or_overlap_active_run(
             assert captured.value.code == "run_already_active"
             assert blocked_adapter.discovery_calls == 0
             assert session.scalar(select(func.count()).select_from(CrawlRun)) == 2
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.postgresql
+def test_job_change_and_absence_lifecycle_ignore_unsafe_runs_and_reactivate(
+    fresh_postgresql_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(DATABASE_URL_ENV, fresh_postgresql_url)
+    command.upgrade(Config(str(PROJECT_ROOT / "alembic.ini")), "head")
+    engine = create_engine(fresh_postgresql_url)
+    try:
+        with Session(engine) as session:
+            created = run_approved_source(
+                session,
+                config=VNG_CAREERS,
+                adapter=FakeVngAdapter(
+                    ("501", "502"),
+                    fetched_at=datetime.now(UTC),
+                ),
+                deadline=datetime.now(UTC) + timedelta(minutes=5),
+            )
+            assert created.status is CrawlRunStatus.SUCCEEDED
+            assert created.items_new == 2
+
+            first_absence = run_approved_source(
+                session,
+                config=VNG_CAREERS,
+                adapter=FakeVngAdapter(
+                    ("501",),
+                    fetched_at=datetime.now(UTC),
+                    title_prefix="Principal Engineer",
+                ),
+                deadline=datetime.now(UTC) + timedelta(minutes=5),
+            )
+            assert first_absence.items_updated == 1
+            assert first_absence.items_missing == 1
+            absent_job = session.scalar(select(Job).where(Job.external_id == "502"))
+            assert absent_job is not None
+            assert absent_job.status is JobStatus.MISSING
+            assert absent_job.consecutive_missing_count == 1
+            session.rollback()
+
+            partial = run_approved_source(
+                session,
+                config=VNG_CAREERS,
+                adapter=FakeVngAdapter(
+                    ("501", "502"),
+                    fetched_at=datetime.now(UTC),
+                    invalid_ids=("502",),
+                    title_prefix="Principal Engineer",
+                ),
+                deadline=datetime.now(UTC) + timedelta(minutes=5),
+            )
+            failed = run_approved_source(
+                session,
+                config=VNG_CAREERS,
+                adapter=FakeVngAdapter(
+                    (),
+                    fetched_at=datetime.now(UTC),
+                    discovery_error=FakeAdapterError("layout_regression", "fixture failed"),
+                ),
+                deadline=datetime.now(UTC) + timedelta(minutes=5),
+            )
+            assert partial.status is CrawlRunStatus.PARTIAL
+            assert failed.status is CrawlRunStatus.FAILED
+            for unsafe in (partial, failed):
+                assert unsafe.items_missing == 0
+                assert unsafe.items_removed == 0
+            absent_job = session.scalar(select(Job).where(Job.external_id == "502"))
+            assert absent_job is not None
+            assert absent_job.status is JobStatus.MISSING
+            assert absent_job.consecutive_missing_count == 1
+            session.rollback()
+
+            removed = run_approved_source(
+                session,
+                config=VNG_CAREERS,
+                adapter=FakeVngAdapter(
+                    ("501",),
+                    fetched_at=datetime.now(UTC),
+                    title_prefix="Principal Engineer",
+                ),
+                deadline=datetime.now(UTC) + timedelta(minutes=5),
+            )
+            assert removed.items_removed == 1
+            absent_job = session.scalar(select(Job).where(Job.external_id == "502"))
+            assert absent_job is not None
+            assert absent_job.status is JobStatus.REMOVED
+            assert absent_job.consecutive_missing_count == 2
+            assert absent_job.removed_at is not None
+            session.rollback()
+
+            reactivated = run_approved_source(
+                session,
+                config=VNG_CAREERS,
+                adapter=FakeVngAdapter(
+                    ("501", "502"),
+                    fetched_at=datetime.now(UTC),
+                    title_prefix="Principal Engineer",
+                ),
+                deadline=datetime.now(UTC) + timedelta(minutes=5),
+            )
+            assert reactivated.items_reactivated == 1
+            assert reactivated.items_updated == 1
+            absent_job = session.scalar(select(Job).where(Job.external_id == "502"))
+            assert absent_job is not None
+            assert absent_job.status is JobStatus.ACTIVE
+            assert absent_job.consecutive_missing_count == 0
+            assert absent_job.removed_at is None
+            job_id = absent_job.id
+            change_count = session.scalar(select(func.count()).select_from(JobChange))
+            session.rollback()
+
+            replay = run_approved_source(
+                session,
+                config=VNG_CAREERS,
+                adapter=FakeVngAdapter(
+                    ("501", "502"),
+                    fetched_at=reactivated.finished_at,
+                    title_prefix="Principal Engineer",
+                ),
+                deadline=datetime.now(UTC) + timedelta(minutes=5),
+            )
+            assert replay.items_new == 0
+            assert replay.items_updated == 0
+            assert replay.items_missing == 0
+            assert replay.items_removed == 0
+            assert replay.items_reactivated == 0
+            assert session.scalar(select(func.count()).select_from(JobChange)) == change_count
+
+            changes = session.scalars(select(JobChange).where(JobChange.job_id == job_id)).all()
+            assert {(change.change_type, change.field_name) for change in changes} == {
+                (JobChangeType.CREATED, "status"),
+                (JobChangeType.MISSING, "status"),
+                (JobChangeType.REMOVED, "status"),
+                (JobChangeType.REACTIVATED, "status"),
+                (JobChangeType.UPDATED, "title"),
+            }
+            assert all(change.crawl_run_id is not None for change in changes)
+            assert all(
+                change.from_snapshot_id is not None
+                for change in changes
+                if change.change_type is not JobChangeType.CREATED
+            )
     finally:
         engine.dispose()

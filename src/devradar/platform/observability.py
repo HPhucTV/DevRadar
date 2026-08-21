@@ -38,6 +38,7 @@ _EVENT_FIELDS: Final[dict[str, frozenset[str]]] = {
             "items_updated",
             "items_missing",
             "items_removed",
+            "items_reactivated",
             "items_failed",
             "error_code",
         }
@@ -191,6 +192,7 @@ def record_crawl_run_summary(
     items_updated: int,
     items_missing: int,
     items_removed: int,
+    items_reactivated: int,
     items_failed: int,
     error_code: str | None,
 ) -> None:
@@ -208,6 +210,7 @@ def record_crawl_run_summary(
         items_updated=items_updated,
         items_missing=items_missing,
         items_removed=items_removed,
+        items_reactivated=items_reactivated,
         items_failed=items_failed,
         error_code=error_code,
     )

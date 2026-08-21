@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from devradar.catalog.job_changes import apply_absence_lifecycle
 from devradar.catalog.job_upsert import upsert_parsed_job
 from devradar.ingestion.adapters.greenhouse import GreenhouseJobBoardAdapter
 from devradar.ingestion.adapters.momo import MomoCareersAdapter
@@ -72,6 +73,7 @@ class RunReport:
     items_updated: int
     items_missing: int
     items_removed: int
+    items_reactivated: int
     items_failed: int
     error_code: str | None
     retry_after_seconds: int | None
@@ -323,6 +325,7 @@ def _report(run: CrawlRun, source_key: str, *, reused: bool = False) -> RunRepor
         items_updated=run.items_updated,
         items_missing=run.items_missing,
         items_removed=run.items_removed,
+        items_reactivated=run.items_reactivated,
         items_failed=run.items_failed,
         error_code=run.error_code,
         retry_after_seconds=run.retry_after_seconds,
@@ -369,6 +372,7 @@ def _finalize_run(
     crawl_run.error_summary = (
         None if error_code is None else "Crawl run completed with one or more safe failures."
     )
+    apply_absence_lifecycle(session, crawl_run=crawl_run, detected_at=finished_at)
     source.last_crawled_at = finished_at
     if status is CrawlRunStatus.SUCCEEDED and coverage_status is CoverageStatus.COMPLETE:
         source.last_success_at = finished_at
@@ -387,6 +391,7 @@ def _finalize_run(
         items_updated=report.items_updated,
         items_missing=report.items_missing,
         items_removed=report.items_removed,
+        items_reactivated=report.items_reactivated,
         items_failed=report.items_failed,
         error_code=report.error_code,
     )
