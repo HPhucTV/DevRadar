@@ -261,7 +261,7 @@ VNG_CAREERS = SourceConfig(
         requests_per_minute=6,
     ),
     policy_review=_APPROVED_POLICY_REVIEW,
-    config_version="2026-08-21.1",
+    config_version="2026-08-21.2",
     adapter_settings={
         "job_families": (
             "Software",
@@ -272,7 +272,17 @@ VNG_CAREERS = SourceConfig(
             "Data Science",
             "Business Analysis",
             "Artificial Intelligence",
-        )
+        ),
+        "job_group_ids": (
+            "385",
+            "423",
+            "384",
+            "387",
+            "457",
+            "462",
+            "464",
+            "465",
+        ),
     },
 )
 

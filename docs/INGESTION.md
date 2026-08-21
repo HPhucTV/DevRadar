@@ -122,6 +122,14 @@ Greenhouse full-list response đã chứa content của từng post. Để khôn
 
 Fixture, negative path và bounded live evidence nằm tại [V1-006 evidence](evidence/V1-006-naver-greenhouse-adapter.md).
 
+### 4.3. VNG Careers HTTP adapter
+
+[VNG adapter](../src/devradar/ingestion/adapters/vng.py) chỉ discover qua public UI query `job_group=<approved-id>&page=<n>`. Registry pin tám cặp job-group ID/name đã duyệt; mỗi response phải tự xác nhận exact filter trong `request.queries` và cùng taxonomy trong `tags`. Broad `job_family` trên job card chỉ là provenance (`Tech`, `Data`, `Product` hoặc `null`), không được dùng để suy đoán scope IT.
+
+Mỗi approved group được paginate cho tới `pages`, với page/size/total/count ổn định và unique `job_id`. Job xuất hiện trong nhiều approved group được source-scoped deduplicate khi URL/title không conflict. Chỉ sau khi toàn bộ groups complete, `fetch` mới nhận exact discovered listing và GET detail canonical trên VNG host. Detail parser dùng `job_id`, strip HTML, giữ description/requirement, redact email/phone khỏi canonical text và không diễn giải flag `post_on_careers_page` thành ngày đăng.
+
+Fixture, live taxonomy regression và bounded page/detail smoke nằm tại [V1-007 evidence](evidence/V1-007-vng-adapter.md).
+
 ## 5. Extraction order
 
 Thứ tự mặc định:

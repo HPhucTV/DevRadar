@@ -114,8 +114,21 @@ def test_arbitrary_adapter_path_is_not_a_valid_config_key() -> None:
 def test_source_fetch_boundaries_match_approval_records() -> None:
     by_key = {config.source_key: config for config in V1_SOURCE_CONFIGS}
 
-    assert by_key["vng-careers"].fetch_policy.allowed_hosts == ("career.vng.com.vn",)
-    assert by_key["vng-careers"].fetch_policy.requests_per_minute == 6
+    vng = by_key["vng-careers"]
+    assert vng.fetch_policy.allowed_hosts == ("career.vng.com.vn",)
+    assert vng.fetch_policy.requests_per_minute == 6
+    vng_group_ids = vng.adapter_settings["job_group_ids"]
+    vng_group_names = vng.adapter_settings["job_families"]
+    assert tuple(zip(vng_group_ids, vng_group_names, strict=True)) == (
+        ("385", "Software"),
+        ("423", "System"),
+        ("384", "QC/P-QA"),
+        ("387", "Tech Management"),
+        ("457", "Data Engineering"),
+        ("462", "Data Science"),
+        ("464", "Business Analysis"),
+        ("465", "Artificial Intelligence"),
+    )
 
     naver = by_key["naver-vietnam-greenhouse"]
     assert naver.adapter_settings["board_token"] == "navervietnam"
