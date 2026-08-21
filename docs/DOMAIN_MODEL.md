@@ -58,6 +58,9 @@ Implementation V1 hiện map `Source`, `CrawlRun`, `RawJobSnapshot` vào module 
 |---|---|
 | `id`, `source_id` | Định danh run và source. |
 | `trigger_type` | `manual`, `scheduled`, `retry`, `replay`. |
+| `trigger_key`, `scheduled_for` | Idempotency identity và UTC slot cho trigger có key; scheduled run bắt buộc có cả hai. |
+| `retry_of_run_id`, `attempt_number` | Retry provenance; một run chỉ có tối đa một direct retry và tổng policy tối đa ba attempt. |
+| `retry_after_seconds` | Bounded server hint đã sanitize, tối đa 3.600 giây. |
 | `started_at`, `finished_at` | Boundary thời gian. |
 | `status` | `pending`, `running`, `succeeded`, `partial`, `failed`, `cancelled`. |
 | `coverage_status` | `unknown`, `complete`, `incomplete`; tách khỏi technical status. |
@@ -66,6 +69,8 @@ Implementation V1 hiện map `Source`, `CrawlRun`, `RawJobSnapshot` vào module 
 | `adapter_version`, `config_version` | Khả năng tái hiện run. |
 
 Chỉ run `succeeded` và `coverage_status=complete` được dùng để tăng missing count.
+
+PostgreSQL chỉ cho một `pending|running` CrawlRun mỗi Source. Cùng `(source_id, trigger_key)` trả lại history hiện hữu; nó không tạo execution thứ hai.
 
 ### 4.3. RawJobSnapshot
 

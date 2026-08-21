@@ -257,6 +257,8 @@ Error taxonomy tối thiểu:
 
 V2 kích hoạt orchestration retry. Policy khởi điểm: tối đa ba attempt cho transient failure, exponential backoff có jitter và tôn trọng `Retry-After`. Không retry tự động lỗi policy hoặc dữ liệu invalid.
 
+Implementation V2 giữ trigger key, UTC schedule slot, attempt và retry relation trong `CrawlRun`. PostgreSQL partial unique index giới hạn một active run mỗi source và một run cho mỗi source/trigger key. Duplicate process không được giải quyết bằng in-memory lock vì CLI, API và scheduler có thể là process khác nhau.
+
 Source chuyển `degraded` khi success rate/coverage hoặc parser signal vượt warning threshold đã baseline; chuyển `quarantined` khi lỗi liên tiếp có nguy cơ tạo dữ liệu sai hoặc vi phạm policy. Quarantine dừng schedule nhưng giữ history và cho operator review.
 
 ## 11. Metrics và audit

@@ -10,6 +10,12 @@ from alembic.config import Config
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 
+from devradar.automation.orchestrator import (
+    RetryPolicy,
+    orchestrate_source,
+    scheduled_slot,
+    scheduled_trigger_key,
+)
 from devradar.catalog.models import Job
 from devradar.ingestion.contracts import (
     FetchResult,
@@ -27,6 +33,7 @@ from devradar.ingestion.models import (
     CoverageStatus,
     CrawlRun,
     CrawlRunStatus,
+    CrawlTriggerType,
     ParseStatus,
     RawJobSnapshot,
     Source,
@@ -40,9 +47,16 @@ BASE_TIME = datetime(2026, 8, 21, 8, 0, tzinfo=UTC)
 
 
 class FakeAdapterError(RuntimeError):
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        retry_after_seconds: int | None = None,
+    ) -> None:
         super().__init__(message)
         self.code = code
+        self.retry_after_seconds = retry_after_seconds
 
 
 class FakeVngAdapter(JobSourceAdapter):
@@ -115,6 +129,24 @@ class FakeVngAdapter(JobSourceAdapter):
             evidence=(FieldEvidence(field_name="title", source_path="fixture.title"),),
             parser_version=self.adapter_version,
         )
+
+
+class SequencedFakeVngAdapter(FakeVngAdapter):
+    def __init__(
+        self,
+        external_ids: tuple[str, ...],
+        *,
+        fetched_at: datetime,
+        discovery_errors: tuple[Exception, ...],
+    ) -> None:
+        super().__init__(external_ids, fetched_at=fetched_at)
+        self._discovery_errors = list(discovery_errors)
+
+    def discover(self, run_context: RunContext) -> tuple[ListingRef, ...]:
+        if self._discovery_errors:
+            self.discovery_calls += 1
+            raise self._discovery_errors.pop(0)
+        return super().discover(run_context)
 
 
 @pytest.mark.postgresql
@@ -253,5 +285,151 @@ def test_runner_blocks_persisted_source_config_drift_before_discovery(
                 )
             assert captured.value.code == "source_config_mismatch"
             assert blocked_adapter.discovery_calls == 0
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.postgresql
+def test_orchestration_retries_transient_and_reuses_duplicate_schedule(
+    fresh_postgresql_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(DATABASE_URL_ENV, fresh_postgresql_url)
+    command.upgrade(Config(str(PROJECT_ROOT / "alembic.ini")), "head")
+    engine = create_engine(fresh_postgresql_url)
+    scheduled_for = scheduled_slot(datetime.now(UTC), 15)
+    trigger_key = scheduled_trigger_key(VNG_CAREERS.source_key, scheduled_for)
+    sleeps: list[float] = []
+    adapter = SequencedFakeVngAdapter(
+        ("301",),
+        fetched_at=BASE_TIME,
+        discovery_errors=(
+            FakeAdapterError(
+                "network_timeout",
+                "first transient failure",
+                retry_after_seconds=7,
+            ),
+            FakeAdapterError("server_error", "second transient failure"),
+        ),
+    )
+    try:
+        with Session(engine) as session:
+            result = orchestrate_source(
+                session,
+                config=VNG_CAREERS,
+                adapter=adapter,
+                deadline=datetime.now(UTC) + timedelta(minutes=5),
+                trigger_type=CrawlTriggerType.SCHEDULED,
+                trigger_key=trigger_key,
+                scheduled_for=scheduled_for,
+                retry_policy=RetryPolicy(
+                    base_delay_seconds=2,
+                    max_delay_seconds=10,
+                    jitter_ratio=0,
+                ),
+                sleeper=sleeps.append,
+                jitter_source=lambda: 0.5,
+            )
+
+            assert result.final_report.status is CrawlRunStatus.SUCCEEDED
+            assert [report.attempt_number for report in result.reports] == [1, 2, 3]
+            assert [report.trigger_type for report in result.reports] == [
+                CrawlTriggerType.SCHEDULED,
+                CrawlTriggerType.RETRY,
+                CrawlTriggerType.RETRY,
+            ]
+            assert result.reports[1].retry_of_run_id == result.reports[0].run_id
+            assert result.reports[2].retry_of_run_id == result.reports[1].run_id
+            assert result.reports[0].retry_after_seconds == 7
+            assert sleeps == [7, 4]
+            assert adapter.discovery_calls == 3
+            assert session.scalar(select(func.count()).select_from(CrawlRun)) == 3
+            assert session.scalar(select(func.count()).select_from(Job)) == 1
+            session.rollback()
+
+            duplicate_adapter = FakeVngAdapter(("302",), fetched_at=BASE_TIME)
+            duplicate_sleeps: list[float] = []
+            duplicate = orchestrate_source(
+                session,
+                config=VNG_CAREERS,
+                adapter=duplicate_adapter,
+                deadline=datetime.now(UTC) + timedelta(minutes=5),
+                trigger_type=CrawlTriggerType.SCHEDULED,
+                trigger_key=trigger_key,
+                scheduled_for=scheduled_for,
+                retry_policy=RetryPolicy(
+                    base_delay_seconds=2,
+                    max_delay_seconds=10,
+                    jitter_ratio=0,
+                ),
+                sleeper=duplicate_sleeps.append,
+            )
+
+            assert duplicate.final_report.run_id == result.final_report.run_id
+            assert all(report.reused for report in duplicate.reports)
+            assert duplicate_adapter.discovery_calls == 0
+            assert duplicate_sleeps == []
+            assert session.scalar(select(func.count()).select_from(CrawlRun)) == 3
+            assert session.scalar(select(func.count()).select_from(Job)) == 1
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.postgresql
+def test_orchestration_does_not_retry_policy_error_or_overlap_active_run(
+    fresh_postgresql_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(DATABASE_URL_ENV, fresh_postgresql_url)
+    command.upgrade(Config(str(PROJECT_ROOT / "alembic.ini")), "head")
+    engine = create_engine(fresh_postgresql_url)
+    try:
+        with Session(engine) as session:
+            policy_adapter = FakeVngAdapter(
+                (),
+                fetched_at=BASE_TIME,
+                discovery_error=FakeAdapterError("policy_blocked", "policy denied"),
+            )
+            sleeps: list[float] = []
+            policy_result = orchestrate_source(
+                session,
+                config=VNG_CAREERS,
+                adapter=policy_adapter,
+                deadline=datetime.now(UTC) + timedelta(minutes=5),
+                trigger_key="manual:policy-fixture",
+                sleeper=sleeps.append,
+            )
+
+            assert len(policy_result.reports) == 1
+            assert policy_result.final_report.error_code == "policy_blocked"
+            assert policy_adapter.discovery_calls == 1
+            assert sleeps == []
+
+            source = session.get(Source, policy_result.final_report.source_id)
+            assert source is not None
+            active = CrawlRun(
+                source_id=source.id,
+                trigger_type=CrawlTriggerType.MANUAL,
+                trigger_key="manual:active-fixture",
+                status=CrawlRunStatus.RUNNING,
+                started_at=datetime.now(UTC),
+                adapter_version="fixture-v1",
+                config_version=VNG_CAREERS.config_version,
+            )
+            session.add(active)
+            session.commit()
+
+            blocked_adapter = FakeVngAdapter(("401",), fetched_at=BASE_TIME)
+            with pytest.raises(IngestionRunError) as captured:
+                orchestrate_source(
+                    session,
+                    config=VNG_CAREERS,
+                    adapter=blocked_adapter,
+                    deadline=datetime.now(UTC) + timedelta(minutes=5),
+                    trigger_key="manual:overlap-fixture",
+                )
+            assert captured.value.code == "run_already_active"
+            assert blocked_adapter.discovery_calls == 0
+            assert session.scalar(select(func.count()).select_from(CrawlRun)) == 2
     finally:
         engine.dispose()

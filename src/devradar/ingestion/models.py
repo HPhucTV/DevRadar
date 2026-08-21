@@ -178,9 +178,46 @@ class CrawlRun(Base):
             "finished_at IS NULL OR finished_at >= started_at",
             name="ck_crawl_runs_finished_after_started",
         ),
+        CheckConstraint(
+            "attempt_number >= 1",
+            name="ck_crawl_runs_attempt_number_positive",
+        ),
+        CheckConstraint(
+            "retry_after_seconds IS NULL OR "
+            "(retry_after_seconds >= 0 AND retry_after_seconds <= 3600)",
+            name="ck_crawl_runs_retry_after_bounded",
+        ),
+        CheckConstraint(
+            "(trigger_type = 'scheduled' AND scheduled_for IS NOT NULL) OR "
+            "(trigger_type <> 'scheduled' AND scheduled_for IS NULL)",
+            name="ck_crawl_runs_scheduled_time_boundary",
+        ),
+        CheckConstraint(
+            "(trigger_type = 'retry' AND retry_of_run_id IS NOT NULL AND attempt_number >= 2) "
+            "OR (trigger_type <> 'retry' AND retry_of_run_id IS NULL AND attempt_number = 1)",
+            name="ck_crawl_runs_retry_relation",
+        ),
+        CheckConstraint(
+            "trigger_key IS NULL OR length(btrim(trigger_key)) > 0",
+            name="ck_crawl_runs_trigger_key_not_blank",
+        ),
         UniqueConstraint("id", "source_id", name="uq_crawl_runs_id_source_id"),
+        UniqueConstraint("retry_of_run_id", name="uq_crawl_runs_retry_of_run_id"),
         Index("ix_crawl_runs_source_started_at", "source_id", "started_at"),
         Index("ix_crawl_runs_source_status", "source_id", "status"),
+        Index(
+            "uq_crawl_runs_source_trigger_key",
+            "source_id",
+            "trigger_key",
+            unique=True,
+            postgresql_where=text("trigger_key IS NOT NULL"),
+        ),
+        Index(
+            "uq_crawl_runs_one_active_per_source",
+            "source_id",
+            unique=True,
+            postgresql_where=text("status IN ('pending', 'running')"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -225,6 +262,14 @@ class CrawlRun(Base):
         default=CoverageStatus.UNKNOWN,
         server_default=text("'unknown'"),
     )
+    trigger_key: Mapped[str | None] = mapped_column(String(200))
+    scheduled_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    retry_of_run_id: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("crawl_runs.id", ondelete="RESTRICT", name="fk_crawl_runs_retry_of_run_id"),
+    )
+    attempt_number: Mapped[int] = mapped_column(Integer, default=1, server_default=text("1"))
+    retry_after_seconds: Mapped[int | None] = mapped_column(Integer)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     pages_found: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))

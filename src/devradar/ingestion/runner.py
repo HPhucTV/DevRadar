@@ -1,4 +1,4 @@
-"""On-demand V1 ingestion use case with short PostgreSQL transactions."""
+"""Claimed ingestion run use case with short PostgreSQL transactions."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from typing import cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from devradar.catalog.job_upsert import upsert_parsed_job
@@ -56,6 +57,11 @@ class RunReport:
     run_id: UUID
     source_key: str
     source_id: UUID
+    trigger_type: CrawlTriggerType
+    trigger_key: str | None
+    scheduled_for: datetime | None
+    retry_of_run_id: UUID | None
+    attempt_number: int
     status: CrawlRunStatus
     coverage_status: CoverageStatus
     started_at: datetime
@@ -68,6 +74,8 @@ class RunReport:
     items_removed: int
     items_failed: int
     error_code: str | None
+    retry_after_seconds: int | None
+    reused: bool
 
 
 def resolve_v1_source(source_key: str) -> ResolvedSource:
@@ -144,10 +152,19 @@ def _create_run(
     config: SourceConfig,
     adapter: JobSourceAdapter,
     started_at: datetime,
-) -> UUID:
+    trigger_type: CrawlTriggerType,
+    trigger_key: str | None,
+    scheduled_for: datetime | None,
+    retry_of_run_id: UUID | None,
+    attempt_number: int,
+) -> tuple[UUID, bool]:
     crawl_run = CrawlRun(
         source_id=source_id,
-        trigger_type=CrawlTriggerType.MANUAL,
+        trigger_type=trigger_type,
+        trigger_key=trigger_key,
+        scheduled_for=scheduled_for,
+        retry_of_run_id=retry_of_run_id,
+        attempt_number=attempt_number,
         status=CrawlRunStatus.RUNNING,
         coverage_status=CoverageStatus.UNKNOWN,
         started_at=started_at,
@@ -155,10 +172,42 @@ def _create_run(
         config_version=config.config_version,
     )
     session.add(crawl_run)
-    session.flush()
-    run_id = crawl_run.id
-    session.commit()
-    return run_id
+    try:
+        session.flush()
+        run_id = crawl_run.id
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        existing: CrawlRun | None = None
+        if trigger_key is not None:
+            existing = session.scalar(
+                select(CrawlRun).where(
+                    CrawlRun.source_id == source_id,
+                    CrawlRun.trigger_key == trigger_key,
+                )
+            )
+        if existing is None and retry_of_run_id is not None:
+            existing = session.scalar(
+                select(CrawlRun).where(CrawlRun.retry_of_run_id == retry_of_run_id)
+            )
+        if existing is not None:
+            existing_id = existing.id
+            session.rollback()
+            return existing_id, False
+        active = session.scalar(
+            select(CrawlRun).where(
+                CrawlRun.source_id == source_id,
+                CrawlRun.status.in_((CrawlRunStatus.PENDING, CrawlRunStatus.RUNNING)),
+            )
+        )
+        if active is not None:
+            session.rollback()
+            raise IngestionRunError(
+                "run_already_active",
+                "An ingestion run is already active for this source.",
+            ) from None
+        raise
+    return run_id, True
 
 
 def _safe_error_code(error: Exception) -> tuple[str, bool]:
@@ -168,6 +217,13 @@ def _safe_error_code(error: Exception) -> tuple[str, bool]:
         if len(code) <= 100 and _ERROR_CODE_PATTERN.fullmatch(code):
             return code, True
     return "unexpected_error", False
+
+
+def _retry_after_seconds(error: Exception) -> int | None:
+    value = getattr(error, "retry_after_seconds", None)
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return min(max(value, 0), 3600)
 
 
 def _snapshot_contract(snapshot: RawJobSnapshot, source_key: str) -> RawSnapshot:
@@ -216,7 +272,7 @@ def _handle_item_exception(
     item_index: int,
     item_count: int,
     snapshot_id: UUID | None = None,
-) -> tuple[str, bool]:
+) -> tuple[str, bool, int | None]:
     session.rollback()
     error_code, expected = _safe_error_code(error)
     _record_item_failure(
@@ -234,7 +290,7 @@ def _handle_item_exception(
             error_code=error_code,
             count=remaining,
         )
-    return error_code, should_stop
+    return error_code, should_stop, _retry_after_seconds(error)
 
 
 def _set_items_found(session: Session, run_id: UUID, items_found: int) -> None:
@@ -245,13 +301,18 @@ def _set_items_found(session: Session, run_id: UUID, items_found: int) -> None:
     session.commit()
 
 
-def _report(run: CrawlRun, source_key: str) -> RunReport:
+def _report(run: CrawlRun, source_key: str, *, reused: bool = False) -> RunReport:
     if run.started_at is None or run.finished_at is None:
         raise IngestionRunError("run_not_final", "Crawl run was not finalized.")
     return RunReport(
         run_id=run.id,
         source_key=source_key,
         source_id=run.source_id,
+        trigger_type=run.trigger_type,
+        trigger_key=run.trigger_key,
+        scheduled_for=run.scheduled_for,
+        retry_of_run_id=run.retry_of_run_id,
+        attempt_number=run.attempt_number,
         status=run.status,
         coverage_status=run.coverage_status,
         started_at=run.started_at,
@@ -264,6 +325,8 @@ def _report(run: CrawlRun, source_key: str) -> RunReport:
         items_removed=run.items_removed,
         items_failed=run.items_failed,
         error_code=run.error_code,
+        retry_after_seconds=run.retry_after_seconds,
+        reused=reused,
     )
 
 
@@ -275,6 +338,7 @@ def _finalize_run(
     processed_items: int,
     coverage_complete: bool,
     error_code: str | None,
+    retry_after_seconds: int | None = None,
     status_override: CrawlRunStatus | None = None,
 ) -> RunReport:
     finished_at = datetime.now(UTC)
@@ -301,6 +365,7 @@ def _finalize_run(
     crawl_run.coverage_status = coverage_status
     crawl_run.finished_at = finished_at
     crawl_run.error_code = error_code
+    crawl_run.retry_after_seconds = retry_after_seconds
     crawl_run.error_summary = (
         None if error_code is None else "Crawl run completed with one or more safe failures."
     )
@@ -335,8 +400,13 @@ def run_approved_source(
     adapter: JobSourceAdapter,
     deadline: datetime,
     max_items: int | None = None,
+    trigger_type: CrawlTriggerType = CrawlTriggerType.MANUAL,
+    trigger_key: str | None = None,
+    scheduled_for: datetime | None = None,
+    retry_of_run_id: UUID | None = None,
+    attempt_number: int = 1,
 ) -> RunReport:
-    """Own a manual run lifecycle; network work happens outside DB transactions."""
+    """Own one claimed run lifecycle; network work happens outside DB transactions."""
 
     if session.in_transaction():
         raise IngestionRunError(
@@ -354,6 +424,38 @@ def run_approved_source(
         raise IngestionRunError("invalid_deadline", "Ingestion deadline must be in the future.")
     if max_items is not None and max_items <= 0:
         raise IngestionRunError("invalid_max_items", "max_items must be positive.")
+    if trigger_key is not None and (not trigger_key.strip() or len(trigger_key) > 200):
+        raise IngestionRunError(
+            "invalid_trigger_key",
+            "Trigger key must contain 1..200 non-blank characters.",
+        )
+    scheduled_time_is_aware = bool(
+        scheduled_for is not None
+        and scheduled_for.tzinfo is not None
+        and scheduled_for.utcoffset() is not None
+    )
+    if trigger_type is CrawlTriggerType.SCHEDULED:
+        if not scheduled_time_is_aware or trigger_key is None:
+            raise IngestionRunError(
+                "invalid_scheduled_trigger",
+                "Scheduled runs require an aware scheduled time and trigger key.",
+            )
+    elif scheduled_for is not None:
+        raise IngestionRunError(
+            "invalid_scheduled_trigger",
+            "Only scheduled runs may carry a scheduled time.",
+        )
+    if trigger_type is CrawlTriggerType.RETRY:
+        if retry_of_run_id is None or attempt_number < 2 or trigger_key is None:
+            raise IngestionRunError(
+                "invalid_retry_trigger",
+                "Retry runs require a previous run, attempt number, and trigger key.",
+            )
+    elif retry_of_run_id is not None or attempt_number != 1:
+        raise IngestionRunError(
+            "invalid_retry_trigger",
+            "Only retry runs may carry retry relation or attempt number greater than one.",
+        )
 
     try:
         source_id = _ensure_source(session, config)
@@ -361,13 +463,31 @@ def run_approved_source(
         session.rollback()
         raise
     started_at = datetime.now(UTC)
-    run_id = _create_run(
+    run_id, created = _create_run(
         session,
         source_id=source_id,
         config=config,
         adapter=adapter,
         started_at=started_at,
+        trigger_type=trigger_type,
+        trigger_key=trigger_key,
+        scheduled_for=scheduled_for,
+        retry_of_run_id=retry_of_run_id,
+        attempt_number=attempt_number,
     )
+    if not created:
+        existing = session.get(CrawlRun, run_id)
+        if existing is None:
+            raise IngestionRunError("run_not_found", "Claimed crawl run disappeared.")
+        if existing.status in (CrawlRunStatus.PENDING, CrawlRunStatus.RUNNING):
+            session.rollback()
+            raise IngestionRunError(
+                "run_already_active",
+                "An ingestion run is already active for this trigger.",
+            )
+        report = _report(existing, config.source_key, reused=True)
+        session.rollback()
+        return report
     context = RunContext(
         run_id=run_id,
         source=config,
@@ -398,6 +518,7 @@ def run_approved_source(
             processed_items=0,
             coverage_complete=False,
             error_code=error_code,
+            retry_after_seconds=_retry_after_seconds(error),
         )
 
     _set_items_found(session, run_id, len(listings))
@@ -415,6 +536,7 @@ def run_approved_source(
     coverage_complete = len(selected) == len(listings)
     processed_items = 0
     first_error_code: str | None = None
+    first_retry_after_seconds: int | None = None
 
     for index, listing in enumerate(selected):
         if datetime.now(UTC) >= deadline:
@@ -444,7 +566,7 @@ def run_approved_source(
             )
             raise
         except Exception as error:
-            error_code, should_stop = _handle_item_exception(
+            error_code, should_stop, retry_after_seconds = _handle_item_exception(
                 session,
                 run_id=run_id,
                 error=error,
@@ -452,6 +574,7 @@ def run_approved_source(
                 item_count=len(selected),
             )
             first_error_code = first_error_code or error_code
+            first_retry_after_seconds = first_retry_after_seconds or retry_after_seconds
             coverage_complete = False
             if should_stop:
                 break
@@ -475,7 +598,7 @@ def run_approved_source(
             snapshot_id = snapshot.id
             session.commit()
         except Exception as error:
-            error_code, should_stop = _handle_item_exception(
+            error_code, should_stop, retry_after_seconds = _handle_item_exception(
                 session,
                 run_id=run_id,
                 error=error,
@@ -483,6 +606,7 @@ def run_approved_source(
                 item_count=len(selected),
             )
             first_error_code = first_error_code or error_code
+            first_retry_after_seconds = first_retry_after_seconds or retry_after_seconds
             coverage_complete = False
             if should_stop:
                 break
@@ -491,7 +615,7 @@ def run_approved_source(
         try:
             parsed = adapter.parse(raw_snapshot)
         except Exception as error:
-            error_code, should_stop = _handle_item_exception(
+            error_code, should_stop, retry_after_seconds = _handle_item_exception(
                 session,
                 run_id=run_id,
                 error=error,
@@ -500,6 +624,7 @@ def run_approved_source(
                 snapshot_id=snapshot_id,
             )
             first_error_code = first_error_code or error_code
+            first_retry_after_seconds = first_retry_after_seconds or retry_after_seconds
             coverage_complete = False
             if should_stop:
                 break
@@ -517,7 +642,7 @@ def run_approved_source(
             coverage_complete = False
             continue
         if not isinstance(parsed, ParsedJob):
-            error_code, _ = _handle_item_exception(
+            error_code, _, retry_after_seconds = _handle_item_exception(
                 session,
                 run_id=run_id,
                 error=TypeError("adapter parse contract returned an unsupported result"),
@@ -526,6 +651,7 @@ def run_approved_source(
                 snapshot_id=snapshot_id,
             )
             first_error_code = first_error_code or error_code
+            first_retry_after_seconds = first_retry_after_seconds or retry_after_seconds
             coverage_complete = False
             break
 
@@ -547,7 +673,7 @@ def run_approved_source(
             session.commit()
             processed_items += 1
         except Exception as error:
-            error_code, should_stop = _handle_item_exception(
+            error_code, should_stop, retry_after_seconds = _handle_item_exception(
                 session,
                 run_id=run_id,
                 error=error,
@@ -556,6 +682,7 @@ def run_approved_source(
                 snapshot_id=snapshot_id,
             )
             first_error_code = first_error_code or error_code
+            first_retry_after_seconds = first_retry_after_seconds or retry_after_seconds
             coverage_complete = False
             if should_stop:
                 break
@@ -567,4 +694,5 @@ def run_approved_source(
         processed_items=processed_items,
         coverage_complete=coverage_complete,
         error_code=first_error_code,
+        retry_after_seconds=first_retry_after_seconds,
     )

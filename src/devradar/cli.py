@@ -1,4 +1,4 @@
-"""Verified local operator entrypoint for V1 on-demand ingestion."""
+"""Verified local operator entrypoint for orchestrated on-demand ingestion."""
 
 from __future__ import annotations
 
@@ -15,8 +15,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
+from devradar.automation.orchestrator import orchestrate_source
 from devradar.ingestion.models import CrawlRunStatus
-from devradar.ingestion.runner import IngestionRunError, resolve_v1_source, run_approved_source
+from devradar.ingestion.runner import IngestionRunError, resolve_v1_source
 from devradar.ingestion.source_registry import V1_SOURCE_REGISTRY
 from devradar.platform.database import get_database_url
 from devradar.platform.observability import configure_structured_logging
@@ -52,6 +53,10 @@ def _parser() -> argparse.ArgumentParser:
         type=_positive_int,
         help="process only the first N discovered items and mark coverage incomplete",
     )
+    crawl.add_argument(
+        "--idempotency-key",
+        help="optional opaque key (1..200 characters) for safe operator retry",
+    )
     return parser
 
 
@@ -75,13 +80,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         resolved = resolve_v1_source(args.source)
         engine = create_engine(get_database_url())
         with Session(engine) as session:
-            report = run_approved_source(
+            result = orchestrate_source(
                 session,
                 config=resolved.config,
                 adapter=resolved.adapter,
                 deadline=datetime.now(UTC) + timedelta(minutes=args.deadline_minutes),
                 max_items=args.max_items,
+                trigger_key=args.idempotency_key,
             )
+            report = result.final_report
     except KeyboardInterrupt:
         return 130
     except IngestionRunError as error:
