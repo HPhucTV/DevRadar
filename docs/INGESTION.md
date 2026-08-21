@@ -86,17 +86,20 @@ Contract code tại [ingestion contracts](../src/devradar/ingestion/contracts.py
 
 ### 3.1. Raw snapshot storage V1
 
-V1 lưu text payload đã qua fetch limit trực tiếp trong PostgreSQL `RawJobSnapshot.raw_content`, cùng HTTP metadata và `raw_content_hash`. Fetcher phải reject payload vượt `max_response_bytes` hoặc content type chưa duyệt trước khi mở transaction persistence; schema `Text` không thay thế byte-limit control. Raw column được deferred khi ORM query để read path không vô tình tải payload. Object storage chỉ được xem xét lại khi có số đo size/retention cho thấy PostgreSQL không còn phù hợp.
+V1 lưu text payload đã qua fetch limit trực tiếp trong PostgreSQL `RawJobSnapshot.raw_content`, cùng HTTP metadata và `raw_content_hash`. Fetcher reject payload vượt `max_response_bytes`, content type chưa duyệt hoặc content encoding khác `identity` trước persistence; schema `Text` không thay thế byte-limit control. Persistence revalidate final URL, approval/config version và strict-decode charset, tạo snapshot ở `parse_status=pending`, rồi chỉ `flush`; commit/rollback thuộc ingestion workflow caller. Raw column được deferred khi ORM query để read path không vô tình tải payload. Object storage chỉ được xem xét lại khi có số đo size/retention cho thấy PostgreSQL không còn phù hợp.
+
+Implementation và verification hiện tại: [safe HTTP fetcher](../src/devradar/ingestion/safe_http.py), [snapshot persistence](../src/devradar/ingestion/snapshot_persistence.py) và [V1-004 evidence](evidence/V1-004-safe-fetch-and-snapshot.md).
 
 ## 4. Fetch policy
 
-- Chỉ chấp nhận URL được tạo từ source config/adapter, không nhận URL tùy ý từ API user.
-- Resolve host và chặn loopback, link-local, private/reserved network khi source không phải local fixture.
-- Revalidate mỗi redirect; không follow redirect ra ngoài `allowed_hosts`.
-- Giới hạn connect/read/total timeout, redirect count và response bytes.
-- Chấp nhận content type đã duyệt; file/binary ngoài nhu cầu bị reject.
+- Chỉ chấp nhận HTTPS URL được tạo từ source config/adapter, không nhận URL tùy ý từ API user; user-info, custom port, fragment, path/query control character và path ngoài prefix bị reject.
+- Resolve toàn bộ địa chỉ host và fail closed nếu rỗng, invalid hoặc có bất kỳ loopback, link-local, private/reserved address nào.
+- Kết nối trực tiếp tới numeric IP đã kiểm tra để tránh DNS resolve lần hai; TLS SNI và certificate validation vẫn dùng approved hostname.
+- Revalidate scheme/host/path và resolve/pin lại mỗi redirect; không follow redirect ra ngoài boundary.
+- Giới hạn socket timeout, redirect count và response bytes; body chỉ đọc tới `max_response_bytes + 1` để phát hiện overflow.
+- Chấp nhận content type đã duyệt và content encoding `identity`; file/binary hoặc compressed response ngoài contract bị reject.
 - Throttle theo source; default V1 là concurrency 1 trừ khi approval record có bằng chứng khác.
-- Dùng backoff có jitter cho lỗi transient; tôn trọng `Retry-After` khi hợp lệ.
+- V1 trả stable error code/retryability và bounded `Retry-After`; V2 workflow mới kích hoạt bounded retry/backoff có jitter.
 - Không retry lỗi policy, invalid URL, unsupported content hoặc parser contract violation như lỗi network.
 - User-Agent phải nhận diện hợp lý project/operator khi source policy yêu cầu; không giả mạo browser để bypass control.
 

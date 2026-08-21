@@ -2,7 +2,7 @@
 
 ## 1. Mục tiêu
 
-Tài liệu này định nghĩa bằng chứng cần có để nói DevRadar chạy đúng, an toàn và có thể chẩn đoán. Scaffold cùng PostgreSQL schema/migration đã có verified test/static/Compose evidence; crawler, ingestion transaction và domain API gates vẫn chưa pass.
+Tài liệu này định nghĩa bằng chứng cần có để nói DevRadar chạy đúng, an toàn và có thể chẩn đoán. Scaffold, PostgreSQL schema/migration và safe HTTP/raw snapshot boundary đã có verified test/static/Compose evidence; concrete adapter, end-to-end ingestion transaction và domain API gates vẫn chưa pass.
 
 ## 2. Environment
 
@@ -15,7 +15,7 @@ Tài liệu này định nghĩa bằng chứng cần có để nói DevRadar ch�
 
 Kết quả kiểm tra capability máy phát triển trước V1 được ghi riêng tại [PRE-007 local prerequisites evidence](evidence/PRE-007-local-prerequisites.md); đây không phải Quick Start hoặc runtime proof của ứng dụng.
 
-Kết quả scaffold nằm tại [V1-001 evidence](evidence/V1-001-scaffold.md); fresh PostgreSQL migration/schema integration nằm tại [V1-002 evidence](evidence/V1-002-postgresql-schema.md). Health endpoint chỉ chứng minh API process sống, chưa chứng minh API có thể query database.
+Kết quả scaffold nằm tại [V1-001 evidence](evidence/V1-001-scaffold.md); fresh PostgreSQL migration/schema integration nằm tại [V1-002 evidence](evidence/V1-002-postgresql-schema.md); safe fetch/raw snapshot boundary nằm tại [V1-004 evidence](evidence/V1-004-safe-fetch-and-snapshot.md). Health endpoint chỉ chứng minh API process sống, chưa chứng minh API có thể query database.
 
 Không dùng production secret/data trong CI. Không gọi source/LLM thật từ default unit test; live integration phải opt-in, có budget và được gắn nhãn rõ.
 
@@ -44,6 +44,7 @@ Chạy nhanh, deterministic, không network:
 ### 4.2. Integration tests
 
 - adapter fixture → RawJobSnapshot → normalized Job → PostgreSQL;
+- safe fetch result → RawJobSnapshot trên PostgreSQL thật, gồm policy/config mismatch, invalid encoding và caller-owned transaction;
 - rerun/reprocess và transaction rollback;
 - migration up/down hoặc forward/rollback strategy phù hợp;
 - FastAPI → PostgreSQL với OpenAPI/contract assertion;
@@ -97,7 +98,7 @@ PostgreSQL test hiện dùng `DEVRADAR_TEST_DATABASE_URL`, tạo database tên n
 
 - API input, third-party response và model output đều được schema-validate tại boundary.
 - Database access parameterized; migration không chạy từ user input.
-- Outbound HTTP dùng source allow-list, DNS/IP/redirect revalidation, timeout và size cap; high-risk production path phải giảm DNS rebinding/TOCTOU qua network egress control hoặc pinned resolution phù hợp.
+- Outbound HTTP dùng source allow-list, resolve toàn bộ IP, reject mixed/private/reserved answer, connect tới numeric IP đã pin nhưng validate TLS theo hostname, revalidate redirect, timeout và size cap; production deployment vẫn cần egress control như lớp phòng thủ bổ sung.
 - Browser crawler áp cùng scheme/host/IP policy cho navigation, iframe, subresource và WebSocket; dùng fresh ephemeral context, chặn service worker/download/popup/external protocol, không cấp camera/microphone/geolocation/clipboard/file access, không dùng persistent cookie/storage và chạy trong sandbox/least-privilege runtime không có secret hoặc host mount không cần thiết.
 - HTML hiển thị bằng framework escaping; không render raw source/model HTML.
 - File upload kiểm tra extension, MIME và signature; bounded size/page/decompression; parser không thực thi macro/script và chạy với least privilege.
