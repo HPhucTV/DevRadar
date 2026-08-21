@@ -82,3 +82,7 @@ V1 chỉ được mở khóa bằng một trong hai hướng:
 2. product owner sửa exit criterion bằng rationale rõ, cập nhật roadmap/task contract trước khi đánh dấu complete.
 
 Cho đến khi đó V1 giữ `blocked`, V2 giữ `proposed` và repository không được push theo yêu cầu “chỉ push khi xong phase”.
+
+## 5. Resolution
+
+Sau evidence này, product owner chọn thay fixed count bằng approved-inventory completeness/identity/replay gate. Quyết định và mapping toàn bộ exit criteria được ghi tại [V1 closeout](V1-closeout.md). Lịch sử `78/500` ở trên được giữ nguyên để thể hiện vì sao gate được xem xét lại; nó không còn là trạng thái phase hiện hành.

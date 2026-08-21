@@ -141,11 +141,18 @@ Các mục `Candidate` không phải deliverable hoặc acceptance criterion cho
 ### Mốc V1 đáng tin cậy
 
 - ba source thật đã vượt source approval gate;
-- tối thiểu 500 canonical job records từ các run có thể tái hiện, không tính fixture;
+- toàn bộ inventory quan sát được từ tối thiểu ba approved source đã được ingest bằng current adapter version; latest runs complete và có inventory snapshot;
+- canonical Job có identity 1:1 theo source/external ID, canonical URL và current raw snapshot;
 - rerun cùng snapshot không tạo duplicate hoặc change giả;
 - job lưu được title, company, source URL, `first_seen_at`, `last_seen_at`, raw snapshot reference và content hash;
 - REST API đọc được job/source/run và filter cơ bản;
 - có evidence cho một source success, một source fail và một parser regression fixture.
+
+### Mốc analytics V3
+
+- tối thiểu 500 canonical job records từ approved/reproducible runs, không tính fixture;
+- cohort/source/time window và sample size được công bố khi demo semantic search hoặc trend;
+- không diễn giải 78-job V1 inventory thành insight đại diện cho toàn thị trường Việt Nam.
 
 ### Mốc portfolio hoàn chỉnh
 

@@ -7,12 +7,12 @@
 | Thuộc tính | Giá trị |
 |---|---|
 | Trạng thái | `implementation` |
-| Phase hiện tại | `v1` — Crawler MVP và REST API (`blocked`) |
+| Phase hiện tại | `v2` — Automation, change detection và health (`in_progress`) |
 | Mô hình sử dụng ban đầu | Portfolio cá nhân, single-operator |
 | Thị trường ưu tiên | Job IT Việt Nam, nội dung Việt/Anh, lương VND |
 | Code chạy được | Có — ba source adapters, snapshot persistence, idempotent Job upsert, sáu read-only domain endpoints và structured JSON events |
 
-Repository đã có FastAPI scaffold tối thiểu, dependency lock, PostgreSQL schema/migration cho bốn entity V1, approved source registry, typed adapter contract, safe HTTPS fetcher, raw snapshot persistence, deterministic normalization/canonical hash, ba concrete source adapters, transactional current-state Job upsert, read-only Job/Source/CrawlRun API, safe structured observability và operator CLI cho on-demand ingestion. Integration test chạy PostgreSQL thật; API cùng browser crawler có Docker Compose local đã kiểm chứng. Ba source hiện chỉ cung cấp 78 canonical jobs thật, nên V1 đang bị chặn bởi exit gate `>=500`; chưa chuyển sang V2 và chưa public release.
+V1 đã hoàn tất với FastAPI, PostgreSQL schema/migration, approved source registry, safe HTTPS fetcher, raw snapshot persistence, deterministic normalization/canonical hash, ba concrete source adapters, transactional current-state Job upsert, read-only Job/Source/CrawlRun API, structured observability và operator CLI. Ba source đã ingest toàn bộ inventory quan sát được: 78 canonical jobs với identity/provenance 1:1 và full replay không tạo update giả. Mục tiêu `>=500` được chuyển sang V3, trước khi tuyên bố semantic/trend analytics có quy mô; V2 hiện bắt đầu từ orchestration spike và chưa public release.
 
 ## Mục tiêu
 
@@ -90,7 +90,8 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [V1 read API evidence](docs/evidence/V1-010-read-api.md): PostgreSQL-backed pagination/filter/sort, OpenAPI, safe error và data-exposure contract.
 - [V1 observability evidence](docs/evidence/V1-011-observability.md): JSON request/error/domain events, correlation, log-derived metrics và redaction boundary.
 - [V1 Compose/runner evidence](docs/evidence/V1-012-compose-and-runner.md): on-demand ingestion, containerized Chromium sandbox, PostgreSQL/API smoke và full quality gates.
-- [V1 live inventory evidence](docs/evidence/V1-013-live-inventory.md): ba complete source runs, current-version replay, 78-job inventory và blocker còn thiếu 422 jobs.
+- [V1 live inventory evidence](docs/evidence/V1-013-live-inventory.md): ba complete source runs, current-version replay và 78-job inventory snapshot.
+- [V1 closeout evidence](docs/evidence/V1-closeout.md): product decision về dataset gate, exit-criteria mapping và chuyển phase sang V2.
 - [Roadmap](docs/ROADMAP.md): kế hoạch V1–V6 và definition of done.
 - [Architecture Decision Records](docs/decisions/README.md): quyết định đã chấp nhận và quyết định còn đề xuất.
 - [Ý tưởng ban đầu](DevRadar_Agentic_Job_Market_Intelligence.md): tài liệu tham khảo gốc, không phải bằng chứng trạng thái triển khai.
