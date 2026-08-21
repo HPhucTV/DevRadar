@@ -10,9 +10,9 @@
 | Phase hiện tại | `v1` — Crawler MVP và REST API (`in_progress`) |
 | Mô hình sử dụng ban đầu | Portfolio cá nhân, single-operator |
 | Thị trường ưu tiên | Job IT Việt Nam, nội dung Việt/Anh, lương VND |
-| Code chạy được | Chưa có |
+| Code chạy được | Có — scaffold/health contract; domain API và ingestion chưa được triển khai |
 
-Repository hiện chỉ chứa đặc tả và quyết định kiến trúc. Chưa có ứng dụng, dependency, database migration, Docker image hoặc lệnh build/test đã được xác minh.
+Repository đã có FastAPI scaffold tối thiểu, dependency lock, unit/OpenAPI contract test và Docker Compose local cho API + PostgreSQL. Chưa có database migration, job/source/run endpoint hoặc crawler; các capability đó tiếp tục theo task V1 tương ứng.
 
 ## Mục tiêu
 
@@ -78,21 +78,46 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [Operations](docs/OPERATIONS.md): test, security, observability, retention, CI/CD và deployment gates.
 - [Source discovery](docs/sources/SHORTLIST.md): evidence và approval outcome; VNG, NAVER Vietnam/Greenhouse và MoMo đã được duyệt cho bounded local non-commercial scope, GeoComply/Lever vẫn `permission_required`.
 - [Pre-V1 local evidence](docs/evidence/PRE-007-local-prerequisites.md): Docker/PostgreSQL capability và constraint đã xác minh.
+- [V1 scaffold evidence](docs/evidence/V1-001-scaffold.md): clean install, test/static gates, live API và Docker Compose smoke.
 - [Roadmap](docs/ROADMAP.md): kế hoạch V1–V6 và definition of done.
 - [Architecture Decision Records](docs/decisions/README.md): quyết định đã chấp nhận và quyết định còn đề xuất.
 - [Ý tưởng ban đầu](DevRadar_Agentic_Job_Market_Intelligence.md): tài liệu tham khảo gốc, không phải bằng chứng trạng thái triển khai.
 
 ## Quick Start
 
-Chưa có Quick Start vì project chưa được scaffold. Khi V1 tạo ra ứng dụng chạy được, pull request đó phải bổ sung và kiểm chứng tối thiểu các lệnh:
+Các lệnh dưới đây đã được kiểm chứng bằng Windows PowerShell, Python 3.13, Docker Engine 29.1.3 và Docker Compose 2.40.3.
 
-- khởi động môi trường local;
-- chạy migration;
-- chạy test;
-- chạy lint/type check;
-- dừng và dọn môi trường local an toàn.
+### Local development
 
-Không sao chép lệnh dự kiến vào README trước khi chúng thực sự chạy thành công.
+```powershell
+python -m venv .venv
+.venv\Scripts\python -m pip install --require-hashes --requirement requirements-dev.lock
+.venv\Scripts\python -m uvicorn devradar.main:app --app-dir src --host 127.0.0.1 --port 8000 --reload
+```
+
+Mở `http://127.0.0.1:8000/docs` hoặc kiểm tra process health ở `http://127.0.0.1:8000/api/v1/health`. Dừng development server bằng `Ctrl+C`.
+
+### Quality gates
+
+```powershell
+.venv\Scripts\python -m pytest
+.venv\Scripts\python -m ruff check .
+.venv\Scripts\python -m ruff format --check .
+.venv\Scripts\python -m mypy
+.venv\Scripts\python -m pip check
+```
+
+### Docker Compose local
+
+```powershell
+docker compose --env-file .env.example up --build --wait
+Invoke-RestMethod http://127.0.0.1:8000/api/v1/health
+docker compose --env-file .env.example down
+```
+
+API bind tại `127.0.0.1:8000`; PostgreSQL bind tại `127.0.0.1:55432`. `docker compose down` giữ named volume. Chỉ xóa volume khi operator chủ động chấp nhận mất dữ liệu local.
+
+Migration command chưa tồn tại vì schema/migration thuộc `V1-002`; không dùng scaffold health smoke như bằng chứng database integration.
 
 ## Nguồn sự thật
 

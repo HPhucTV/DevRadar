@@ -2,7 +2,7 @@
 
 ## 1. Mục tiêu
 
-Tài liệu này định nghĩa bằng chứng cần có để nói DevRadar chạy đúng, an toàn và có thể chẩn đoán. Ở trạng thái hiện tại chưa có code hoặc command đã xác minh; các gate dưới đây là contract cho phase tương ứng, không phải tuyên bố chúng đã pass.
+Tài liệu này định nghĩa bằng chứng cần có để nói DevRadar chạy đúng, an toàn và có thể chẩn đoán. Scaffold hiện đã có verified setup/test/static/Compose command và process health; migration, PostgreSQL application integration, crawler và domain API gates vẫn là contract chưa pass.
 
 ## 2. Environment
 
@@ -14,6 +14,8 @@ Tài liệu này định nghĩa bằng chứng cần có để nói DevRadar ch�
 | Production-like | V6 public deployment | dữ liệu công khai + owner data có policy | HTTPS, auth, monitoring |
 
 Kết quả kiểm tra capability máy phát triển trước V1 được ghi riêng tại [PRE-007 local prerequisites evidence](evidence/PRE-007-local-prerequisites.md); đây không phải Quick Start hoặc runtime proof của ứng dụng.
+
+Kết quả scaffold hiện tại nằm tại [V1-001 evidence](evidence/V1-001-scaffold.md). Health endpoint chỉ chứng minh API process sống; database readiness tiếp tục yêu cầu integration/migration evidence ở task sau.
 
 Không dùng production secret/data trong CI. Không gọi source/LLM thật từ default unit test; live integration phải opt-in, có budget và được gắn nhãn rõ.
 
@@ -188,7 +190,7 @@ Backup:
 | V5 | frontend build, accessibility baseline, browser E2E, upload/delete/authorization tests |
 | V6 | dependency/container scan, secret scan, auth/rate-limit/security header tests, deploy/rollback và restore drill |
 
-Command cụ thể chỉ được thêm vào README/AGENTS sau khi scaffold và chạy thành công. CI không được “green” bằng cách skip silently một gate bắt buộc; live/optional test phải báo rõ trạng thái skipped và lý do.
+Command cụ thể trong README/AGENTS phải từng chạy thành công và được cập nhật khi toolchain đổi. CI không được “green” bằng cách skip silently một gate bắt buộc; live/optional test phải báo rõ trạng thái skipped và lý do.
 
 ## 11. Deployment gates
 

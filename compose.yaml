@@ -1,0 +1,52 @@
+name: devradar
+
+services:
+  api:
+    build:
+      context: .
+    depends_on:
+      database:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${DEVRADAR_API_HOST_PORT:-8000}:8000"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)
+      interval: 5s
+      timeout: 4s
+      retries: 12
+      start_period: 5s
+
+  database:
+    image: postgres:18.6-alpine3.24
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-devradar}
+      POSTGRES_USER: ${POSTGRES_USER:-devradar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devradar_local_only}
+    ports:
+      - "127.0.0.1:${DEVRADAR_DB_HOST_PORT:-55432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: 5s
+      timeout: 4s
+      retries: 12
+      start_period: 5s
+
+volumes:
+  postgres-data:

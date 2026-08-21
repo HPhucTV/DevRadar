@@ -6,9 +6,9 @@
 |---|---|
 | Project status | `implementation` |
 | Active phase | `v1` |
-| Code scaffold | Chưa có |
+| Code scaffold | Có — FastAPI health/OpenAPI, lock, test/static gates và Compose local |
 | Source approved | `3/3` cho bounded local non-commercial scope |
-| Runtime/test evidence | Chỉ có local prerequisite/source spike; chưa có application runtime |
+| Runtime/test evidence | [V1-001 scaffold evidence](evidence/V1-001-scaffold.md); chưa có migration/crawler/domain API |
 
 Task-level status có thể được theo dõi bằng `TASK_BOARD.md` cục bộ. File này bị Git ignore và không thay đổi phase gate hoặc exit criteria của roadmap.
 
@@ -53,6 +53,8 @@ Completion evidence: [VNG Careers](sources/vng-careers.md), [NAVER Vietnam/Green
 ## 3. V1 — Crawler MVP và REST API
 
 **Status:** `in_progress`
+
+Evidence hiện có: [V1-001 scaffold](evidence/V1-001-scaffold.md). Đây chưa phải V1 exit evidence.
 
 ### Mục tiêu
 

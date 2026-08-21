@@ -2,9 +2,9 @@
 
 ## 1. Phạm vi và trạng thái
 
-DevRadar cung cấp REST JSON dưới `/api/v1`. Tài liệu này là contract thiết kế trước khi có code. Sau khi FastAPI được scaffold, OpenAPI sinh từ code trở thành wire contract chính; tài liệu này vẫn giữ intent, quyền truy cập và phase availability.
+DevRadar cung cấp REST JSON dưới `/api/v1`. OpenAPI tại `/api/v1/openapi.json` là wire contract chính cho endpoint đã triển khai; tài liệu này giữ intent, quyền truy cập và phase availability cho cả phần đã có và phần còn planned.
 
-Không endpoint nào dưới đây đang chạy ở trạng thái `Planning` hiện tại.
+Hiện chỉ `GET /api/v1/health` chạy trong scaffold. Job/source/crawl-run endpoints vẫn planned cho `V1-010`; không được coi bảng roadmap là bằng chứng endpoint đã tồn tại.
 
 ## 2. Quy ước
 
@@ -89,6 +89,7 @@ V1 dùng page-based pagination vì dataset portfolio còn bounded và UI cần t
 
 | Method và path | Mục đích | Phase | Quyền tối thiểu |
 |---|---|---|---|
+| `GET /api/v1/health` | Process liveness; không tuyên bố database/source readiness | V1 scaffold | local/read |
 | `GET /api/v1/jobs` | List/filter canonical jobs | V1 | local/read; public read policy ở V6 |
 | `GET /api/v1/jobs/{jobId}` | Job detail và provenance tóm tắt | V1 | local/read |
 | `GET /api/v1/sources` | Source và health summary | V1 | local/read; không lộ policy secret |

@@ -1,0 +1,1 @@
+"""DevRadar application package."""

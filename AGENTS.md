@@ -80,9 +80,50 @@ Không âm thầm chọn một phía khi hai nguồn cùng cấp mâu thuẫn. G
 
 ## 8. Commands
 
-Hiện chưa có scaffold và chưa có lệnh build/test/runtime đã được xác minh. Agent không được tự bịa lệnh hoặc tuyên bố chúng hoạt động.
+Các command PowerShell sau đã được kiểm chứng cho scaffold hiện tại.
 
-Thay đổi scaffold V1 đầu tiên phải cập nhật mục này bằng các command đã chạy thành công cho setup, migration, dev, test, lint/type check và teardown. Từ đó, dùng đúng command của repository thay vì lệnh ad hoc.
+### Setup và local API
+
+```powershell
+python -m venv .venv
+.venv\Scripts\python -m pip install --require-hashes --requirement requirements-dev.lock
+.venv\Scripts\python -m uvicorn devradar.main:app --app-dir src --host 127.0.0.1 --port 8000 --reload
+```
+
+### Test và static gates
+
+```powershell
+.venv\Scripts\python -m pytest
+.venv\Scripts\python -m ruff check .
+.venv\Scripts\python -m ruff format --check .
+.venv\Scripts\python -m mypy
+.venv\Scripts\python -m pip check
+```
+
+### Docker Compose
+
+```powershell
+docker compose --env-file .env.example config --quiet
+docker compose --env-file .env.example up --build --wait
+Invoke-RestMethod http://127.0.0.1:8000/api/v1/health
+docker compose --env-file .env.example down
+```
+
+`down` không xóa named volume. Không thêm `--volumes` vào teardown mặc định. Migration chưa có trước `V1-002`; không bịa migration command hoặc gọi process health là database integration.
+
+### Khi thay đổi dependency
+
+Chỉ sửa file `.in`, rồi sinh lại lock bằng generator đã pin và kiểm tra clean install:
+
+```powershell
+.venv\Scripts\python -m pip install pip-tools==7.6.1
+.venv\Scripts\pip-compile --generate-hashes --strip-extras --output-file requirements.lock requirements.in
+.venv\Scripts\pip-compile --generate-hashes --strip-extras --output-file requirements-dev.lock requirements-dev.in
+python -m venv --clear .venv
+.venv\Scripts\python -m pip install --require-hashes --requirement requirements-dev.lock
+```
+
+Runtime dependency phải có trong `requirements.in`; test/lint/type-only dependency nằm trong `requirements-dev.in`. Không sửa lock file bằng tay và không thêm package chỉ để chuẩn bị phase sau.
 
 ## 9. Cập nhật tài liệu
 

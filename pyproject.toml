@@ -1,0 +1,19 @@
+[tool.pytest.ini_options]
+addopts = "--strict-markers"
+filterwarnings = ["error"]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "UP"]
+
+[tool.mypy]
+files = ["src", "tests"]
+mypy_path = "src"
+python_version = "3.13"
+strict = true
