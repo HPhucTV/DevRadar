@@ -2,7 +2,7 @@
 
 ## 1. Trạng thái và phạm vi
 
-Kiến trúc nền tảng là **modular monolith, phase-gated stack** theo [ADR-001](decisions/0001-modular-monolith-and-phase-gated-stack.md). V1 khóa Python, FastAPI, PostgreSQL và Docker Compose; [ADR-005](decisions/0005-sqlalchemy-alembic-and-psycopg.md) khóa SQLAlchemy/Alembic/Psycopg cho persistence V1 sau khi fresh migration và PostgreSQL integration pass. Các thành phần Prefect, pgvector, LangGraph, Next.js và Redis chỉ trở thành dependency khi phase tương ứng bắt đầu và ADR/entry gate cho phép.
+Kiến trúc nền tảng là **modular monolith, phase-gated stack** theo [ADR-001](decisions/0001-modular-monolith-and-phase-gated-stack.md). V1 khóa Python, FastAPI, PostgreSQL và Docker Compose; [ADR-005](decisions/0005-sqlalchemy-alembic-and-psycopg.md) khóa SQLAlchemy/Alembic/Psycopg cho persistence V1 sau khi fresh migration và PostgreSQL integration pass. V2 đã defer Prefect và dùng PostgreSQL-backed direct orchestration theo [ADR-006](decisions/0006-defer-prefect-use-direct-v2-orchestration.md). pgvector, LangGraph, Next.js và Redis chỉ trở thành dependency khi phase tương ứng bắt đầu và ADR/entry gate cho phép.
 
 Tài liệu này mô tả boundary và data flow. Nó không quy định folder/class chi tiết trước khi scaffold và không biến module logic thành microservice.
 
@@ -100,7 +100,7 @@ Upload validation và text extraction chạy trước. File gốc được xóa 
 | Phase | Runtime tối thiểu | Trạng thái kiến trúc |
 |---|---|---|
 | V1 | PostgreSQL, FastAPI process, on-demand crawler/CLI từ cùng codebase | Accepted |
-| V2 | V1 + Prefect scheduler/worker hoặc deployment tương đương đã được spike | Proposed đến khi V2 bắt đầu |
+| V2 | V1 + deterministic scheduler/runner từ cùng codebase, PostgreSQL coordination | Accepted theo ADR-006 |
 | V3 | V2 + LLM/embedding adapter; bật pgvector extension | Proposed |
 | V4 | V3 + LangGraph chạy trong worker/application process | Proposed |
 | V5 | V4 + Next.js và optional alert connector | Proposed |

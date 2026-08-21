@@ -111,12 +111,12 @@ Chạy ingestion định kỳ, retry có kiểm soát, giữ change history và 
 ### Prerequisite
 
 - V1 complete và source identity/coverage ổn định;
-- orchestration spike chứng minh Prefect phù hợp với deployment target;
+- orchestration spike đã chốt direct PostgreSQL-backed workflow theo [ADR-006](decisions/0006-defer-prefect-use-direct-v2-orchestration.md);
 - baseline crawl duration/failure/change rate tồn tại.
 
 ### Deliverables
 
-- Prefect schedule/worker từ cùng codebase;
+- deterministic scheduler/runner từ cùng codebase, PostgreSQL coordination và không có control plane riêng;
 - retry/backoff/error taxonomy và quarantine;
 - JobChange cùng lifecycle `active → missing → removed → active`;
 - source health/anomaly metric và operator view qua API;

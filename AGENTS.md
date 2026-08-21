@@ -32,7 +32,7 @@ Không âm thầm chọn một phía khi hai nguồn cùng cấp mâu thuẫn. G
 - Explanation, review, report và diagnosis là read-only trừ khi người dùng cho phép thay đổi; không biến audit thành implementation ngoài scope.
 - Chọn giải pháp nhỏ nhất đáp ứng yêu cầu hiện tại và giữ đủ correctness, security, validation, error handling, observability cùng test.
 - V1 dùng modular monolith với Python, FastAPI, PostgreSQL và Docker Compose.
-- Prefect chỉ được kích hoạt từ V2; LLM và pgvector từ V3; LangGraph từ V4; Next.js từ V5.
+- V2 dùng direct PostgreSQL-backed orchestration theo ADR-006; không thêm Prefect nếu chưa có ADR mới với measured need. LLM và pgvector chỉ từ V3; LangGraph từ V4; Next.js từ V5.
 - Redis, distributed worker, microservice, Kafka, Kubernetes và vector database riêng chỉ được thêm khi có yêu cầu hiện tại hoặc bằng chứng đo lường. “Có thể cần sau này” không phải bằng chứng.
 - Không tạo interface một implementation, wrapper truyền thẳng, generic repository, feature flag giả định hoặc abstraction chỉ phục vụ khả năng tương lai.
 - Không triển khai feature của phase sau chỉ để “chuẩn bị sẵn”. Nếu một task thực sự cần vượt phase, cập nhật roadmap và ADR trước hoặc trong cùng thay đổi.
