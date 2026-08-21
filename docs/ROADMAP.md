@@ -5,10 +5,10 @@
 | Thuộc tính | Giá trị |
 |---|---|
 | Project status | `implementation` |
-| Active phase | `v1` |
+| Active phase | `v1` (`blocked`) |
 | Code scaffold | Có — FastAPI health + read-only domain API, PostgreSQL schema/migration, test/static gates và Compose local |
 | Source approved | `3/3` cho bounded local non-commercial scope |
-| Runtime/test evidence | [V1-001 scaffold](evidence/V1-001-scaffold.md), [V1-002 PostgreSQL schema](evidence/V1-002-postgresql-schema.md), [V1-003 source registry](evidence/V1-003-source-registry.md), [V1-004 safe fetch/snapshot](evidence/V1-004-safe-fetch-and-snapshot.md), [V1-005 normalization](evidence/V1-005-normalization-and-hashing.md), [V1-006 NAVER adapter](evidence/V1-006-naver-greenhouse-adapter.md), [V1-007 VNG adapter](evidence/V1-007-vng-adapter.md), [V1-008 MoMo adapter](evidence/V1-008-momo-adapter.md), [V1-009 Job upsert](evidence/V1-009-job-upsert.md), [V1-010 read API](evidence/V1-010-read-api.md), [V1-011 observability](evidence/V1-011-observability.md), [V1-012 Compose/runner](evidence/V1-012-compose-and-runner.md); final dataset gate chưa đạt |
+| Runtime/test evidence | [V1-001 scaffold](evidence/V1-001-scaffold.md), [V1-002 PostgreSQL schema](evidence/V1-002-postgresql-schema.md), [V1-003 source registry](evidence/V1-003-source-registry.md), [V1-004 safe fetch/snapshot](evidence/V1-004-safe-fetch-and-snapshot.md), [V1-005 normalization](evidence/V1-005-normalization-and-hashing.md), [V1-006 NAVER adapter](evidence/V1-006-naver-greenhouse-adapter.md), [V1-007 VNG adapter](evidence/V1-007-vng-adapter.md), [V1-008 MoMo adapter](evidence/V1-008-momo-adapter.md), [V1-009 Job upsert](evidence/V1-009-job-upsert.md), [V1-010 read API](evidence/V1-010-read-api.md), [V1-011 observability](evidence/V1-011-observability.md), [V1-012 Compose/runner](evidence/V1-012-compose-and-runner.md), [V1-013 live inventory](evidence/V1-013-live-inventory.md); `78/500` canonical jobs |
 
 Task-level status có thể được theo dõi bằng `TASK_BOARD.md` cục bộ. File này bị Git ignore và không thay đổi phase gate hoặc exit criteria của roadmap.
 
@@ -52,9 +52,9 @@ Completion evidence: [VNG Careers](sources/vng-careers.md), [NAVER Vietnam/Green
 
 ## 3. V1 — Crawler MVP và REST API
 
-**Status:** `in_progress`
+**Status:** `blocked` — 2026-08-21; approved inventory chỉ đạt `78/500`.
 
-Evidence hiện có: [V1-001 scaffold](evidence/V1-001-scaffold.md), [V1-002 PostgreSQL schema](evidence/V1-002-postgresql-schema.md), [V1-003 source registry](evidence/V1-003-source-registry.md), [V1-004 safe fetch/snapshot](evidence/V1-004-safe-fetch-and-snapshot.md), [V1-005 normalization](evidence/V1-005-normalization-and-hashing.md), [V1-006 NAVER adapter](evidence/V1-006-naver-greenhouse-adapter.md), [V1-007 VNG adapter](evidence/V1-007-vng-adapter.md), [V1-008 MoMo adapter](evidence/V1-008-momo-adapter.md), [V1-009 Job upsert](evidence/V1-009-job-upsert.md), [V1-010 read API](evidence/V1-010-read-api.md), [V1-011 observability](evidence/V1-011-observability.md) và [V1-012 Compose/runner](evidence/V1-012-compose-and-runner.md). Đây chưa phải V1 exit evidence vì dataset thật chưa đạt gate.
+Evidence hiện có: [V1-001 scaffold](evidence/V1-001-scaffold.md), [V1-002 PostgreSQL schema](evidence/V1-002-postgresql-schema.md), [V1-003 source registry](evidence/V1-003-source-registry.md), [V1-004 safe fetch/snapshot](evidence/V1-004-safe-fetch-and-snapshot.md), [V1-005 normalization](evidence/V1-005-normalization-and-hashing.md), [V1-006 NAVER adapter](evidence/V1-006-naver-greenhouse-adapter.md), [V1-007 VNG adapter](evidence/V1-007-vng-adapter.md), [V1-008 MoMo adapter](evidence/V1-008-momo-adapter.md), [V1-009 Job upsert](evidence/V1-009-job-upsert.md), [V1-010 read API](evidence/V1-010-read-api.md), [V1-011 observability](evidence/V1-011-observability.md), [V1-012 Compose/runner](evidence/V1-012-compose-and-runner.md) và [V1-013 live inventory](evidence/V1-013-live-inventory.md). Đây chưa phải V1 exit evidence vì dataset thật thiếu 422 jobs so với gate.
 
 ### Mục tiêu
 
@@ -91,6 +91,8 @@ Persisted JobChange, missing/removal lifecycle, Prefect, LLM, embeddings, LangGr
 - migration từ database mới, Docker smoke và security negative paths pass;
 - metric/log đủ truy vết mỗi job tới run/snapshot/source;
 - không unresolved blocker về secret, SSRF hoặc source policy.
+
+Blocker hiện tại: ba source approved đã complete và deduplicate còn 78 canonical jobs (`NAVER 14 + VNG 27 + MoMo 37`). Mở khóa cần một product decision: approve thêm source đủ điều kiện qua source gate, hoặc sửa exit criterion bằng rationale/ADR phù hợp. Không dùng GeoComply/Lever khi còn `permission_required`, không nhân bản dữ liệu và không tự hạ gate.
 
 ### Demo evidence
 
