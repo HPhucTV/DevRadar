@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed — chờ live credential/latency/evaluation gate của V3-002.
+Superseded by [ADR-008](0008-proposed-deepseek-v4-flash-generation-and-embedding-boundary.md). Giữ nguyên lịch sử đề xuất OpenAI; không dùng làm provider generation hiện hành.
 
 ## Date
 

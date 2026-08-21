@@ -23,8 +23,9 @@ Proposed → Accepted → Superseded | Deprecated
 | [ADR-004](0004-approved-source-allow-list.md) | Accepted | Chỉ crawl source đã duyệt qua allow-list |
 | [ADR-005](0005-sqlalchemy-alembic-and-psycopg.md) | Accepted | SQLAlchemy, Alembic và Psycopg cho persistence V1 |
 | [ADR-006](0006-defer-prefect-use-direct-v2-orchestration.md) | Accepted | Hoãn Prefect; V2 dùng PostgreSQL-backed direct orchestration |
-| [ADR-007](0007-proposed-openai-first-v3-provider-and-pgvector.md) | Proposed | OpenAI-first extraction/embedding và pgvector 0.8.6, chờ live provider gate |
+| [ADR-007](0007-proposed-openai-first-v3-provider-and-pgvector.md) | Superseded | Lịch sử đề xuất OpenAI-first; bị ADR-008 thay thế |
+| [ADR-008](0008-proposed-deepseek-v4-flash-generation-and-embedding-boundary.md) | Proposed | DeepSeek V4 Flash generation spike synthetic-only; embedding tách quyết định |
 
 ## Candidate technology chưa được chấp nhận
 
-Prefect đã được đánh giá và defer theo ADR-006; chỉ đánh giá lại khi có measured need. OpenAI/pgvector V3 có đề xuất cụ thể trong ADR-007 nhưng chưa được chấp nhận vì thiếu credential/live latency/evaluation. LangGraph (V4), Next.js/notification connector (V5), authentication strategy và Redis/worker topology (V6) vẫn `Proposed`. Khi phase bắt đầu, spike phải xác minh compatibility, vận hành và chi phí; quyết định khó đảo ngược cần ADR mới hoặc amendment qua ADR kế tiếp, không âm thầm sửa lịch sử.
+Prefect đã được đánh giá và defer theo ADR-006; chỉ đánh giá lại khi có measured need. ADR-007 được giữ để truy vết nhưng đã `Superseded` bởi ADR-008. DeepSeek generation, embedding provider/pgvector và mọi công nghệ V4–V6 chỉ được `Accepted` sau khi phase gate xác minh compatibility, vận hành, chi phí và privacy; quyết định khó đảo ngược cần ADR mới hoặc amendment qua ADR kế tiếp, không âm thầm sửa lịch sử.

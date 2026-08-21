@@ -8,7 +8,7 @@ AI là lớp bổ sung có giới hạn, không phải nguồn sự thật hoặ
 2. **Model output is untrusted:** parse, validate, bound và encode trước khi dùng.
 3. **Evidence-backed:** field/insight/match explanation phải trỏ tới input hoặc aggregate query.
 4. **Version everything:** input hash, schema, extractor, prompt, model, embedding và scoring version.
-5. **Provider-agnostic boundary:** OpenAI, Gemini hoặc local model là adapter; không khóa provider trước V3 evaluation.
+5. **Provider-agnostic boundary:** DeepSeek V4 Flash hiện là generation candidate cho synthetic spike; embedding provider vẫn tách riêng và không được suy luận từ OpenAI-compatible wire format.
 6. **Bounded agency:** model không tự chọn arbitrary URL, chạy shell/SQL, ghi database hoặc gửi alert.
 
 ## 2. Phase boundary
@@ -26,7 +26,7 @@ AI là lớp bổ sung có giới hạn, không phải nguồn sự thật hoặ
 
 Không thêm SDK/model dependency trong V1–V2 chỉ để chuẩn bị.
 
-V3-002 hiện đề xuất OpenAI `gpt-5.4-nano-2026-03-17`, `text-embedding-3-small` 1536 chiều và pgvector `0.8.6` trong [ADR-007](decisions/0007-proposed-openai-first-v3-provider-and-pgvector.md). Quyết định vẫn `Proposed`: pgvector compatibility đã pass nhưng live provider latency/usage chưa thể đo vì local environment không có project credential. Không thêm SDK hoặc provider code trước khi gate đó đạt.
+V3-002 hiện đề xuất DeepSeek `deepseek-v4-flash` ở non-thinking JSON mode cho synthetic development split và giữ pgvector `0.8.6` ở compatibility candidate trong [ADR-008](decisions/0008-proposed-deepseek-v4-flash-generation-and-embedding-boundary.md). Quyết định vẫn `Proposed`: pgvector compatibility đã pass nhưng live provider latency/usage chưa thể đo vì key người dùng dán trong chat phải revoke/rotate và local environment chưa có key mới. Không gửi source JD/CV tới external LLM; không thêm SDK hoặc production provider adapter trước khi gate đó đạt.
 
 ## 3. LLM extraction contract
 
