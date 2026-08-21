@@ -26,7 +26,7 @@ AI là lớp bổ sung có giới hạn, không phải nguồn sự thật hoặ
 
 Không thêm SDK/model dependency trong V1–V2 chỉ để chuẩn bị.
 
-V3-002 hiện đề xuất DeepSeek `deepseek-v4-pro` ở non-thinking JSON mode cho synthetic development/held-out evaluation và giữ pgvector `0.8.6` ở compatibility candidate trong [ADR-008](decisions/0008-proposed-deepseek-v4-flash-generation-and-embedding-boundary.md). Quyết định vẫn `Proposed`: credential/live usage đã đo được, nhưng held-out gate chưa đạt (`schema/evidence=0.875`, `skill F1=0.90`, `complete accepted=0.2917`). Không gửi source JD/CV tới external LLM; không thêm SDK hoặc production provider adapter trước khi gate đó đạt.
+V3-002 hiện đề xuất DeepSeek `deepseek-v4-pro` ở non-thinking JSON mode cho synthetic development/held-out evaluation và giữ pgvector `0.8.6` ở compatibility candidate trong [ADR-008](decisions/0008-proposed-deepseek-v4-flash-generation-and-embedding-boundary.md). Quyết định vẫn `Proposed`: credential/live usage đã đo được, nhưng held-out v5 chưa đạt (`schema/evidence=0.875`, `skill F1=0.90`, `level=0.75`, `experience=0.875`, `salary=0.625`, `location=0.75`, `complete accepted=0.375`). Không gửi source JD/CV tới external LLM; không thêm SDK hoặc production provider adapter trước khi gate đó đạt.
 
 ## 3. LLM extraction contract
 

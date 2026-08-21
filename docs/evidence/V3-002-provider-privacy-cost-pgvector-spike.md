@@ -24,20 +24,20 @@ DEVRADAR_DEEPSEEK_API_KEY_PRESENT=true
 
 ### Kết quả live synthetic spike
 
-Module [DeepSeek spike](../../src/devradar/intelligence/deepseek_spike.py) dùng `deepseek-v4-pro`, non-thinking JSON mode, prompt/schema `v4`, dataset `job-extraction-eval-v1` và tối đa 3 repeat/case. Không gửi source JD/CV, không lưu raw prompt/output/JD/CV.
+Module [DeepSeek spike](../../src/devradar/intelligence/deepseek_spike.py) dùng `deepseek-v4-pro`, non-thinking JSON mode, prompt/schema `v5`, dataset `job-extraction-eval-v1` và tối đa 3 repeat/case. Không gửi source JD/CV, không lưu raw prompt/output/JD/CV.
 
 | Split | Cases | Requests | Valid | Schema/evidence | Skill F1 | Level acc. | Experience acc. | Salary acc. | Location acc. | Complete accepted | p50 | p95 | Est. cost |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Development | 4 | 12 | 12/12 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 2719.649 ms | 3302.410 ms | USD 0.00095396 |
-| Held-out | 8 | 24 | 21/24 | 0.8750 | 0.90 | 0.7500 | 0.7500 | 0.5417 | 0.6250 | 0.2917 | 2405.551 ms | 2654.742 ms | USD 0.00157410 |
+| Development | 4 | 12 | 12/12 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 2753.581 ms | 3004.764 ms | USD 0.01253439 |
+| Held-out | 8 | 24 | 21/24 | 0.8750 | 0.90 | 0.7500 | 0.8750 | 0.6250 | 0.7500 | 0.3750 | 2474.406 ms | 3133.970 ms | USD 0.02003976 |
 
-Model fingerprint: `a307abda487cd1b463329ccb945ce396`. Held-out failure lặp lại ở `held-en-dotnet-004` với `skills.1.name:string_pattern_mismatch`; không dùng held-out để tuning. Pro chỉ được chọn làm current candidate dựa trên development comparison với Flash (Flash development p50 `1252.179 ms`, p95 `1476.304 ms`, estimated cost `USD 0.00063140`); comparison này không thay thế release gate.
+Model fingerprint: `a307abda487cd1b463329ccb945ce396`. Held-out v5 vẫn có lỗi lặp lại ở `held-en-dotnet-004` với `skills.1.name:string_pattern_mismatch`; ngoài ra còn field-level mismatch ở các salary/level/location edge case. Held-out chỉ là release evidence, không dùng để tuning tiếp. Pro được chọn làm current candidate dựa trên development comparison với Flash; comparison này không thay thế release gate.
 
 ## Provider shortlist
 
 | Candidate | Generation | Embedding | Privacy boundary | Outcome |
 |---|---|---|---|---|
-| DeepSeek | `deepseek-v4-pro`; JSON Output, non-thinking; USD 0.003625/M cache hit, 0.435/M cache miss, 0.87/M output | Không thấy embedding endpoint trong bộ API docs chính thức được review; không suy luận từ OpenAI-compatible | Privacy policy mô tả thu thập input, dùng để cải thiện/train, retention theo mục đích và xử lý/lưu tại Trung Quốc | Current generation candidate; development pass, held-out gate failed |
+| DeepSeek | `deepseek-v4-pro`; JSON Output, non-thinking; peak USD 0.044/M cache hit, 1.32/M cache miss, 3.96/M output; off-peak bằng một nửa | Không thấy embedding endpoint trong bộ API docs chính thức được review; không suy luận từ OpenAI-compatible | Privacy policy mô tả thu thập input, dùng để cải thiện/train, retention theo mục đích và xử lý/lưu tại Trung Quốc | Current generation candidate; development pass, held-out gate failed |
 | OpenAI | `gpt-5.4-nano-2026-03-17`; Structured Outputs; USD 0.20/M input, 1.25/M output | `text-embedding-3-small`; USD 0.02/M input; explicit 1536 dimensions | Không train API data mặc định; abuse log có thể giữ content tới 30 ngày; `store=false` không tự tạo ZDR | Superseded cho generation; embedding candidate chưa được chọn |
 | Gemini | `gemini-2.5-flash-lite`; USD 0.10/M input, 0.40/M output | `gemini-embedding-001`; USD 0.15/M; 128–3072 dimensions | Paid service không dùng data để improve; logging/ZDR/caching có điều kiện | Alternative, chưa thêm second provider |
 | Local | Không có Ollama/GPU | Không có local embedding runtime | Data local | Defer do runtime/footprint và chưa có quality evidence |
@@ -50,12 +50,12 @@ Workload assumption để so sánh, chưa phải actual usage: 1.500 input + 300
 
 | Workload | DeepSeek generation (cache miss) | OpenAI generation | Gemini generation |
 |---|---:|---:|---:|
-| Extraction / job | USD 0.0009135 | USD 0.000675 | USD 0.000270 |
-| 1.000 extraction | USD 0.9135 | USD 0.675 | USD 0.270 |
+| Extraction / job | USD 0.003168 (peak) | USD 0.000675 | USD 0.000270 |
+| 1.000 extraction | USD 3.168 (peak) | USD 0.675 | USD 0.270 |
 | 1.000 embedding | Chưa có provider | USD 0.010 | USD 0.075 |
 | 1.000 extraction + embedding | Chưa tính embedding | USD 0.685 | USD 0.345 |
 
-Giá được đọc ngày 2026-08-21 và có thể thay đổi; actual token usage/cost phải thay bảng assumption trước khi ADR được accept. Retry, cached input, batch discount, tax và currency conversion chưa tính.
+Giá DeepSeek được đọc ngày 2026-08-22 từ bảng chính thức; spike dùng peak rate bảo thủ để ước tính, còn off-peak rate bằng một nửa. Actual token usage/cost phải thay bảng assumption trước khi ADR được accept. Retry, cached input, batch discount, tax và currency conversion chưa tính.
 
 ## pgvector compatibility
 

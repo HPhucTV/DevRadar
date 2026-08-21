@@ -212,7 +212,7 @@ def test_rejected_extraction_preserves_provider_usage_and_cost() -> None:
     assert report.valid_responses == 0
     assert report.prompt_tokens == 20 * report.requests
     assert report.completion_tokens == 12 * report.requests
-    assert report.estimated_cost_usd > 0
+    assert report.estimated_cost_usd == pytest.approx(0.00027528)
     assert report.schema_evidence_acceptance_rate == 0.0
     assert report.skill_recall == 0.0
     assert all(

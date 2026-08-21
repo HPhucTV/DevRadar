@@ -75,7 +75,7 @@ Chỉ đổi ADR này sang `Accepted` cho generation spike sau khi:
 - key mới đã được rotate sau lần lộ trong chat, nạp ngoài Git/log và chạy được với model ID hiện hành;
 - tối thiểu 3 repeat/case trên toàn development split, có actual p50/p95, usage, cost và error behavior — đã đạt;
 - schema/evidence validation và no-tools/non-thinking request được negative-test;
-- held-out evaluation chạy sau khi prompt/schema khóa và đạt target V3-001 hoặc có waiver có owner/review date — hiện chưa đạt: schema/evidence `0.875`, skill F1 `0.90`, complete accepted `0.2917`;
+- held-out evaluation chạy sau khi prompt/schema khóa và đạt target V3-001 hoặc có waiver có owner/review date — v5 đã chạy nhưng chưa đạt: schema/evidence `0.875`, skill F1 `0.90`, level `0.75`, experience `0.875`, salary `0.625`, location `0.75`, complete accepted `0.375`;
 - report không chứa credential, prompt, output, raw JD/CV hay PII.
 
 Không coi acceptance generation là acceptance embedding. ADR riêng hoặc amendment tiếp theo phải chốt embedding trước V3-005.
