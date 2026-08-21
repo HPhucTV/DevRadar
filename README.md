@@ -10,9 +10,9 @@
 | Phase hiện tại | `v1` — Crawler MVP và REST API (`in_progress`) |
 | Mô hình sử dụng ban đầu | Portfolio cá nhân, single-operator |
 | Thị trường ưu tiên | Job IT Việt Nam, nội dung Việt/Anh, lương VND |
-| Code chạy được | Có — scaffold, schema, source registry, safe HTTPS fetch/raw snapshot và deterministic normalization/hash; concrete adapter/domain API chưa có |
+| Code chạy được | Có — nền tảng ingestion và NAVER/Greenhouse adapter; VNG/MoMo adapter, workflow và domain API chưa có |
 
-Repository đã có FastAPI scaffold tối thiểu, dependency lock, PostgreSQL schema/migration cho bốn entity V1, approved source registry, typed adapter contract, safe HTTPS fetcher, raw snapshot persistence, deterministic normalization/canonical hash, integration test trên database thật và Docker Compose local. Chưa có concrete source adapter, job/source/run endpoint hoặc ingestion workflow hoàn chỉnh; các capability đó tiếp tục theo task V1 tương ứng.
+Repository đã có FastAPI scaffold tối thiểu, dependency lock, PostgreSQL schema/migration cho bốn entity V1, approved source registry, typed adapter contract, safe HTTPS fetcher, raw snapshot persistence, deterministic normalization/canonical hash và concrete NAVER/Greenhouse adapter. Integration test chạy PostgreSQL thật và Docker Compose local. VNG/MoMo adapter, job/source/run endpoint và ingestion workflow hoàn chỉnh tiếp tục theo task V1 tương ứng.
 
 ## Mục tiêu
 
@@ -83,6 +83,7 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [V1 source registry evidence](docs/evidence/V1-003-source-registry.md): active allow-list, typed adapter contract và fail-closed resolution.
 - [V1 safe fetch/snapshot evidence](docs/evidence/V1-004-safe-fetch-and-snapshot.md): pinned DNS/IP transport, SSRF/redirect/size controls, caller-owned transaction và bounded live smoke.
 - [V1 normalization evidence](docs/evidence/V1-005-normalization-and-hashing.md): raw-preserving normalization fixtures, false-inference guards và versioned canonical hash.
+- [V1 NAVER/Greenhouse adapter evidence](docs/evidence/V1-006-naver-greenhouse-adapter.md): one-request full-list discovery, deterministic parsing, coverage guards và bounded live smoke.
 - [Roadmap](docs/ROADMAP.md): kế hoạch V1–V6 và definition of done.
 - [Architecture Decision Records](docs/decisions/README.md): quyết định đã chấp nhận và quyết định còn đề xuất.
 - [Ý tưởng ban đầu](DevRadar_Agentic_Job_Market_Intelligence.md): tài liệu tham khảo gốc, không phải bằng chứng trạng thái triển khai.

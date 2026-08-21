@@ -14,9 +14,9 @@ NAVER Vietnam's Greenhouse board đạt technical gate: public Job Board API kh�
 
 Greenhouse công bố dữ liệu GET là public và dành cho custom career sites, nhưng đó không tự động là license tái xuất bản của employer. NAVER Vietnam board chỉ liên kết recruitment data policy; không tìm thấy general content-use terms cấp rõ quyền lưu/hiển thị JD. Operator đã duyệt source chỉ cho local non-commercial spike/on-demand V1 ingestion. Public full JD, commercial reuse và AI training vẫn ngoài approval.
 
-## 2. Proposed registry record
+## 2. Approved registry record
 
-Đây là candidate configuration để review, chưa phải config chạy được:
+Config chạy được nằm trong [V1 source registry](../../src/devradar/ingestion/source_registry.py) và giữ đúng boundary đã duyệt:
 
 ```yaml
 name: NAVER Vietnam Careers via Greenhouse
@@ -123,9 +123,9 @@ Count mismatch, duplicate ID conflict, schema đổi, body rỗng bất thườn
 - `meta.total` mismatch, country/location biến mất hàng loạt, count giảm bất thường hoặc schema đổi làm source degraded/quarantined; không suy ra removed.
 - Robots, Greenhouse API docs hoặc NAVER policy thay đổi làm source pause cho tới re-review.
 
-## 7. Fixture và smoke plan
+## 7. Fixture và smoke evidence
 
-Fixture cần capture sau khi operator approve, đã loại tracking/PII không cần thiết:
+Fixture đã capture/sanitize tại [Greenhouse fixtures](../../tests/fixtures/greenhouse), gồm:
 
 - list `content=true` với nhiều departments/locations;
 - detail happy path để đối chiếu list content;
@@ -136,7 +136,7 @@ Fixture cần capture sau khi operator approve, đã loại tracking/PII không 
 - invalid/non-Vietnam location;
 - malformed JSON, 429/timeout và redirect ngoài allow-list.
 
-Live smoke tối đa một list request và tùy chọn một detail; không gọi application/Harvest endpoint và không chạy schedule trước khi fixture tests pass.
+Fixture tests và một list live smoke đã pass; xem [V1-006 evidence](../evidence/V1-006-naver-greenhouse-adapter.md). Smoke không gọi detail, application, question hoặc Harvest endpoint và không chạy schedule.
 
 ## 8. Approval checklist
 

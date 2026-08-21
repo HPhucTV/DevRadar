@@ -114,6 +114,14 @@ Khi approved source bắt buộc JavaScript rendering, browser không được n
 - áp tổng budget cho page count, bytes, request count, execution time và browser process memory;
 - đóng context/process và xóa temporary artifacts ở cả success, timeout và crash path.
 
+### 4.2. NAVER Vietnam/Greenhouse HTTP adapter
+
+V1 implementation tại [Greenhouse adapter](../src/devradar/ingestion/adapters/greenhouse.py) dùng đúng một `GET .../jobs?content=true` cho normal discovery. Adapter khóa literal board token `navervietnam`, kiểm tra `meta.total`, duplicate public post ID, Vietnam location và exact `absolute_url` trên reference host trước khi trả listing.
+
+Greenhouse full-list response đã chứa content của từng post. Để không fan-out detail trái approval, `fetch(listing_ref, policy)` chỉ trả lại exact bounded `FetchResult` của discovery hiện tại; không mở request thứ hai. Cache bị xóa trước mỗi discovery attempt, chỉ chấp nhận exact listing đã validate và chạy dưới source concurrency 1. Workflow phải hoàn tất một discovery batch trước khi bắt đầu batch kế tiếp. Parser chọn job theo public post `id`, strip HTML thành plaintext, bỏ `script/style/template/noscript`, giữ raw JSON trong snapshot và không dùng `updated_at` như `posted_at`.
+
+Fixture, negative path và bounded live evidence nằm tại [V1-006 evidence](evidence/V1-006-naver-greenhouse-adapter.md).
+
 ## 5. Extraction order
 
 Thứ tự mặc định:

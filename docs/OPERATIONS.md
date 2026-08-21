@@ -2,7 +2,7 @@
 
 ## 1. Mục tiêu
 
-Tài liệu này định nghĩa bằng chứng cần có để nói DevRadar chạy đúng, an toàn và có thể chẩn đoán. Scaffold, PostgreSQL schema/migration và safe HTTP/raw snapshot boundary đã có verified test/static/Compose evidence; concrete adapter, end-to-end ingestion transaction và domain API gates vẫn chưa pass.
+Tài liệu này định nghĩa bằng chứng cần có để nói DevRadar chạy đúng, an toàn và có thể chẩn đoán. Scaffold, PostgreSQL schema/migration, safe HTTP/raw snapshot boundary và NAVER/Greenhouse adapter đã có verified test/static/live evidence; hai adapter còn lại, end-to-end ingestion transaction và domain API gates vẫn chưa pass.
 
 ## 2. Environment
 
@@ -15,7 +15,7 @@ Tài liệu này định nghĩa bằng chứng cần có để nói DevRadar ch�
 
 Kết quả kiểm tra capability máy phát triển trước V1 được ghi riêng tại [PRE-007 local prerequisites evidence](evidence/PRE-007-local-prerequisites.md); đây không phải Quick Start hoặc runtime proof của ứng dụng.
 
-Kết quả scaffold nằm tại [V1-001 evidence](evidence/V1-001-scaffold.md); fresh PostgreSQL migration/schema integration nằm tại [V1-002 evidence](evidence/V1-002-postgresql-schema.md); safe fetch/raw snapshot boundary nằm tại [V1-004 evidence](evidence/V1-004-safe-fetch-and-snapshot.md). Health endpoint chỉ chứng minh API process sống, chưa chứng minh API có thể query database.
+Kết quả scaffold nằm tại [V1-001 evidence](evidence/V1-001-scaffold.md); fresh PostgreSQL migration/schema integration nằm tại [V1-002 evidence](evidence/V1-002-postgresql-schema.md); safe fetch/raw snapshot boundary nằm tại [V1-004 evidence](evidence/V1-004-safe-fetch-and-snapshot.md); NAVER adapter nằm tại [V1-006 evidence](evidence/V1-006-naver-greenhouse-adapter.md). Health endpoint chỉ chứng minh API process sống, chưa chứng minh API có thể query database.
 
 Không dùng production secret/data trong CI. Không gọi source/LLM thật từ default unit test; live integration phải opt-in, có budget và được gắn nhãn rõ.
 

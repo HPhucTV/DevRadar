@@ -1,0 +1,12 @@
+{
+  "jobs": [
+    {
+      "id": 1001,
+      "title": "Backend Engineer",
+      "location": {"name": "Ho Chi Minh City, Vietnam"},
+      "absolute_url": "https://job-boards.greenhouse.io/navervietnam/jobs/1001",
+      "content": "<p>Backend services.</p>"
+    }
+  ],
+  "meta": {"total": 2}
+}
