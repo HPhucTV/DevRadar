@@ -32,7 +32,7 @@ Tài liệu này là ubiquitous language của DevRadar. Tên entity, enum và s
 | AlertRule | Tiêu chí người dùng muốn theo dõi. |
 | AlertDelivery | Một lần gửi thông báo có idempotency và trạng thái delivery. |
 
-Implementation V1 hiện map `Source`, `CrawlRun`, `RawJobSnapshot` vào module `ingestion`, `Job` vào `catalog`, dùng UUID/PostgreSQL constraint để giữ provenance và source-scoped identity. Physical mapping/migration không kích hoạt `JobChange` hoặc absence workflow; xem [ADR-005](decisions/0005-sqlalchemy-alembic-and-psycopg.md) và [V1-002 evidence](evidence/V1-002-postgresql-schema.md).
+Implementation V1 hiện map `Source`, `CrawlRun`, `RawJobSnapshot` vào module `ingestion`, `Job` và current-state upsert vào `catalog`, dùng UUID/PostgreSQL constraint để giữ provenance và source-scoped identity. Upsert chưa kích hoạt `JobChange` hoặc absence workflow; xem [ADR-005](decisions/0005-sqlalchemy-alembic-and-psycopg.md), [schema evidence](evidence/V1-002-postgresql-schema.md) và [upsert evidence](evidence/V1-009-job-upsert.md).
 
 ## 4. Entity chính
 

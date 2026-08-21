@@ -199,6 +199,8 @@ Canonical hash schema `job-content-v1` gồm source URL; title/company/descripti
 - cùng identity và cùng `job_content_hash`: update observation/last seen, không tạo Job mới;
 - cùng identity nhưng canonical hash khác: V1 transactionally update current Job và run counter; từ V2 mới tạo các JobChange có nghĩa.
 
+V1 implementation tại [Job upsert](../src/devradar/catalog/job_upsert.py) khóa row theo source-scoped external ID/canonical URL, ưu tiên external ID và fail closed nếu hai identity trỏ hai Job khác nhau. Function chỉ `flush`, không commit/rollback; create/update Job, snapshot `parse_status` và run counter nằm cùng transaction caller. Cùng snapshot replay không tăng counter; observation mới cùng hash chỉ cập nhật `last_seen_at/current_snapshot_id`; observation cũ hơn current state được đánh `stale` và không ghi đè. Chỉ `created/updated` tăng counter tương ứng; V1 reject Job đang ở absence state thay vì tự reactivation trước V2. Verification nằm tại [V1-009 evidence](evidence/V1-009-job-upsert.md).
+
 ### Khác source
 
 - không auto-merge ở V1;
