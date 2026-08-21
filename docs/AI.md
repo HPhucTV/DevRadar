@@ -8,7 +8,7 @@ AI là lớp bổ sung có giới hạn, không phải nguồn sự thật hoặ
 2. **Model output is untrusted:** parse, validate, bound và encode trước khi dùng.
 3. **Evidence-backed:** field/insight/match explanation phải trỏ tới input hoặc aggregate query.
 4. **Version everything:** input hash, schema, extractor, prompt, model, embedding và scoring version.
-5. **Provider-agnostic boundary:** DeepSeek V4 Flash hiện là generation candidate cho synthetic spike; embedding provider vẫn tách riêng và không được suy luận từ OpenAI-compatible wire format.
+5. **Provider-agnostic boundary:** DeepSeek V4 Pro hiện là generation candidate cho synthetic spike nhưng chưa được `Accepted` vì held-out gate; embedding provider vẫn tách riêng và không được suy luận từ OpenAI-compatible wire format.
 6. **Bounded agency:** model không tự chọn arbitrary URL, chạy shell/SQL, ghi database hoặc gửi alert.
 
 ## 2. Phase boundary
@@ -26,7 +26,7 @@ AI là lớp bổ sung có giới hạn, không phải nguồn sự thật hoặ
 
 Không thêm SDK/model dependency trong V1–V2 chỉ để chuẩn bị.
 
-V3-002 hiện đề xuất DeepSeek `deepseek-v4-flash` ở non-thinking JSON mode cho synthetic development split và giữ pgvector `0.8.6` ở compatibility candidate trong [ADR-008](decisions/0008-proposed-deepseek-v4-flash-generation-and-embedding-boundary.md). Quyết định vẫn `Proposed`: pgvector compatibility đã pass nhưng live provider latency/usage chưa thể đo vì key người dùng dán trong chat phải revoke/rotate và local environment chưa có key mới. Không gửi source JD/CV tới external LLM; không thêm SDK hoặc production provider adapter trước khi gate đó đạt.
+V3-002 hiện đề xuất DeepSeek `deepseek-v4-pro` ở non-thinking JSON mode cho synthetic development/held-out evaluation và giữ pgvector `0.8.6` ở compatibility candidate trong [ADR-008](decisions/0008-proposed-deepseek-v4-flash-generation-and-embedding-boundary.md). Quyết định vẫn `Proposed`: credential/live usage đã đo được, nhưng held-out gate chưa đạt (`schema/evidence=0.875`, `skill F1=0.90`, `complete accepted=0.2917`). Không gửi source JD/CV tới external LLM; không thêm SDK hoặc production provider adapter trước khi gate đó đạt.
 
 ## 3. LLM extraction contract
 

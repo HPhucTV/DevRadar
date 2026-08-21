@@ -17,8 +17,10 @@ from devradar.intelligence.deepseek_spike import (
     _load_local_api_key,
     _request_payload,
     _safe_provider_response,
+    _score_extraction,
     main,
     run_development_spike,
+    run_held_out_evaluation,
 )
 from devradar.intelligence.evaluation import load_evaluation_dataset
 
@@ -157,8 +159,67 @@ def test_development_spike_never_calls_held_out_and_reports_no_content() -> None
     assert report.requests == len(development)
     assert report.valid_responses == len(development)
     assert report.exact_matches == len(development)
+    assert report.schema_evidence_acceptance_rate == 1.0
+    assert report.skill_f1 == 1.0
+    assert report.complete_accepted_rate == 1.0
     assert all(run.case_id.startswith("dev-") for run in report.runs)
     assert API_KEY_ENV == "DEVRADAR_DEEPSEEK_API_KEY"
+
+
+def test_held_out_evaluation_is_explicit_and_keeps_split_boundary() -> None:
+    dataset = load_evaluation_dataset(DATASET_PATH)
+    held_out = tuple(case for case in dataset.cases if case.split.value == "held_out")
+
+    def opener(request: Any, *, timeout: float) -> _Response:
+        body = json.loads(request.data.decode("utf-8"))
+        input_text = body["messages"][1]["content"]
+        case = next(case for case in held_out if case.input.title in input_text)
+        return _Response(_provider_payload(case.expected.model_dump_json(by_alias=True)))
+
+    report = run_held_out_evaluation(
+        dataset,
+        api_key="unit-test-secret",
+        repeats=1,
+        opener=opener,
+        clock=iter(range(100)).__next__,
+    )
+
+    assert report.split == "held_out"
+    assert report.cases == len(held_out)
+    assert report.requests == len(held_out)
+    assert all(run.case_id.startswith("held-") for run in report.runs)
+
+
+def test_scoring_accepts_different_supported_evidence_for_same_skill_labels() -> None:
+    case = load_evaluation_dataset(DATASET_PATH).cases[0]
+    first_skill = case.expected.skills[0].model_copy(update={"evidence": "Yêu cầu: Python"})
+    actual = case.expected.model_copy(update={"skills": (first_skill, *case.expected.skills[1:])})
+
+    assert _score_extraction(actual, case.expected).exact_match is True
+
+
+def test_rejected_extraction_preserves_provider_usage_and_cost() -> None:
+    dataset = load_evaluation_dataset(DATASET_PATH)
+
+    report = run_development_spike(
+        dataset,
+        api_key="unit-test-secret",
+        repeats=1,
+        opener=lambda *_args, **_kwargs: _Response(_provider_payload("{}")),
+        clock=iter(range(100)).__next__,
+    )
+
+    assert report.valid_responses == 0
+    assert report.prompt_tokens == 20 * report.requests
+    assert report.completion_tokens == 12 * report.requests
+    assert report.estimated_cost_usd > 0
+    assert report.schema_evidence_acceptance_rate == 0.0
+    assert report.skill_recall == 0.0
+    assert all(
+        run.error_code is not None
+        and run.error_code.startswith("provider_extraction_schema_invalid:")
+        for run in report.runs
+    )
 
 
 def test_spike_cli_fails_closed_without_key(

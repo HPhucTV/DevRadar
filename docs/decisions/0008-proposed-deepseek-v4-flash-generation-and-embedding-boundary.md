@@ -1,8 +1,8 @@
-# ADR-008: Đề xuất DeepSeek V4 Flash cho generation spike và tách quyết định embedding
+# ADR-008: Đề xuất DeepSeek V4 Pro cho generation spike và tách quyết định embedding
 
 ## Status
 
-Proposed — thay thế lựa chọn provider generation trong ADR-007; chờ live credential/latency/evaluation gate của V3-002. Quyết định pgvector vẫn là candidate, chưa được `Accepted`.
+Proposed — thay thế lựa chọn provider generation trong ADR-007. Credential và development evidence của V3-002 đã có; held-out quality gate chưa đạt nên chưa `Accepted`. Quyết định pgvector vẫn là candidate, chưa được `Accepted`.
 
 ## Date
 
@@ -16,7 +16,7 @@ Repository đã có dataset synthetic `job-extraction-eval-v1` với development
 
 ## Proposed decision
 
-- Dùng `deepseek-v4-flash` qua `POST https://api.deepseek.com/chat/completions` cho live provider spike trên development split synthetic mà thôi.
+- Dùng `deepseek-v4-pro` qua `POST https://api.deepseek.com/chat/completions` cho live provider spike trên development split synthetic mà thôi. Pro được chọn từ development comparison với Flash; đây chưa phải kết luận release vì cả hai chưa đạt held-out gate.
 - Chọn non-thinking bằng `thinking: {"type": "disabled"}`; không gửi `tools`, `tool_choice`, file, CV, raw HTML hoặc source credential.
 - Bật JSON Output bằng `response_format: {"type": "json_object"}`; prompt phải chứa từ `json` và ví dụ schema. Response vẫn là untrusted input: parse bằng schema strict, kiểm tra evidence là substring của input, reject duplicate/unsupported field và không persist raw output.
 - API key đọc từ process `DEVRADAR_DEEPSEEK_API_KEY` hoặc fallback `.env.local` đã bị Git/Docker ignore; environment được ưu tiên. Không ghi key vào tracked file, log, report, command hoặc exception. Base URL/model là constant của spike, không nhận URL tùy ý.
@@ -73,9 +73,9 @@ Deferred. HTTP request bằng standard library đủ cho một spike có một e
 Chỉ đổi ADR này sang `Accepted` cho generation spike sau khi:
 
 - key mới đã được rotate sau lần lộ trong chat, nạp ngoài Git/log và chạy được với model ID hiện hành;
-- tối thiểu 3 repeat/case trên toàn development split, có actual p50/p95, usage, cost và error behavior;
+- tối thiểu 3 repeat/case trên toàn development split, có actual p50/p95, usage, cost và error behavior — đã đạt;
 - schema/evidence validation và no-tools/non-thinking request được negative-test;
-- held-out evaluation chạy sau khi prompt/schema khóa và đạt target V3-001 hoặc có waiver có owner/review date;
+- held-out evaluation chạy sau khi prompt/schema khóa và đạt target V3-001 hoặc có waiver có owner/review date — hiện chưa đạt: schema/evidence `0.875`, skill F1 `0.90`, complete accepted `0.2917`;
 - report không chứa credential, prompt, output, raw JD/CV hay PII.
 
 Không coi acceptance generation là acceptance embedding. ADR riêng hoặc amendment tiếp theo phải chốt embedding trước V3-005.

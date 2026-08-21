@@ -12,7 +12,7 @@
 | Thị trường ưu tiên | Job IT Việt Nam, nội dung Việt/Anh, lương VND |
 | Code chạy được | Có — V1/V2 data pipeline, PostgreSQL one-shot worker, REST contract và V3 synthetic evaluation dataset + deterministic baseline |
 
-V1 đã hoàn tất safe fetch/snapshot pipeline, ba concrete source adapters, PostgreSQL persistence và REST API; 78 canonical jobs hiện có identity/provenance 1:1 và replay không tạo update giả. V2 đã hoàn tất direct schedule/retry, JobChange lifecycle, source health/quarantine, operator enqueue và one-shot worker. V3-001 đã khóa 12 synthetic evaluation case cùng deterministic baseline/target. V3-002 đã pass PostgreSQL 18/pgvector 0.8.6 compatibility; provider generation đang thử nghiệm DeepSeek V4 Flash trên synthetic split nhưng bị blocked vì chưa có key mới an toàn để đo live latency/usage. ADR-008 vẫn `Proposed`; embedding/pgvector chưa được chọn provider. Mục tiêu `>=500` vẫn là gate trước khi tuyên bố semantic/trend analytics có quy mô.
+V1 đã hoàn tất safe fetch/snapshot pipeline, ba concrete source adapters, PostgreSQL persistence và REST API; 78 canonical jobs hiện có identity/provenance 1:1 và replay không tạo update giả. V2 đã hoàn tất direct schedule/retry, JobChange lifecycle, source health/quarantine, operator enqueue và one-shot worker. V3-001 đã khóa 12 synthetic evaluation case cùng deterministic baseline/target. V3-002 đã pass PostgreSQL 18/pgvector 0.8.6 compatibility và live DeepSeek synthetic spike; development đạt skill F1 `1.0`, nhưng held-out Pro chưa đạt schema `0.875`/skill F1 `0.90`/complete accepted `0.2917`, nên ADR-008 vẫn `Proposed`. Embedding/pgvector chưa được chọn provider. Mục tiêu `>=500` vẫn là gate trước khi tuyên bố semantic/trend analytics có quy mô.
 
 ## Mục tiêu
 
@@ -99,7 +99,7 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [V2 operator API evidence](docs/evidence/V2-005-operator-api-and-history.md): fail-closed write gate, idempotent pending runs, JobChange history và negative trust-boundary tests.
 - [V2 closeout evidence](docs/evidence/V2-006-v2-closeout.md): one-shot worker, five scheduled acceptance cycles, exit-criteria mapping và chuyển phase sang V3.
 - [V3 evaluation evidence](docs/evidence/V3-001-evaluation-dataset-and-baseline.md): versioned synthetic split, deterministic baseline, hallucination gap và release targets.
-- [V3 provider/pgvector spike](docs/evidence/V3-002-provider-privacy-cost-pgvector-spike.md): official-doc comparison, cost/privacy model, pgvector micro-benchmark và live credential blocker.
+- [V3 provider/pgvector spike](docs/evidence/V3-002-provider-privacy-cost-pgvector-spike.md): official-doc comparison, cost/privacy model, pgvector micro-benchmark và live development/held-out gate evidence.
 - [DeepSeek V3 spike module](src/devradar/intelligence/deepseek_spike.py): synthetic-only, fail-closed JSON extraction spike; không phải production provider adapter.
 - [Roadmap](docs/ROADMAP.md): kế hoạch V1–V6 và definition of done.
 - [Architecture Decision Records](docs/decisions/README.md): quyết định đã chấp nhận và quyết định còn đề xuất.
@@ -154,7 +154,18 @@ try {
 }
 ```
 
-Lệnh live này chưa được chạy trong evidence hiện tại vì chưa có key mới an toàn; khi chạy phải lưu lại chỉ model/fingerprint, usage, latency, cost và validation summary, không lưu prompt/output. Xóa `.env.local` sau spike nếu không còn cần dùng local.
+Khi chạy phải lưu lại chỉ model/fingerprint, usage, latency, cost và validation summary, không lưu prompt/output. Xóa `.env.local` sau spike nếu không còn cần dùng local.
+
+Sau khi prompt/schema đã khóa, release evaluation held-out chạy riêng bằng:
+
+```powershell
+$env:PYTHONPATH = (Join-Path (Get-Location) 'src')
+try {
+    .venv\Scripts\python -m devradar.intelligence.deepseek_spike --release-held-out
+} finally {
+    Remove-Item Env:\PYTHONPATH -ErrorAction SilentlyContinue
+}
+```
 
 PostgreSQL integration là opt-in và tạo/xóa database test tên ngẫu nhiên. Với database Compose đang chạy:
 
