@@ -12,7 +12,7 @@
 | Thị trường ưu tiên | Job IT Việt Nam, nội dung Việt/Anh, lương VND |
 | Code chạy được | Có — ba source adapters, snapshot persistence, idempotent Job upsert, sáu read-only domain endpoints và structured JSON events |
 
-Repository đã có FastAPI scaffold tối thiểu, dependency lock, PostgreSQL schema/migration cho bốn entity V1, approved source registry, typed adapter contract, safe HTTPS fetcher, raw snapshot persistence, deterministic normalization/canonical hash, ba concrete source adapters, transactional current-state Job upsert, read-only Job/Source/CrawlRun API và safe structured observability. Integration test chạy PostgreSQL thật và Docker Compose local. Run-level ingestion orchestration cùng container quality gate tiếp tục theo task V1 tương ứng.
+Repository đã có FastAPI scaffold tối thiểu, dependency lock, PostgreSQL schema/migration cho bốn entity V1, approved source registry, typed adapter contract, safe HTTPS fetcher, raw snapshot persistence, deterministic normalization/canonical hash, ba concrete source adapters, transactional current-state Job upsert, read-only Job/Source/CrawlRun API, safe structured observability và operator CLI cho on-demand ingestion. Integration test chạy PostgreSQL thật; API cùng browser crawler có Docker Compose local đã kiểm chứng. Dataset/exit gate cuối V1 vẫn chưa hoàn tất.
 
 ## Mục tiêu
 
@@ -89,6 +89,7 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [V1 Job upsert evidence](docs/evidence/V1-009-job-upsert.md): source-scoped identity, replay/stale protection, current-state update và caller-owned rollback.
 - [V1 read API evidence](docs/evidence/V1-010-read-api.md): PostgreSQL-backed pagination/filter/sort, OpenAPI, safe error và data-exposure contract.
 - [V1 observability evidence](docs/evidence/V1-011-observability.md): JSON request/error/domain events, correlation, log-derived metrics và redaction boundary.
+- [V1 Compose/runner evidence](docs/evidence/V1-012-compose-and-runner.md): on-demand ingestion, containerized Chromium sandbox, PostgreSQL/API smoke và full quality gates.
 - [Roadmap](docs/ROADMAP.md): kế hoạch V1–V6 và definition of done.
 - [Architecture Decision Records](docs/decisions/README.md): quyết định đã chấp nhận và quyết định còn đề xuất.
 - [Ý tưởng ban đầu](DevRadar_Agentic_Job_Market_Intelligence.md): tài liệu tham khảo gốc, không phải bằng chứng trạng thái triển khai.
@@ -146,7 +147,13 @@ API bind tại `127.0.0.1:8000`; PostgreSQL bind tại `127.0.0.1:55432`. `docke
 
 Migration phải chạy trước application feature dùng database. Health hiện vẫn là process liveness, không phải database readiness; PostgreSQL integration evidence được kiểm tra riêng.
 
-API image hiện chưa chứa Chromium/system dependencies; containerized browser crawler và egress profile thuộc quality gate `V1-012`. MoMo live run đã được kiểm chứng trên local host, không được diễn giải thành Docker browser readiness.
+Bounded live crawl là thao tác explicit có network và ghi PostgreSQL; chỉ chạy source đang `approved`. `--max-items` giới hạn số item được xử lý và cố ý ghi coverage `incomplete`:
+
+```powershell
+docker compose --env-file .env.example --profile crawler run --rm crawler crawl --source naver-vietnam-greenhouse --max-items 1 --deadline-minutes 10
+```
+
+Các source key V1 hợp lệ là `naver-vietnam-greenhouse`, `vng-careers` và `momo-careers`. Browser chỉ được launch qua service `crawler`: non-root, read-only filesystem, Chromium sandbox và seccomp profile pin theo Playwright `1.62.0`. API service không được dùng như browser runtime. Network-level egress enforcement chưa được tuyên bố; source adapter vẫn fail closed bằng host/IP/route allow-list.
 
 ## Nguồn sự thật
 

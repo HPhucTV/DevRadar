@@ -33,6 +33,7 @@ from devradar.ingestion.source_registry import (
 class StubAdapter(JobSourceAdapter):
     def __init__(self, adapter_key: str) -> None:
         self.adapter_key = adapter_key
+        self.adapter_version = "stub-v1"
 
     def discover(self, run_context: RunContext) -> Iterable[ListingRef]:
         return ()

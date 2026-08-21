@@ -8,7 +8,7 @@
 | Active phase | `v1` |
 | Code scaffold | Có — FastAPI health + read-only domain API, PostgreSQL schema/migration, test/static gates và Compose local |
 | Source approved | `3/3` cho bounded local non-commercial scope |
-| Runtime/test evidence | [V1-001 scaffold](evidence/V1-001-scaffold.md), [V1-002 PostgreSQL schema](evidence/V1-002-postgresql-schema.md), [V1-003 source registry](evidence/V1-003-source-registry.md), [V1-004 safe fetch/snapshot](evidence/V1-004-safe-fetch-and-snapshot.md), [V1-005 normalization](evidence/V1-005-normalization-and-hashing.md), [V1-006 NAVER adapter](evidence/V1-006-naver-greenhouse-adapter.md), [V1-007 VNG adapter](evidence/V1-007-vng-adapter.md), [V1-008 MoMo adapter](evidence/V1-008-momo-adapter.md), [V1-009 Job upsert](evidence/V1-009-job-upsert.md), [V1-010 read API](evidence/V1-010-read-api.md), [V1-011 observability](evidence/V1-011-observability.md); run orchestration chưa có |
+| Runtime/test evidence | [V1-001 scaffold](evidence/V1-001-scaffold.md), [V1-002 PostgreSQL schema](evidence/V1-002-postgresql-schema.md), [V1-003 source registry](evidence/V1-003-source-registry.md), [V1-004 safe fetch/snapshot](evidence/V1-004-safe-fetch-and-snapshot.md), [V1-005 normalization](evidence/V1-005-normalization-and-hashing.md), [V1-006 NAVER adapter](evidence/V1-006-naver-greenhouse-adapter.md), [V1-007 VNG adapter](evidence/V1-007-vng-adapter.md), [V1-008 MoMo adapter](evidence/V1-008-momo-adapter.md), [V1-009 Job upsert](evidence/V1-009-job-upsert.md), [V1-010 read API](evidence/V1-010-read-api.md), [V1-011 observability](evidence/V1-011-observability.md), [V1-012 Compose/runner](evidence/V1-012-compose-and-runner.md); final dataset gate chưa đạt |
 
 Task-level status có thể được theo dõi bằng `TASK_BOARD.md` cục bộ. File này bị Git ignore và không thay đổi phase gate hoặc exit criteria của roadmap.
 
@@ -54,7 +54,7 @@ Completion evidence: [VNG Careers](sources/vng-careers.md), [NAVER Vietnam/Green
 
 **Status:** `in_progress`
 
-Evidence hiện có: [V1-001 scaffold](evidence/V1-001-scaffold.md), [V1-002 PostgreSQL schema](evidence/V1-002-postgresql-schema.md), [V1-003 source registry](evidence/V1-003-source-registry.md), [V1-004 safe fetch/snapshot](evidence/V1-004-safe-fetch-and-snapshot.md), [V1-005 normalization](evidence/V1-005-normalization-and-hashing.md), [V1-006 NAVER adapter](evidence/V1-006-naver-greenhouse-adapter.md), [V1-007 VNG adapter](evidence/V1-007-vng-adapter.md), [V1-008 MoMo adapter](evidence/V1-008-momo-adapter.md), [V1-009 Job upsert](evidence/V1-009-job-upsert.md), [V1-010 read API](evidence/V1-010-read-api.md) và [V1-011 observability](evidence/V1-011-observability.md). Đây chưa phải V1 exit evidence.
+Evidence hiện có: [V1-001 scaffold](evidence/V1-001-scaffold.md), [V1-002 PostgreSQL schema](evidence/V1-002-postgresql-schema.md), [V1-003 source registry](evidence/V1-003-source-registry.md), [V1-004 safe fetch/snapshot](evidence/V1-004-safe-fetch-and-snapshot.md), [V1-005 normalization](evidence/V1-005-normalization-and-hashing.md), [V1-006 NAVER adapter](evidence/V1-006-naver-greenhouse-adapter.md), [V1-007 VNG adapter](evidence/V1-007-vng-adapter.md), [V1-008 MoMo adapter](evidence/V1-008-momo-adapter.md), [V1-009 Job upsert](evidence/V1-009-job-upsert.md), [V1-010 read API](evidence/V1-010-read-api.md), [V1-011 observability](evidence/V1-011-observability.md) và [V1-012 Compose/runner](evidence/V1-012-compose-and-runner.md). Đây chưa phải V1 exit evidence vì dataset thật chưa đạt gate.
 
 ### Mục tiêu
 

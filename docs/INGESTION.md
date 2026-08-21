@@ -134,11 +134,19 @@ Fixture, live taxonomy regression và bounded page/detail smoke nằm tại [V1-
 
 [MoMo adapter](../src/devradar/ingestion/adapters/momo.py) chỉ navigate `GET /jobs-opening?groups=DGM.0001` trong fresh Chromium context. Batch đầu lấy từ SSR `__NEXT_DATA__`; khi chưa đủ `TotalItems`, adapter cách ít nhất 5 giây rồi click đúng public button `Xem thêm`, chờ exact response do UI tạo và đối chiếu response identities với DOM growth. Adapter không tự dựng/replay request API nền hoặc sửa `X-Client-*` header.
 
-Browser route default-deny, chỉ cho list document, same-origin `/_next/static/` cần thiết và exact `aws.momo.vn/momovn-api/public/v2/hr/get-list-job-with-filter` query với approved group, sort, batch size và cumulative `lastIdx`. Trước launch, toàn bộ approved browser hosts phải resolve chỉ tới public IP. Context chặn service worker, download, popup và WebSocket; không cấp permission và không dùng persistent profile. Application-layer DNS/route controls không thay thế container/network egress policy, browser sandbox hoặc resource budget thuộc `V1-012`.
+Browser route default-deny, chỉ cho list document, same-origin `/_next/static/` cần thiết và exact `aws.momo.vn/momovn-api/public/v2/hr/get-list-job-with-filter` query với approved group, sort, batch size và cumulative `lastIdx`. Trước launch, toàn bộ approved browser hosts phải resolve chỉ tới public IP. Context chặn service worker, download, popup và WebSocket; không cấp permission và không dùng persistent profile. V1 Compose đã kiểm chứng browser sandbox trong opt-in `crawler` profile; application-layer DNS/route controls vẫn không thay thế network-level egress enforcement hoặc resource budget của môi trường triển khai.
 
 Completeness yêu cầu stable `TotalItems/PageCount`, mỗi UI batch thêm 1–12 unique `jobId`, `LastIndex` và DOM count tăng đúng cumulative count, final identities khớp response union và `Xem thêm` biến mất đúng khi đạt total. `Count=12` là requested batch size; final response có thể chứa ít hơn 12 `Items`, nên returned item count không được suy ra từ field này. Failed/partial attempt xóa discovery cache và không tạo missing/removal signal.
 
 Detail chỉ fetch bằng `SafeHttpFetcher` cho exact canonical URL đã discover. Parser đối chiếu `jobId`, slug và fixed division group; chỉ giữ posting fields allow-list, strip unsafe HTML, bỏ application flags/related data và redact email/phone khỏi canonical description. Fixture, negative/browser-policy tests và full on-demand local evidence nằm tại [V1-008 evidence](evidence/V1-008-momo-adapter.md).
+
+### 4.5. V1 on-demand ingestion runner
+
+Operator entrypoint `python -m devradar.cli crawl` chỉ nhận exact source key trong V1 registry, deadline 1–360 phút và optional positive `--max-items`; không nhận URL, header, adapter path hoặc credential. Runner revalidate approved config trước discovery và fail closed nếu persisted `Source` drift khỏi registry.
+
+Network/browser work chạy ngoài database transaction. Mỗi raw snapshot được commit trước parse để malformed content vẫn còn cho replay; snapshot parse state, canonical Job và run counter sau đó được cập nhật trong transaction ngắn. Expected item failure cho run `partial/failed` với safe error code; unexpected failure dừng phần còn lại. Không path nào của V1 tăng `missing/removed`.
+
+`--max-items` là bounded smoke: discovery vẫn ghi tổng `items_found`, chỉ xử lý N item đầu và finalize `succeeded` với coverage `incomplete`. Vì vậy run bounded không bao giờ là absence/removal signal. CLI trả exit `0` chỉ cho status `succeeded`, `1` cho partial/failed và `130` khi operator cancel. Implementation/Compose/PostgreSQL evidence nằm tại [V1-012](evidence/V1-012-compose-and-runner.md).
 
 ## 5. Extraction order
 

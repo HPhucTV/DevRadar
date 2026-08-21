@@ -1,24 +1,28 @@
 name: devradar
 
+x-app-base: &app-base
+  image: devradar-app:local
+  depends_on:
+    database:
+      condition: service_healthy
+  environment:
+    DEVRADAR_DATABASE_URL: >-
+      postgresql+psycopg://${POSTGRES_USER:-devradar}:${POSTGRES_PASSWORD:-devradar_local_only}@database:5432/${POSTGRES_DB:-devradar}
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
 services:
   api:
+    <<: *app-base
     build:
       context: .
-    depends_on:
-      database:
-        condition: service_healthy
-    environment:
-      DEVRADAR_DATABASE_URL: >-
-        postgresql+psycopg://${POSTGRES_USER:-devradar}:${POSTGRES_PASSWORD:-devradar_local_only}@database:5432/${POSTGRES_DB:-devradar}
     ports:
       - "127.0.0.1:${DEVRADAR_API_HOST_PORT:-8000}:8000"
-    read_only: true
-    tmpfs:
-      - /tmp
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
     healthcheck:
       test:
         - CMD
@@ -31,6 +35,29 @@ services:
       timeout: 4s
       retries: 12
       start_period: 5s
+
+  crawler:
+    <<: *app-base
+    profiles:
+      - crawler
+    init: true
+    # Playwright recommends init + host IPC for Chromium containers.
+    # Source: https://playwright.dev/python/docs/docker#recommended-docker-configuration
+    ipc: host
+    cap_add:
+      # Required by the Chromium user-namespace sandbox; API still has no capabilities.
+      - SYS_CHROOT
+    security_opt:
+      - no-new-privileges:true
+      # Official v1.62.0 Docker default profile with user namespace syscalls.
+      # Source: https://playwright.dev/python/docs/docker#crawling-and-scraping
+      - seccomp=./playwright-seccomp.json
+    entrypoint:
+      - python
+      - -m
+      - devradar.cli
+    command:
+      - --help
 
   database:
     image: postgres:18.6-alpine3.24

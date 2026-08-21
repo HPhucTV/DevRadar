@@ -240,6 +240,7 @@ def _group_names(job: Mapping[str, object], field: str) -> str | None:
 
 class GreenhouseJobBoardAdapter:
     adapter_key = _ADAPTER_KEY
+    adapter_version = _PARSER_VERSION
 
     def __init__(
         self,

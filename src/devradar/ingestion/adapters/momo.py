@@ -641,7 +641,9 @@ class MomoBrowserRunner:
         monitor = _BrowserSecurityMonitor()
         try:
             with sync_playwright() as playwright, ExitStack() as resources:
-                browser = playwright.chromium.launch(headless=True)
+                # Playwright leaves Chromium sandboxing off unless explicitly enabled.
+                # Source: https://playwright.dev/python/docs/api/class-browsertype#browser-type-launch-option-chromium-sandbox
+                browser = playwright.chromium.launch(headless=True, chromium_sandbox=True)
                 resources.callback(browser.close)
                 # Fresh non-persistent context; routing requires service workers blocked.
                 # https://playwright.dev/python/docs/api/class-browser#browser-new-context
@@ -811,6 +813,7 @@ def _validate_detail_url(url: str, subdirectory: str, external_id: str) -> str:
 
 class MomoCareersAdapter:
     adapter_key = _ADAPTER_KEY
+    adapter_version = _PARSER_VERSION
 
     def __init__(
         self,

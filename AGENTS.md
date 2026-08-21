@@ -106,7 +106,7 @@ Khi task thực sự chạy MoMo browser adapter local, cài browser binary đú
 .venv\Scripts\python -m playwright install chromium
 ```
 
-Default test không cần browser binary và không chạm network. API image hiện chưa chứng minh browser readiness; việc cài browser/system dependency, sandbox và egress profile trong container thuộc `V1-012`.
+Default test không cần browser binary và không chạm network. Docker image đã cài headless Chromium đúng version Playwright; browser chỉ được launch qua service `crawler` với sandbox profile, không qua service `api`.
 
 Default test không tự chạm PostgreSQL. Khi task yêu cầu PostgreSQL integration thật:
 
@@ -120,7 +120,7 @@ Remove-Item Env:\DEVRADAR_TEST_DATABASE_URL
 ### Docker Compose
 
 ```powershell
-docker compose --env-file .env.example config --quiet
+docker compose --env-file .env.example --profile crawler config --quiet
 docker compose --env-file .env.example build api
 docker compose --env-file .env.example up database --wait
 docker compose --env-file .env.example run --rm api python -m alembic upgrade head
@@ -130,6 +130,14 @@ docker compose --env-file .env.example down
 ```
 
 `down` không xóa named volume. Không thêm `--volumes` vào teardown mặc định. Migration là schema source of truth; không dùng `Base.metadata.create_all()` thay Alembic và không gọi process health là database integration.
+
+On-demand live crawl có network và ghi PostgreSQL, nên chỉ chạy khi task cho phép source smoke/ingestion. Dùng exact source key từ registry; không sửa CLI để nhận URL tùy ý. Bounded smoke đã kiểm chứng:
+
+```powershell
+docker compose --env-file .env.example --profile crawler run --rm crawler crawl --source naver-vietnam-greenhouse --max-items 1 --deadline-minutes 10
+```
+
+`--max-items` tạo coverage `incomplete` dù run thành công; không dùng run đó làm completeness/removal signal. Service `crawler` cần giữ non-root, read-only filesystem, `no-new-privileges`, capability tối thiểu và seccomp profile cùng version Playwright. Network-level egress control chưa được chứng minh ở V1; application route/IP policy vẫn bắt buộc.
 
 ### Khi thay đổi dependency
 

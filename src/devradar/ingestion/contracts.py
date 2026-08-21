@@ -205,6 +205,7 @@ class JobSourceAdapter(Protocol):
     """Structural contract implemented by each approved source adapter."""
 
     adapter_key: str
+    adapter_version: str
 
     def discover(self, run_context: RunContext) -> Iterable[ListingRef]: ...
 

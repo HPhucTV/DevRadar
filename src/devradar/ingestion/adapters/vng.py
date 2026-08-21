@@ -410,6 +410,7 @@ def parse_vng_listing_page(
 
 class VngCareersAdapter:
     adapter_key = _ADAPTER_KEY
+    adapter_version = _PARSER_VERSION
 
     def __init__(
         self,
