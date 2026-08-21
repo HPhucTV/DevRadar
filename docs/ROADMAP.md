@@ -8,7 +8,7 @@
 | Active phase | `v3` (`in_progress`) |
 | Code scaffold | Có — FastAPI health + read-only domain API, PostgreSQL schema/migration, test/static gates và Compose local |
 | Source approved | `3/3` cho bounded local non-commercial scope |
-| Runtime/test evidence | V1 [complete](evidence/V1-closeout.md); V2 [complete](evidence/V2-006-v2-closeout.md) với direct orchestration, lifecycle, health/quarantine, operator API và one-shot pending-run worker |
+| Runtime/test evidence | V1 [complete](evidence/V1-closeout.md); V2 [complete](evidence/V2-006-v2-closeout.md); V3 [evaluation dataset/baseline](evidence/V3-001-evaluation-dataset-and-baseline.md) đã khóa trước provider spike |
 
 Task-level status có thể được theo dõi bằng `TASK_BOARD.md` cục bộ. File này bị Git ignore và không thay đổi phase gate hoặc exit criteria của roadmap.
 

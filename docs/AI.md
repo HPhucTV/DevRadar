@@ -78,7 +78,7 @@ Validator agent không thể override source policy, invent evidence hoặc tự
 
 ### 5.1. Dataset
 
-Trước khi bật V3, tạo labeled dataset versioned gồm:
+V3-001 đã khóa labeled dataset versioned gồm:
 
 - JD Việt, Anh và mixed-language;
 - required/optional skill;
@@ -89,6 +89,8 @@ Trước khi bật V3, tạo labeled dataset versioned gồm:
 - field không có trong source để đo hallucination.
 
 Tách train/development examples khỏi held-out evaluation. Fixture không chứa secret/PII và phải giữ source/provenance hợp lệ.
+
+Contract hiện hành là `job-extraction-eval-v1` / `job-extraction-eval-schema-v1`: 4 development case và 8 held-out case synthetic, project-authored. File/hash, coverage và baseline nằm tại [V3-001 evidence](evidence/V3-001-evaluation-dataset-and-baseline.md). Held-out không được đưa vào prompt few-shot hoặc dùng để tuning.
 
 ### 5.2. Metrics
 
@@ -103,6 +105,8 @@ Tách train/development examples khỏi held-out evaluation. Fixture không ch�
 - regression theo language/source/parser/model version.
 
 Không đặt accuracy/cost threshold chỉ dựa vào mong muốn. V3 entry spike tạo baseline; target release được ghi vào evaluation artifact và roadmap trước khi model output ảnh hưởng canonical data.
+
+Baseline held-out `deterministic-keyword-v1`: skill F1 `0.9545`, unsupported skill `0.0455`, deterministic complete `0.6250`. Gate extraction V3 trên cùng dataset là skill F1 `>=0.9700`, unsupported skill/hallucination `0`, accepted schema/evidence `1.0` và complete accepted result `>=0.8750`; deterministic level/salary/location không được regression. Cost/latency target chờ measured provider baseline ở V3-002, còn role/summary target chờ taxonomy contract ở V3-004.
 
 ### 5.3. Release gate
 

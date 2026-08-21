@@ -10,9 +10,9 @@
 | Phase hiện tại | `v3` — AI extraction, taxonomy và semantic search (`in_progress`) |
 | Mô hình sử dụng ban đầu | Portfolio cá nhân, single-operator |
 | Thị trường ưu tiên | Job IT Việt Nam, nội dung Việt/Anh, lương VND |
-| Code chạy được | Có — ba source adapters, V2 schedule/retry/lifecycle/health, PostgreSQL one-shot worker, bảy read endpoints, local-gated CrawlRun enqueue và structured JSON events |
+| Code chạy được | Có — V1/V2 data pipeline, PostgreSQL one-shot worker, REST contract và V3 synthetic evaluation dataset + deterministic baseline |
 
-V1 đã hoàn tất với FastAPI, PostgreSQL schema/migration, approved source registry, safe fetch/snapshot pipeline, ba concrete source adapters và REST API. Ba source đã ingest toàn bộ inventory quan sát được: 78 canonical jobs với identity/provenance 1:1 và full replay không tạo update giả. V2 đã hoàn tất direct PostgreSQL-backed schedule/retry, JobChange lifecycle, source health/quarantine, operator enqueue và one-shot pending-run worker. V3 đang bắt đầu bằng evaluation dataset/baseline; repo chưa có LLM provider, pgvector hay public release. Mục tiêu `>=500` vẫn là gate trước khi tuyên bố semantic/trend analytics có quy mô.
+V1 đã hoàn tất safe fetch/snapshot pipeline, ba concrete source adapters, PostgreSQL persistence và REST API; 78 canonical jobs hiện có identity/provenance 1:1 và replay không tạo update giả. V2 đã hoàn tất direct schedule/retry, JobChange lifecycle, source health/quarantine, operator enqueue và one-shot worker. V3-001 đã khóa 12 synthetic evaluation case cùng deterministic baseline/target; V3-002 đang đánh giá provider/privacy/cost/pgvector. Repo chưa chấp nhận LLM provider, pgvector hay public release. Mục tiêu `>=500` vẫn là gate trước khi tuyên bố semantic/trend analytics có quy mô.
 
 ## Mục tiêu
 
@@ -98,6 +98,7 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [V2 source health evidence](docs/evidence/V2-004-source-health-and-quarantine.md): inventory baseline/anomaly, quarantine, operator recovery và safe API view.
 - [V2 operator API evidence](docs/evidence/V2-005-operator-api-and-history.md): fail-closed write gate, idempotent pending runs, JobChange history và negative trust-boundary tests.
 - [V2 closeout evidence](docs/evidence/V2-006-v2-closeout.md): one-shot worker, five scheduled acceptance cycles, exit-criteria mapping và chuyển phase sang V3.
+- [V3 evaluation evidence](docs/evidence/V3-001-evaluation-dataset-and-baseline.md): versioned synthetic split, deterministic baseline, hallucination gap và release targets.
 - [Roadmap](docs/ROADMAP.md): kế hoạch V1–V6 và definition of done.
 - [Architecture Decision Records](docs/decisions/README.md): quyết định đã chấp nhận và quyết định còn đề xuất.
 - [Ý tưởng ban đầu](DevRadar_Agentic_Job_Market_Intelligence.md): tài liệu tham khảo gốc, không phải bằng chứng trạng thái triển khai.
