@@ -4,7 +4,7 @@
 
 DevRadar cung cấp REST JSON dưới `/api/v1`. OpenAPI tại `/api/v1/openapi.json` là wire contract chính cho endpoint đã triển khai; tài liệu này giữ intent, quyền truy cập và phase availability cho cả phần đã có và phần còn planned.
 
-Hiện chỉ `GET /api/v1/health` chạy trong scaffold. Job/source/crawl-run endpoints vẫn planned cho `V1-010`; không được coi bảng roadmap là bằng chứng endpoint đã tồn tại.
+V1 hiện đã triển khai process health cùng sáu endpoint đọc Job, Source và CrawlRun trong bảng dưới. OpenAPI và PostgreSQL contract test là bằng chứng wire behavior; endpoint mutation và capability V2+ vẫn chỉ là planned.
 
 ## 2. Quy ước
 
@@ -63,7 +63,7 @@ V1 dùng page-based pagination vì dataset portfolio còn bounded và UI cần t
 }
 ```
 
-`message` dành cho người đọc và có thể được cải thiện; client chỉ được branch theo `code`. `details` phải được allow-list và không chứa dữ liệu nội bộ.
+`message` dành cho người đọc và có thể được cải thiện; client chỉ được branch theo `code`. `details` phải được allow-list và không chứa input value hoặc dữ liệu nội bộ. Mọi error response hiện có `X-Request-ID` trùng `requestId`; `500`/`503` không trả exception, SQL hoặc dependency payload.
 
 ## 4. HTTP semantics
 
@@ -90,12 +90,12 @@ V1 dùng page-based pagination vì dataset portfolio còn bounded và UI cần t
 | Method và path | Mục đích | Phase | Quyền tối thiểu |
 |---|---|---|---|
 | `GET /api/v1/health` | Process liveness; không tuyên bố database/source readiness | V1 scaffold | local/read |
-| `GET /api/v1/jobs` | List/filter canonical jobs | V1 | local/read; public read policy ở V6 |
-| `GET /api/v1/jobs/{jobId}` | Job detail và provenance tóm tắt | V1 | local/read |
-| `GET /api/v1/sources` | Source và health summary | V1 | local/read; không lộ policy secret |
-| `GET /api/v1/sources/{sourceId}` | Source detail đã sanitize | V1 | local/read |
-| `GET /api/v1/crawl-runs` | List crawl runs | V1 | operator/read |
-| `GET /api/v1/crawl-runs/{runId}` | Run detail, metric và safe error | V1 | operator/read |
+| `GET /api/v1/jobs` | List/filter canonical jobs | V1 — implemented | local/read; public read policy ở V6 |
+| `GET /api/v1/jobs/{jobId}` | Job detail và provenance tóm tắt | V1 — implemented | local/read |
+| `GET /api/v1/sources` | Source và health summary | V1 — implemented | local/read; không lộ policy secret |
+| `GET /api/v1/sources/{sourceId}` | Source detail đã sanitize | V1 — implemented | local/read |
+| `GET /api/v1/crawl-runs` | List crawl runs | V1 — implemented | operator/read |
+| `GET /api/v1/crawl-runs/{runId}` | Run detail, metric và safe error | V1 — implemented | operator/read |
 | `GET /api/v1/jobs/{jobId}/changes` | Lịch sử thay đổi | V2 | local/read |
 | `POST /api/v1/crawl-runs` | Tạo run cho source approved | V2 | operator/write |
 | `GET /api/v1/skills` | Taxonomy và frequency | V3 | local/read |
@@ -147,7 +147,9 @@ Endpoint V5 chứa CV/owner data phải bị disable trên public deployment cho
 }
 ```
 
-Job detail thêm description text an toàn để render, normalized skill cùng provenance/evidence summary và current snapshot metadata. Raw HTML không được trả qua endpoint user-facing.
+Job detail V1 thêm plaintext description và current snapshot metadata gồm ID, source URL, fetch time, HTTP/content type và parse status. Raw content, raw hash, HTML và internal snapshot error không được trả. Skill/provenance extraction summary chỉ xuất hiện từ V3 sau khi contract tương ứng được triển khai.
+
+Source response chỉ trả identity, adapter key, approval/health và review/last-run timestamps. `rateLimitPolicy`, `allowedHosts` cùng mọi credential/config nội bộ bị omit khỏi public schema.
 
 ### 6.2. CrawlRun
 
@@ -173,6 +175,8 @@ Job detail thêm description text an toàn để render, normalized skill cùng 
 ```
 
 `POST /crawl-runs` nhận duy nhất `sourceId` và optional approved execution options có schema. URL, adapter path, arbitrary header hoặc secret không được nhận từ client. Header `Idempotency-Key` là bắt buộc; cùng key và cùng principal/request trả cùng run, khác payload trả `409`.
+
+V1 `GET /crawl-runs` trả counters và `error.code`; `error.message` là thông báo công khai cố định, không phản chiếu `error_summary` trong database. Default order là `startedAt desc nulls last`, sau đó `id asc`. `itemsMissing` và `itemsRemoved` vẫn bằng `0` vì absence lifecycle chỉ được bật từ V2.
 
 ### 6.3. ResumeProfile upload
 
@@ -214,6 +218,14 @@ Score là ranking heuristic, không phải xác suất được tuyển. Client 
 - V5: `minMatchScore` chỉ trong profile match context, không dùng trên public job list nếu thiếu `profileId`/owner authorization.
 
 Unknown query parameter trả `422` để tránh client tưởng filter đang hoạt động. Sort field dùng allow-list; không chuyển trực tiếp tên field vào SQL.
+
+Trong V1:
+
+- `company`, `title`, `location` là literal case-insensitive substring; wildcard do client gửi không được diễn giải như SQL wildcard;
+- `salaryMin`/`salaryMax` dùng interval overlap trên amount đã normalize, không quy đổi currency và không match record thiếu toàn bộ amount;
+- `seenAfter`/`seenBefore` áp vào `lastSeenAt`; timestamp phải có UTC offset và hai đầu range phải đúng thứ tự;
+- `sortBy` allow-list gồm `lastSeenAt`, `firstSeenAt`, `postedAt`, `title`, `companyName`, `salaryMin`; null luôn ở cuối và `id asc` là tie-break;
+- range sai thứ tự, text chỉ có whitespace, unknown parameter, enum/UUID sai hoặc vượt pagination limit trả `422` trong error envelope chuẩn.
 
 `GET /skill-trends` bắt buộc có hoặc áp dụng rõ default cho `from`, `to`, `cohort`, `granularity`; response luôn trả denominator/sample size để tránh insight gây hiểu nhầm.
 
