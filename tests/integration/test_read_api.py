@@ -185,6 +185,10 @@ def _seed_database(session: Session) -> ApiSeed:
         base_url="https://career.vng.com.vn",
         adapter_key="vng-careers-v1",
     )
+    source_vng.health_status = SourceHealthStatus.DEGRADED
+    source_vng.consecutive_failures = 1
+    source_vng.baseline_items_found = 78
+    source_vng.health_reason_code = "network_timeout"
     source_naver = _source(
         source_id=_uuid(2),
         name="NAVER Vietnam",
@@ -392,6 +396,11 @@ def test_read_api_uses_postgresql_and_enforces_public_contract(
     source_detail = client.get(f"/api/v1/sources/{seed.source_vng_id}")
     assert source_detail.status_code == 200
     assert source_detail.json()["data"]["approvalStatus"] == "approved"
+    assert source_detail.json()["data"]["healthStatus"] == "degraded"
+    assert source_detail.json()["data"]["consecutiveFailures"] == 1
+    assert source_detail.json()["data"]["baselineItemsFound"] == 78
+    assert source_detail.json()["data"]["healthReasonCode"] == "network_timeout"
+    assert source_detail.json()["data"]["quarantinedAt"] is None
     assert "policy-secret" not in _json(source_detail.json())
     assert "ratelimitpolicy" not in _json(source_detail.json())
     assert "allowedhosts" not in _json(source_detail.json())

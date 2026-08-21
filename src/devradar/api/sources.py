@@ -33,12 +33,16 @@ class SourceSummary(ApiModel):
     adapter_key: str
     approval_status: SourceApprovalStatus
     health_status: SourceHealthStatus
+    consecutive_failures: int
+    health_reason_code: str | None
     last_crawled_at: datetime | None
     last_success_at: datetime | None
 
 
 class SourceDetail(SourceSummary):
     crawl_frequency: str | None
+    baseline_items_found: int | None
+    quarantined_at: datetime | None
     terms_reviewed_at: datetime | None
     robots_reviewed_at: datetime | None
 
@@ -55,6 +59,8 @@ def _summary(source: Source) -> SourceSummary:
         adapter_key=source.adapter_key,
         approval_status=source.approval_status,
         health_status=source.health_status,
+        consecutive_failures=source.consecutive_failures,
+        health_reason_code=source.health_reason_code,
         last_crawled_at=source.last_crawled_at,
         last_success_at=source.last_success_at,
     )
@@ -98,6 +104,8 @@ def get_source(
         data=SourceDetail(
             **summary.model_dump(),
             crawl_frequency=source.crawl_frequency,
+            baseline_items_found=source.baseline_items_found,
+            quarantined_at=source.quarantined_at,
             terms_reviewed_at=source.terms_reviewed_at,
             robots_reviewed_at=source.robots_reviewed_at,
         )

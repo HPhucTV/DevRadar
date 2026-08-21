@@ -113,6 +113,7 @@ def test_domain_metric_events_are_bounded_and_correlation_only() -> None:
             items_reactivated=0,
             items_failed=1,
             error_code="source_timeout",
+            health_signal_code="network_timeout",
         )
 
     job_event, run_event = _events(stream)
@@ -140,6 +141,7 @@ def test_domain_metric_events_are_bounded_and_correlation_only() -> None:
         "items_reactivated",
         "items_failed",
         "error_code",
+        "health_signal_code",
     }
 
     with pytest.raises(ValueError, match="bounded single-line"):

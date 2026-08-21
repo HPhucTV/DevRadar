@@ -259,7 +259,9 @@ V2 kích hoạt orchestration retry. Policy khởi điểm: tối đa ba attempt
 
 Implementation V2 giữ trigger key, UTC schedule slot, attempt và retry relation trong `CrawlRun`. PostgreSQL partial unique index giới hạn một active run mỗi source và một run cho mỗi source/trigger key. Duplicate process không được giải quyết bằng in-memory lock vì CLI, API và scheduler có thể là process khác nhau.
 
-Source chuyển `degraded` khi success rate/coverage hoặc parser signal vượt warning threshold đã baseline; chuyển `quarantined` khi lỗi liên tiếp có nguy cơ tạo dữ liệu sai hoặc vi phạm policy. Quarantine dừng schedule nhưng giữ history và cho operator review.
+Source dùng median tối đa năm complete successful run làm inventory baseline. Gate chỉ bật sau ít nhất hai baseline run; current inventory dưới 50% baseline tạo `inventory_drop_anomaly`, hạ coverage thành `incomplete` trước absence lifecycle và chuyển Source `degraded`. Complete recovery run cập nhật baseline/reset failure.
+
+Policy/safety failure quarantine ngay. Data/layout failure đầu chuyển `degraded`, lần liên tiếp thứ hai quarantine. Transient failure chỉ chuyển `degraded` rồi `unhealthy` từ ba lần liên tiếp; platform failure chuyển `unhealthy`. Quarantine dừng scheduled/retry trigger nhưng giữ history và cho manual operator recheck; chỉ complete success mới phục hồi.
 
 ## 11. Metrics và audit
 

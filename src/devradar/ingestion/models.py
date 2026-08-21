@@ -104,6 +104,19 @@ class Source(Base):
             "(terms_reviewed_at IS NOT NULL AND robots_reviewed_at IS NOT NULL)",
             name="ck_sources_approved_has_policy_reviews",
         ),
+        CheckConstraint(
+            "consecutive_failures >= 0",
+            name="ck_sources_consecutive_failures_non_negative",
+        ),
+        CheckConstraint(
+            "baseline_items_found IS NULL OR baseline_items_found >= 0",
+            name="ck_sources_baseline_items_found_non_negative",
+        ),
+        CheckConstraint(
+            "(health_status = 'quarantined' AND quarantined_at IS NOT NULL) OR "
+            "(health_status <> 'quarantined' AND quarantined_at IS NULL)",
+            name="ck_sources_quarantine_time_boundary",
+        ),
         UniqueConstraint("name", name="uq_sources_name"),
     )
 
@@ -144,6 +157,10 @@ class Source(Base):
     robots_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_crawled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    baseline_items_found: Mapped[int | None] = mapped_column(Integer)
+    health_reason_code: Mapped[str | None] = mapped_column(String(100))
+    quarantined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class CrawlRun(Base):
@@ -270,6 +287,7 @@ class CrawlRun(Base):
     )
     attempt_number: Mapped[int] = mapped_column(Integer, default=1, server_default=text("1"))
     retry_after_seconds: Mapped[int | None] = mapped_column(Integer)
+    health_signal_code: Mapped[str | None] = mapped_column(String(100))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     pages_found: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))

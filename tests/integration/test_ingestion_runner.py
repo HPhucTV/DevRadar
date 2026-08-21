@@ -37,6 +37,7 @@ from devradar.ingestion.models import (
     ParseStatus,
     RawJobSnapshot,
     Source,
+    SourceHealthStatus,
 )
 from devradar.ingestion.runner import IngestionRunError, run_approved_source
 from devradar.ingestion.source_registry import VNG_CAREERS, FetchPolicy
@@ -579,5 +580,128 @@ def test_job_change_and_absence_lifecycle_ignore_unsafe_runs_and_reactivate(
                 for change in changes
                 if change.change_type is not JobChangeType.CREATED
             )
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.postgresql
+def test_inventory_anomaly_blocks_absence_and_complete_run_recovers_health(
+    fresh_postgresql_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(DATABASE_URL_ENV, fresh_postgresql_url)
+    command.upgrade(Config(str(PROJECT_ROOT / "alembic.ini")), "head")
+    engine = create_engine(fresh_postgresql_url)
+    inventory = tuple(str(item) for item in range(600, 610))
+    try:
+        with Session(engine) as session:
+            for _ in range(2):
+                baseline = run_approved_source(
+                    session,
+                    config=VNG_CAREERS,
+                    adapter=FakeVngAdapter(inventory, fetched_at=datetime.now(UTC)),
+                    deadline=datetime.now(UTC) + timedelta(minutes=5),
+                )
+                assert baseline.coverage_status is CoverageStatus.COMPLETE
+            baseline_source = session.get(Source, baseline.source_id)
+            assert baseline_source is not None
+            last_success_before_anomaly = baseline_source.last_success_at
+            session.rollback()
+
+            anomaly = run_approved_source(
+                session,
+                config=VNG_CAREERS,
+                adapter=FakeVngAdapter(inventory[:2], fetched_at=datetime.now(UTC)),
+                deadline=datetime.now(UTC) + timedelta(minutes=5),
+            )
+            assert anomaly.status is CrawlRunStatus.SUCCEEDED
+            assert anomaly.coverage_status is CoverageStatus.INCOMPLETE
+            assert anomaly.health_signal_code == "inventory_drop_anomaly"
+            assert anomaly.items_missing == anomaly.items_removed == 0
+            source = session.get(Source, anomaly.source_id)
+            assert source is not None
+            assert source.health_status is SourceHealthStatus.DEGRADED
+            assert source.health_reason_code == "inventory_drop_anomaly"
+            assert source.baseline_items_found == 10
+            assert source.consecutive_failures == 1
+            assert source.last_success_at == last_success_before_anomaly
+            jobs = session.scalars(select(Job)).all()
+            assert len(jobs) == 10
+            assert all(job.status is JobStatus.ACTIVE for job in jobs)
+            session.rollback()
+
+            recovered = run_approved_source(
+                session,
+                config=VNG_CAREERS,
+                adapter=FakeVngAdapter(inventory, fetched_at=datetime.now(UTC)),
+                deadline=datetime.now(UTC) + timedelta(minutes=5),
+            )
+            assert recovered.coverage_status is CoverageStatus.COMPLETE
+            assert recovered.health_signal_code == "source_recovered"
+            source = session.get(Source, recovered.source_id)
+            assert source is not None
+            assert source.health_status is SourceHealthStatus.HEALTHY
+            assert source.health_reason_code is None
+            assert source.consecutive_failures == 0
+            assert source.baseline_items_found == 10
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.postgresql
+def test_policy_failure_quarantines_schedule_and_manual_success_recovers(
+    fresh_postgresql_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(DATABASE_URL_ENV, fresh_postgresql_url)
+    command.upgrade(Config(str(PROJECT_ROOT / "alembic.ini")), "head")
+    engine = create_engine(fresh_postgresql_url)
+    try:
+        with Session(engine) as session:
+            quarantined = run_approved_source(
+                session,
+                config=VNG_CAREERS,
+                adapter=FakeVngAdapter(
+                    (),
+                    fetched_at=datetime.now(UTC),
+                    discovery_error=FakeAdapterError("policy_blocked", "policy denied"),
+                ),
+                deadline=datetime.now(UTC) + timedelta(minutes=5),
+            )
+            source = session.get(Source, quarantined.source_id)
+            assert source is not None
+            assert source.health_status is SourceHealthStatus.QUARANTINED
+            assert source.health_reason_code == "policy_blocked"
+            assert source.quarantined_at is not None
+            session.rollback()
+
+            blocked_adapter = FakeVngAdapter(("701",), fetched_at=datetime.now(UTC))
+            with pytest.raises(IngestionRunError) as captured:
+                run_approved_source(
+                    session,
+                    config=VNG_CAREERS,
+                    adapter=blocked_adapter,
+                    deadline=datetime.now(UTC) + timedelta(minutes=5),
+                    trigger_type=CrawlTriggerType.SCHEDULED,
+                    trigger_key="scheduled:vng-careers:fixture",
+                    scheduled_for=datetime.now(UTC),
+                )
+            assert captured.value.code == "source_quarantined"
+            assert blocked_adapter.discovery_calls == 0
+
+            recovered = run_approved_source(
+                session,
+                config=VNG_CAREERS,
+                adapter=FakeVngAdapter(("701",), fetched_at=datetime.now(UTC)),
+                deadline=datetime.now(UTC) + timedelta(minutes=5),
+            )
+            assert recovered.status is CrawlRunStatus.SUCCEEDED
+            assert recovered.health_signal_code == "source_recovered"
+            source = session.get(Source, recovered.source_id)
+            assert source is not None
+            assert source.health_status is SourceHealthStatus.HEALTHY
+            assert source.health_reason_code is None
+            assert source.quarantined_at is None
+            assert source.consecutive_failures == 0
     finally:
         engine.dispose()

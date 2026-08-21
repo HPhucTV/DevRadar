@@ -41,6 +41,7 @@ _EVENT_FIELDS: Final[dict[str, frozenset[str]]] = {
             "items_reactivated",
             "items_failed",
             "error_code",
+            "health_signal_code",
         }
     ),
     "http_request_completed": frozenset(
@@ -195,6 +196,7 @@ def record_crawl_run_summary(
     items_reactivated: int,
     items_failed: int,
     error_code: str | None,
+    health_signal_code: str | None,
 ) -> None:
     _emit(
         "crawl_run_summary",
@@ -213,4 +215,5 @@ def record_crawl_run_summary(
         items_reactivated=items_reactivated,
         items_failed=items_failed,
         error_code=error_code,
+        health_signal_code=health_signal_code,
     )

@@ -113,6 +113,8 @@ V1 dùng page-based pagination vì dataset portfolio còn bounded và UI cần t
 
 Endpoint V5 chứa CV/owner data phải bị disable trên public deployment cho tới khi V6 có authentication và authorization. Không coi UUID khó đoán là access control.
 
+V2 Source summary bổ sung `consecutiveFailures` và safe `healthReasonCode`; Source detail bổ sung `baselineItemsFound` và `quarantinedAt`. Response không trả rate policy, allowed hosts nội bộ, request payload hoặc raw error. `healthStatus=quarantined` luôn có `quarantinedAt`; các status khác trả `null`.
+
 ## 6. Resource contracts cốt lõi
 
 ### 6.1. Job summary

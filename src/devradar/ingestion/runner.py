@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from devradar.automation.health import evaluate_source_health, source_allows_trigger
 from devradar.catalog.job_changes import apply_absence_lifecycle
 from devradar.catalog.job_upsert import upsert_parsed_job
 from devradar.ingestion.adapters.greenhouse import GreenhouseJobBoardAdapter
@@ -77,6 +78,7 @@ class RunReport:
     items_failed: int
     error_code: str | None
     retry_after_seconds: int | None
+    health_signal_code: str | None
     reused: bool
 
 
@@ -329,6 +331,7 @@ def _report(run: CrawlRun, source_key: str, *, reused: bool = False) -> RunRepor
         items_failed=run.items_failed,
         error_code=run.error_code,
         retry_after_seconds=run.retry_after_seconds,
+        health_signal_code=run.health_signal_code,
         reused=reused,
     )
 
@@ -372,9 +375,18 @@ def _finalize_run(
     crawl_run.error_summary = (
         None if error_code is None else "Crawl run completed with one or more safe failures."
     )
+    evaluate_source_health(
+        session,
+        source=source,
+        crawl_run=crawl_run,
+        finished_at=finished_at,
+    )
     apply_absence_lifecycle(session, crawl_run=crawl_run, detected_at=finished_at)
     source.last_crawled_at = finished_at
-    if status is CrawlRunStatus.SUCCEEDED and coverage_status is CoverageStatus.COMPLETE:
+    if (
+        crawl_run.status is CrawlRunStatus.SUCCEEDED
+        and crawl_run.coverage_status is CoverageStatus.COMPLETE
+    ):
         source.last_success_at = finished_at
     session.flush()
     report = _report(crawl_run, source_key)
@@ -394,6 +406,7 @@ def _finalize_run(
         items_reactivated=report.items_reactivated,
         items_failed=report.items_failed,
         error_code=report.error_code,
+        health_signal_code=report.health_signal_code,
     )
     return report
 
@@ -467,6 +480,17 @@ def run_approved_source(
     except Exception:
         session.rollback()
         raise
+    source = session.get(Source, source_id)
+    if source is None:
+        session.rollback()
+        raise IngestionRunError("source_not_found", "Persisted source could not be loaded.")
+    if not source_allows_trigger(source, trigger_type):
+        session.rollback()
+        raise IngestionRunError(
+            "source_quarantined",
+            "Scheduled and retry triggers are disabled while source is quarantined.",
+        )
+    session.rollback()
     started_at = datetime.now(UTC)
     run_id, created = _create_run(
         session,

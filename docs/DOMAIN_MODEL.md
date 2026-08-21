@@ -44,6 +44,8 @@ Implementation hiện map `Source`, `CrawlRun`, `RawJobSnapshot` vào module `in
 | `adapter_key` | Parser/adapter được phép dùng; không nhận module path tùy ý từ request. |
 | `approval_status` | `candidate`, `approved`, `paused`, `retired`. |
 | `health_status` | `unknown`, `healthy`, `degraded`, `unhealthy`, `quarantined`. |
+| `consecutive_failures`, `health_reason_code` | Bounded health state và safe reason hiện tại. |
+| `baseline_items_found`, `quarantined_at` | Inventory baseline và thời điểm quarantine nếu có. |
 | `crawl_frequency` | Lịch đã duyệt; V1 có thể chạy on-demand. |
 | `rate_limit_policy` | Request rate/concurrency/timeout/response limit. |
 | `allowed_hosts` | Host và redirect target allow-list. |
@@ -198,7 +200,7 @@ candidate → approved ↔ paused → retired
                  └─ health: healthy/degraded/unhealthy/quarantined
 ```
 
-`quarantined` là health control tự động/tạm thời; `paused` là quyết định operator về quyền chạy.
+`quarantined` là health control tự động/tạm thời; `paused` là quyết định operator về quyền chạy. Quarantine chặn scheduled/retry trigger nhưng cho phép manual operator recheck; chỉ complete success mới phục hồi `healthy`.
 
 ### 5.3. Extraction lifecycle
 
