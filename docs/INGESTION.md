@@ -130,6 +130,16 @@ Mỗi approved group được paginate cho tới `pages`, với page/size/total/
 
 Fixture, live taxonomy regression và bounded page/detail smoke nằm tại [V1-007 evidence](evidence/V1-007-vng-adapter.md).
 
+### 4.4. MoMo Careers browser adapter
+
+[MoMo adapter](../src/devradar/ingestion/adapters/momo.py) chỉ navigate `GET /jobs-opening?groups=DGM.0001` trong fresh Chromium context. Batch đầu lấy từ SSR `__NEXT_DATA__`; khi chưa đủ `TotalItems`, adapter cách ít nhất 5 giây rồi click đúng public button `Xem thêm`, chờ exact response do UI tạo và đối chiếu response identities với DOM growth. Adapter không tự dựng/replay request API nền hoặc sửa `X-Client-*` header.
+
+Browser route default-deny, chỉ cho list document, same-origin `/_next/static/` cần thiết và exact `aws.momo.vn/momovn-api/public/v2/hr/get-list-job-with-filter` query với approved group, sort, batch size và cumulative `lastIdx`. Trước launch, toàn bộ approved browser hosts phải resolve chỉ tới public IP. Context chặn service worker, download, popup và WebSocket; không cấp permission và không dùng persistent profile. Application-layer DNS/route controls không thay thế container/network egress policy, browser sandbox hoặc resource budget thuộc `V1-012`.
+
+Completeness yêu cầu stable `TotalItems/PageCount`, mỗi UI batch thêm 1–12 unique `jobId`, `LastIndex` và DOM count tăng đúng cumulative count, final identities khớp response union và `Xem thêm` biến mất đúng khi đạt total. `Count=12` là requested batch size; final response có thể chứa ít hơn 12 `Items`, nên returned item count không được suy ra từ field này. Failed/partial attempt xóa discovery cache và không tạo missing/removal signal.
+
+Detail chỉ fetch bằng `SafeHttpFetcher` cho exact canonical URL đã discover. Parser đối chiếu `jobId`, slug và fixed division group; chỉ giữ posting fields allow-list, strip unsafe HTML, bỏ application flags/related data và redact email/phone khỏi canonical description. Fixture, negative/browser-policy tests và full on-demand local evidence nằm tại [V1-008 evidence](evidence/V1-008-momo-adapter.md).
+
 ## 5. Extraction order
 
 Thứ tự mặc định:

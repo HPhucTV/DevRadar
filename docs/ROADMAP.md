@@ -8,7 +8,7 @@
 | Active phase | `v1` |
 | Code scaffold | Có — FastAPI health/OpenAPI, PostgreSQL schema/migration, test/static gates và Compose local |
 | Source approved | `3/3` cho bounded local non-commercial scope |
-| Runtime/test evidence | [V1-001 scaffold](evidence/V1-001-scaffold.md), [V1-002 PostgreSQL schema](evidence/V1-002-postgresql-schema.md), [V1-003 source registry](evidence/V1-003-source-registry.md), [V1-004 safe fetch/snapshot](evidence/V1-004-safe-fetch-and-snapshot.md), [V1-005 normalization](evidence/V1-005-normalization-and-hashing.md), [V1-006 NAVER adapter](evidence/V1-006-naver-greenhouse-adapter.md), [V1-007 VNG adapter](evidence/V1-007-vng-adapter.md); MoMo adapter và domain API chưa có |
+| Runtime/test evidence | [V1-001 scaffold](evidence/V1-001-scaffold.md), [V1-002 PostgreSQL schema](evidence/V1-002-postgresql-schema.md), [V1-003 source registry](evidence/V1-003-source-registry.md), [V1-004 safe fetch/snapshot](evidence/V1-004-safe-fetch-and-snapshot.md), [V1-005 normalization](evidence/V1-005-normalization-and-hashing.md), [V1-006 NAVER adapter](evidence/V1-006-naver-greenhouse-adapter.md), [V1-007 VNG adapter](evidence/V1-007-vng-adapter.md), [V1-008 MoMo adapter](evidence/V1-008-momo-adapter.md); ingestion workflow và domain API chưa có |
 
 Task-level status có thể được theo dõi bằng `TASK_BOARD.md` cục bộ. File này bị Git ignore và không thay đổi phase gate hoặc exit criteria của roadmap.
 

@@ -216,7 +216,9 @@ def validate_fetch_target(url: str, policy: FetchPolicy) -> str:
     return _validate_target(url, policy)[0]
 
 
-def _validate_public_addresses(addresses: tuple[str, ...]) -> tuple[str, ...]:
+def validate_public_addresses(addresses: tuple[str, ...]) -> tuple[str, ...]:
+    """Reject a DNS answer when any address is private or reserved."""
+
     if not addresses:
         raise FetchError(
             FetchErrorCode.DNS_FAILURE,
@@ -339,7 +341,7 @@ class SafeHttpFetcher:
                 "Approved source host could not be resolved.",
                 retryable=True,
             ) from error
-        return _validate_public_addresses(addresses)
+        return validate_public_addresses(addresses)
 
     def _send(self, request: TransportRequest) -> TransportResponse:
         try:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from html.parser import HTMLParser
 
 from devradar.ingestion.normalization import normalize_text
@@ -43,6 +44,8 @@ _BREAK_TAGS = frozenset(
         "ul",
     }
 )
+_EMAIL_PATTERN = re.compile(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b")
+_PHONE_PATTERN = re.compile(r"(?<!\d)(?:\+84|0)(?:[ .()-]*\d){9}(?!\d)")
 
 
 class _PlainTextParser(HTMLParser):
@@ -82,3 +85,11 @@ def html_to_text(raw: str) -> str | None:
     parser.feed(raw)
     parser.close()
     return parser.text()
+
+
+def redact_contacts(value: str) -> tuple[str, bool]:
+    """Remove personal contact coordinates from canonical posting text."""
+
+    redacted, email_count = _EMAIL_PATTERN.subn("[redacted-email]", value)
+    redacted, phone_count = _PHONE_PATTERN.subn("[redacted-phone]", redacted)
+    return redacted, bool(email_count or phone_count)

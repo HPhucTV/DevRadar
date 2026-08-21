@@ -168,3 +168,7 @@ Operator decision ngày 2026-08-21 cho phép:
 - mở detail từ listing identity đã quan sát.
 
 Không được kế thừa approval này cho public full-JD exposure, scheduled/public crawl, commercial reuse, direct replay của frontend API, external LLM hoặc AI training. Thay đổi terms/robots/control hoặc mở rộng phạm vi phải pause và re-review trước.
+
+## 10. Implementation evidence
+
+Fixture/security gates và một full on-demand local run đã pass ngày 2026-08-21; xem [V1-008 evidence](../evidence/V1-008-momo-adapter.md). Kết quả xác nhận 37 unique job qua bốn observed pages (`12 + 12 + 12 + 1`) và một exact detail parse. Evidence này không mở rộng approval: scheduled/public crawl, Docker browser runtime, public full-JD exposure và commercial/AI use vẫn chưa được duyệt.

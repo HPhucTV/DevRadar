@@ -100,6 +100,14 @@ python -m venv .venv
 .venv\Scripts\python -m pip check
 ```
 
+Khi task thực sự chạy MoMo browser adapter local, cài browser binary đúng version lock bằng command đã kiểm chứng:
+
+```powershell
+.venv\Scripts\python -m playwright install chromium
+```
+
+Default test không cần browser binary và không chạm network. API image hiện chưa chứng minh browser readiness; việc cài browser/system dependency, sandbox và egress profile trong container thuộc `V1-012`.
+
 Default test không tự chạm PostgreSQL. Khi task yêu cầu PostgreSQL integration thật:
 
 ```powershell

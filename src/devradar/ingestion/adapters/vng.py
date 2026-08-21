@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from html.parser import HTMLParser
 from urllib.parse import urlsplit
 
-from devradar.ingestion.adapters.html_text import html_to_text
+from devradar.ingestion.adapters.html_text import html_to_text, redact_contacts
 from devradar.ingestion.contracts import (
     FetchResult,
     FieldEvidence,
@@ -38,8 +38,6 @@ _HOST = "career.vng.com.vn"
 _LIST_PATH = "/tim-kiem-viec-lam"
 _DETAIL_PREFIX = f"{_LIST_PATH}/chi-tiet/"
 _SLUG_PATTERN = re.compile(r"^[0-9]+-[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
-_EMAIL_PATTERN = re.compile(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b")
-_PHONE_PATTERN = re.compile(r"(?<!\d)(?:\+84|0)(?:[ .()-]*\d){9}(?!\d)")
 
 
 class VngAdapterError(RuntimeError):
@@ -410,12 +408,6 @@ def parse_vng_listing_page(
     )
 
 
-def _redact_contacts(value: str) -> tuple[str, bool]:
-    redacted, email_count = _EMAIL_PATTERN.subn("[redacted-email]", value)
-    redacted, phone_count = _PHONE_PATTERN.subn("[redacted-phone]", redacted)
-    return redacted, bool(email_count or phone_count)
-
-
 class VngCareersAdapter:
     adapter_key = _ADAPTER_KEY
 
@@ -572,7 +564,7 @@ class VngCareersAdapter:
             parts = [description]
             if requirement and requirement != description:
                 parts.append(requirement)
-            canonical_description, contact_redacted = _redact_contacts("\n\n".join(parts))
+            canonical_description, contact_redacted = redact_contacts("\n\n".join(parts))
 
             title = normalize_text(title_raw)
             company = normalize_text(_COMPANY_NAME)

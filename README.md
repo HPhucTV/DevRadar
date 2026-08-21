@@ -10,9 +10,9 @@
 | Phase hiện tại | `v1` — Crawler MVP và REST API (`in_progress`) |
 | Mô hình sử dụng ban đầu | Portfolio cá nhân, single-operator |
 | Thị trường ưu tiên | Job IT Việt Nam, nội dung Việt/Anh, lương VND |
-| Code chạy được | Có — nền tảng ingestion, NAVER/Greenhouse và VNG adapters; MoMo, workflow và domain API chưa có |
+| Code chạy được | Có — nền tảng ingestion cùng NAVER/Greenhouse, VNG và MoMo adapters; workflow và domain API chưa có |
 
-Repository đã có FastAPI scaffold tối thiểu, dependency lock, PostgreSQL schema/migration cho bốn entity V1, approved source registry, typed adapter contract, safe HTTPS fetcher, raw snapshot persistence, deterministic normalization/canonical hash cùng concrete NAVER/Greenhouse và VNG adapters. Integration test chạy PostgreSQL thật và Docker Compose local. MoMo adapter, job/source/run endpoint và ingestion workflow hoàn chỉnh tiếp tục theo task V1 tương ứng.
+Repository đã có FastAPI scaffold tối thiểu, dependency lock, PostgreSQL schema/migration cho bốn entity V1, approved source registry, typed adapter contract, safe HTTPS fetcher, raw snapshot persistence, deterministic normalization/canonical hash cùng ba concrete source adapters. Integration test chạy PostgreSQL thật và Docker Compose local. Job/source/run endpoint và ingestion workflow hoàn chỉnh tiếp tục theo task V1 tương ứng.
 
 ## Mục tiêu
 
@@ -85,6 +85,7 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [V1 normalization evidence](docs/evidence/V1-005-normalization-and-hashing.md): raw-preserving normalization fixtures, false-inference guards và versioned canonical hash.
 - [V1 NAVER/Greenhouse adapter evidence](docs/evidence/V1-006-naver-greenhouse-adapter.md): one-request full-list discovery, deterministic parsing, coverage guards và bounded live smoke.
 - [V1 VNG adapter evidence](docs/evidence/V1-007-vng-adapter.md): server-confirmed IT group filters, complete pagination, contact redaction và bounded live smoke.
+- [V1 MoMo adapter evidence](docs/evidence/V1-008-momo-adapter.md): public-UI pagination, browser trust boundary, deterministic detail parsing và on-demand live evidence.
 - [Roadmap](docs/ROADMAP.md): kế hoạch V1–V6 và definition of done.
 - [Architecture Decision Records](docs/decisions/README.md): quyết định đã chấp nhận và quyết định còn đề xuất.
 - [Ý tưởng ban đầu](DevRadar_Agentic_Job_Market_Intelligence.md): tài liệu tham khảo gốc, không phải bằng chứng trạng thái triển khai.
@@ -102,6 +103,12 @@ python -m venv .venv
 ```
 
 Mở `http://127.0.0.1:8000/docs` hoặc kiểm tra process health ở `http://127.0.0.1:8000/api/v1/health`. Dừng development server bằng `Ctrl+C`.
+
+Chỉ khi chạy MoMo adapter local, cài Chromium đúng version Playwright đã khóa:
+
+```powershell
+.venv\Scripts\python -m playwright install chromium
+```
 
 ### Quality gates
 
@@ -135,6 +142,8 @@ docker compose --env-file .env.example down
 API bind tại `127.0.0.1:8000`; PostgreSQL bind tại `127.0.0.1:55432`. `docker compose down` giữ named volume. Chỉ xóa volume khi operator chủ động chấp nhận mất dữ liệu local.
 
 Migration phải chạy trước application feature dùng database. Health hiện vẫn là process liveness, không phải database readiness; PostgreSQL integration evidence được kiểm tra riêng.
+
+API image hiện chưa chứa Chromium/system dependencies; containerized browser crawler và egress profile thuộc quality gate `V1-012`. MoMo live run đã được kiểm chứng trên local host, không được diễn giải thành Docker browser readiness.
 
 ## Nguồn sự thật
 

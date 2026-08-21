@@ -46,6 +46,8 @@ coverage/
 *.tsbuildinfo
 
 # Test and tool artifacts
+/.playwright-cli/
+/output/
 playwright-report/
 test-results/
 blob-report/
