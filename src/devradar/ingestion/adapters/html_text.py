@@ -92,4 +92,4 @@ def redact_contacts(value: str) -> tuple[str, bool]:
 
     redacted, email_count = _EMAIL_PATTERN.subn("[redacted-email]", value)
     redacted, phone_count = _PHONE_PATTERN.subn("[redacted-phone]", redacted)
-    return redacted, bool(email_count or phone_count)
+    return normalize_text(redacted).value or "", bool(email_count or phone_count)

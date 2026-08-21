@@ -167,14 +167,15 @@ def test_parse_detail_extracts_plaintext_and_redacts_contact_data() -> None:
     assert parsed.raw.posted_at is None
     assert parsed.raw.source_fields["post_on_careers_page"] == 1
     assert parsed.raw.description == (
-        "Build & own services.\nContact [redacted-email] or [redacted-phone].\n\nPython\nPostgreSQL"
+        "Build & own services.\nContact [redacted-email] or [redacted-phone].\nPython\nPostgreSQL"
     )
+    assert parsed.normalized_candidates.description_text == parsed.raw.description
     assert "unsafe" not in parsed.raw.description
     assert parsed.normalized_candidates.location_city == "Ho Chi Minh City"
     assert parsed.normalized_candidates.posted_at is None
     assert "contact_data_redacted" in parsed.warnings
     assert "posted_date_not_normalized_without_timezone" not in parsed.warnings
-    assert parsed.parser_version == "vng-careers-v1"
+    assert parsed.parser_version == "vng-careers-v2"
 
 
 def test_empty_listing_is_valid_but_returns_no_in_scope_jobs() -> None:

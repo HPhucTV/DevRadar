@@ -189,10 +189,11 @@ def test_parse_detail_uses_posting_allowlist_and_redacts_contacts() -> None:
     assert parsed.raw.title == "IT Business Analyst II"
     assert parsed.raw.location == "Hồ Chí Minh - Hybrid"
     assert parsed.raw.description == (
-        "Phân tích nhu cầu sản phẩm.\n\n"
-        "Làm việc với Python và SQL.\n\n"
+        "Phân tích nhu cầu sản phẩm.\n"
+        "Làm việc với Python và SQL.\n"
         "Liên hệ [redacted-email] hoặc [redacted-phone]."
     )
+    assert parsed.normalized_candidates.description_text == parsed.raw.description
     assert "unsafe" not in parsed.raw.description
     assert "candidate-only" not in parsed.raw.description
     assert "motivation" not in parsed.raw.source_fields
@@ -200,7 +201,7 @@ def test_parse_detail_uses_posting_allowlist_and_redacts_contacts() -> None:
     assert parsed.normalized_candidates.location_city == "Ho Chi Minh City"
     assert parsed.normalized_candidates.work_mode == "hybrid"
     assert "contact_data_redacted" in parsed.warnings
-    assert parsed.parser_version == "momo-careers-v1"
+    assert parsed.parser_version == "momo-careers-v2"
 
 
 def test_missing_optional_detail_fields_remain_nullable() -> None:
