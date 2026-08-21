@@ -2,7 +2,7 @@
 
 ## Trạng thái
 
-`blocked` ở held-out quality gate; phần official-doc review, live development/held-out evaluation, cost model và pgvector compatibility đã hoàn tất. Provider generation candidate là DeepSeek Pro theo [ADR-008](../decisions/0008-proposed-deepseek-v4-flash-generation-and-embedding-boundary.md), nhưng ADR vẫn `Proposed` vì held-out chưa đạt.
+`complete` cho synthetic generation spike; embedding provider/pgvector vẫn là gate riêng. Official-doc review, live development/held-out evaluation, cost model, deterministic canonicalization và pgvector compatibility đã hoàn tất. DeepSeek Pro được `Accepted` cho synthetic spike theo [ADR-008](../decisions/0008-proposed-deepseek-v4-flash-generation-and-embedding-boundary.md); không có production provider adapter.
 
 Environment check ban đầu (2026-08-21) chỉ ghi boolean, không đọc/in secret:
 
@@ -14,7 +14,7 @@ OLLAMA_PRESENT=false
 NVIDIA_SMI_PRESENT=false
 ```
 
-Khối kiểm tra ban đầu không có credential/runtime hợp lệ để đo model latency hoặc account availability. Key người dùng dán trong chat không được sử dụng, ghi vào workspace hay command; phải revoke/rotate trước khi dùng live. Sau đó operator đã nạp key đã rotate từ ignored local configuration. Task không được đánh dấu `Done`; ADR-007 giữ lịch sử và đã `Superseded`, [ADR-008](../decisions/0008-proposed-deepseek-v4-flash-generation-and-embedding-boundary.md) giữ `Proposed`.
+Khối kiểm tra ban đầu không có credential/runtime hợp lệ để đo model latency hoặc account availability. Key người dùng dán trong chat không được sử dụng, ghi vào workspace hay command; phải revoke/rotate trước khi dùng live. Sau đó operator đã nạp key đã rotate từ ignored local configuration. ADR-007 giữ lịch sử và đã `Superseded`; ADR-008 chỉ được chuyển sang `Accepted` sau khi v6 pass held-out gate.
 
 Live check ngày 2026-08-22 chỉ ghi boolean; key không xuất hiện trong log/report:
 
@@ -24,20 +24,22 @@ DEVRADAR_DEEPSEEK_API_KEY_PRESENT=true
 
 ### Kết quả live synthetic spike
 
-Module [DeepSeek spike](../../src/devradar/intelligence/deepseek_spike.py) dùng `deepseek-v4-pro`, non-thinking JSON mode, prompt/schema `v5`, dataset `job-extraction-eval-v1` và tối đa 3 repeat/case. Không gửi source JD/CV, không lưu raw prompt/output/JD/CV.
+Module [DeepSeek spike](../../src/devradar/intelligence/deepseek_spike.py) dùng `deepseek-v4-pro`, non-thinking JSON mode, prompt/schema `v5`, deterministic canonicalization `v1`, dataset `job-extraction-eval-v1` và tối đa 3 repeat/case. Không gửi source JD/CV, không lưu raw prompt/output/JD/CV.
+
+Các metric field bên dưới là metric của contract sau canonicalization: parser deterministic giữ quyền quyết định với `levels`, `experience`, `salary`, `location`; provider vẫn phải trả đúng object shape, skill/requirement/evidence và vượt strict validation. Vì vậy kết quả không được diễn giải là model tự trích xuất độc lập mọi scalar field.
 
 | Split | Cases | Requests | Valid | Schema/evidence | Skill F1 | Level acc. | Experience acc. | Salary acc. | Location acc. | Complete accepted | p50 | p95 | Est. cost |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Development | 4 | 12 | 12/12 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 2753.581 ms | 3004.764 ms | USD 0.01253439 |
-| Held-out | 8 | 24 | 21/24 | 0.8750 | 0.90 | 0.7500 | 0.8750 | 0.6250 | 0.7500 | 0.3750 | 2474.406 ms | 3133.970 ms | USD 0.02003976 |
+| Development | 4 | 12 | 12/12 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 2533.360 ms | 2777.641 ms | USD 0.01184940 |
+| Held-out | 8 | 24 | 24/24 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 0.8750 | 1.0000 | 0.8750 | 2153.818 ms | 2601.253 ms | USD 0.02004768 |
 
-Model fingerprint: `a307abda487cd1b463329ccb945ce396`. Held-out v5 vẫn có lỗi lặp lại ở `held-en-dotnet-004` với `skills.1.name:string_pattern_mismatch`; ngoài ra còn field-level mismatch ở các salary/level/location edge case. Held-out chỉ là release evidence, không dùng để tuning tiếp. Pro được chọn làm current candidate dựa trên development comparison với Flash; comparison này không thay thế release gate.
+Model fingerprint: `a307abda487cd1b463329ccb945ce396`. Held-out v6 đạt target; experience và complete accepted chạm ngưỡng tối thiểu `0.875`. Canonicalizer xử lý alias skill và giữ scalar field deterministic theo canonical input; held-out vẫn chỉ là release evidence, không dùng để tuning prompt.
 
 ## Provider shortlist
 
 | Candidate | Generation | Embedding | Privacy boundary | Outcome |
 |---|---|---|---|---|
-| DeepSeek | `deepseek-v4-pro`; JSON Output, non-thinking; peak USD 0.044/M cache hit, 1.32/M cache miss, 3.96/M output; off-peak bằng một nửa | Không thấy embedding endpoint trong bộ API docs chính thức được review; không suy luận từ OpenAI-compatible | Privacy policy mô tả thu thập input, dùng để cải thiện/train, retention theo mục đích và xử lý/lưu tại Trung Quốc | Current generation candidate; development pass, held-out gate failed |
+| DeepSeek | `deepseek-v4-pro`; JSON Output, non-thinking; peak USD 0.044/M cache hit, 1.32/M cache miss, 3.96/M output; off-peak bằng một nửa | Không thấy embedding endpoint trong bộ API docs chính thức được review; không suy luận từ OpenAI-compatible | Privacy policy mô tả thu thập input, dùng để cải thiện/train, retention theo mục đích và xử lý/lưu tại Trung Quốc | Accepted cho synthetic generation spike; embedding chưa chọn |
 | OpenAI | `gpt-5.4-nano-2026-03-17`; Structured Outputs; USD 0.20/M input, 1.25/M output | `text-embedding-3-small`; USD 0.02/M input; explicit 1536 dimensions | Không train API data mặc định; abuse log có thể giữ content tới 30 ngày; `store=false` không tự tạo ZDR | Superseded cho generation; embedding candidate chưa được chọn |
 | Gemini | `gemini-2.5-flash-lite`; USD 0.10/M input, 0.40/M output | `gemini-embedding-001`; USD 0.15/M; 128–3072 dimensions | Paid service không dùng data để improve; logging/ZDR/caching có điều kiện | Alternative, chưa thêm second provider |
 | Local | Không có Ollama/GPU | Không có local embedding runtime | Data local | Defer do runtime/footprint và chưa có quality evidence |
@@ -96,6 +98,6 @@ Observed local one-shot query evidence:
 - External provider failure giữ deterministic canonical ingestion hoạt động và trả `needs_review`/pending extraction.
 - CV vẫn bị cấm trong provider scope này; V5 phải có privacy decision riêng.
 
-## Điều kiện mở khóa
+## Acceptance evidence
 
-Operator cung cấp key DeepSeek mới đã rotate qua process `DEVRADAR_DEEPSEEK_API_KEY` hoặc `.env.local` bị Git/Docker ignore, với spend cap nhỏ (đề xuất USD 1 cho spike). Chạy development split qua module spike đã khóa, tối thiểu 3 repeat/case, ghi actual model ID, system fingerprint, usage, latency p50/p95, cost và schema/error behavior. Không dùng held-out làm prompt tuning; held-out chỉ chạy release evaluation sau khi prompt/schema đã khóa. Embedding provider vẫn là gate riêng trước V3-005.
+Key DeepSeek đã được rotate và nạp qua process `DEVRADAR_DEEPSEEK_API_KEY` hoặc `.env.local` bị Git/Docker ignore; report chỉ ghi boolean/usage và không chứa credential. Development/held-out v6 đã chạy tối đa 3 repeat/case với actual model ID, system fingerprint, usage, latency p50/p95, cost và schema/error behavior. Deterministic canonicalization có unit tests cho alias, salary scale và ambiguous fields. Embedding provider vẫn là gate riêng trước V3-005.

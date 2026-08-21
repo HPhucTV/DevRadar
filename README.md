@@ -12,7 +12,7 @@
 | Thị trường ưu tiên | Job IT Việt Nam, nội dung Việt/Anh, lương VND |
 | Code chạy được | Có — V1/V2 data pipeline, PostgreSQL one-shot worker, REST contract và V3 synthetic evaluation dataset + deterministic baseline |
 
-V1 đã hoàn tất safe fetch/snapshot pipeline, ba concrete source adapters, PostgreSQL persistence và REST API; 78 canonical jobs hiện có identity/provenance 1:1 và replay không tạo update giả. V2 đã hoàn tất direct schedule/retry, JobChange lifecycle, source health/quarantine, operator enqueue và one-shot worker. V3-001 đã khóa 12 synthetic evaluation case cùng deterministic baseline/target. V3-002 đã pass PostgreSQL 18/pgvector 0.8.6 compatibility và live DeepSeek synthetic spike; development v5 đạt skill F1 `1.0`, nhưng held-out Pro chưa đạt schema `0.875`/skill F1 `0.90`/complete accepted `0.375`, nên ADR-008 vẫn `Proposed`. Embedding/pgvector chưa được chọn provider. Mục tiêu `>=500` vẫn là gate trước khi tuyên bố semantic/trend analytics có quy mô.
+V1 đã hoàn tất safe fetch/snapshot pipeline, ba concrete source adapters, PostgreSQL persistence và REST API; 78 canonical jobs hiện có identity/provenance 1:1 và replay không tạo update giả. V2 đã hoàn tất direct schedule/retry, JobChange lifecycle, source health/quarantine, operator enqueue và one-shot worker. V3-001 đã khóa 12 synthetic evaluation case cùng deterministic baseline/target. V3-002 đã được `Accepted` cho DeepSeek synthetic generation sau khi thêm deterministic canonicalization; held-out v6 đạt schema/evidence, skill, level, salary và location `1.0`, experience/complete accepted `0.875`. Embedding/pgvector vẫn chưa được chọn provider. Mục tiêu `>=500` vẫn là gate trước khi tuyên bố semantic/trend analytics có quy mô.
 
 ## Mục tiêu
 

@@ -8,7 +8,7 @@
 | Active phase | `v3` (`in_progress`) |
 | Code scaffold | Có — FastAPI health + read-only domain API, PostgreSQL schema/migration, test/static gates và Compose local |
 | Source approved | `3/3` cho bounded local non-commercial scope |
-| Runtime/test evidence | V1 [complete](evidence/V1-closeout.md); V2 [complete](evidence/V2-006-v2-closeout.md); V3 có [evaluation baseline](evidence/V3-001-evaluation-dataset-and-baseline.md) và [provider/pgvector spike](evidence/V3-002-provider-privacy-cost-pgvector-spike.md) đang blocked ở held-out quality gate |
+| Runtime/test evidence | V1 [complete](evidence/V1-closeout.md); V2 [complete](evidence/V2-006-v2-closeout.md); V3 có [evaluation baseline](evidence/V3-001-evaluation-dataset-and-baseline.md) và [provider/pgvector spike](evidence/V3-002-provider-privacy-cost-pgvector-spike.md) đã complete cho synthetic generation, embedding vẫn là gate riêng |
 
 Task-level status có thể được theo dõi bằng `TASK_BOARD.md` cục bộ. File này bị Git ignore và không thay đổi phase gate hoặc exit criteria của roadmap.
 

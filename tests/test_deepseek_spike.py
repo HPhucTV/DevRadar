@@ -12,6 +12,7 @@ import devradar.intelligence.deepseek_spike as deepseek_spike
 from devradar.intelligence.deepseek_spike import (
     API_KEY_ENV,
     API_URL,
+    CANONICALIZATION_VERSION,
     MODEL,
     DeepSeekSpikeError,
     _load_local_api_key,
@@ -162,6 +163,7 @@ def test_development_spike_never_calls_held_out_and_reports_no_content() -> None
     assert report.schema_evidence_acceptance_rate == 1.0
     assert report.skill_f1 == 1.0
     assert report.complete_accepted_rate == 1.0
+    assert report.canonicalization_version == CANONICALIZATION_VERSION
     assert all(run.case_id.startswith("dev-") for run in report.runs)
     assert API_KEY_ENV == "DEVRADAR_DEEPSEEK_API_KEY"
 
@@ -188,6 +190,78 @@ def test_held_out_evaluation_is_explicit_and_keeps_split_boundary() -> None:
     assert report.cases == len(held_out)
     assert report.requests == len(held_out)
     assert all(run.case_id.startswith("held-") for run in report.runs)
+
+
+def test_provider_canonicalizes_skill_alias_and_deterministic_fields() -> None:
+    dataset = load_evaluation_dataset(DATASET_PATH)
+    case = next(case for case in dataset.cases if case.id == "held-en-dotnet-004")
+    content = json.dumps(
+        {
+            "levels": ["junior"],
+            "experience": {"minimumYears": 99, "maximumYears": 100},
+            "salary": {"minimum": 1, "maximum": 2, "currency": "USD", "period": "year"},
+            "location": {"city": "Hanoi", "province": "Hanoi", "workMode": "remote"},
+            "skills": [
+                {"name": "C sharp", "requirementType": "required", "evidence": "C#"},
+                {"name": ".NET", "requirementType": "required", "evidence": ".NET"},
+                {"name": "SQL", "requirementType": "required", "evidence": "SQL"},
+                {"name": "Azure", "requirementType": "optional", "evidence": "Azure"},
+            ],
+        }
+    )
+
+    _response, extraction = _safe_provider_response(
+        case=case,
+        api_key="unit-test-secret",
+        opener=lambda *_args, **_kwargs: _Response(_provider_payload(content)),
+    )
+
+    assert extraction == case.expected
+
+
+def test_provider_rejects_invalid_scalar_shape_before_canonicalization() -> None:
+    dataset = load_evaluation_dataset(DATASET_PATH)
+    case = dataset.cases[0]
+    payload = json.loads(case.expected.model_dump_json(by_alias=True))
+    payload["experience"]["minimumYears"] = {"unexpected": "object"}
+
+    with pytest.raises(DeepSeekSpikeError) as captured:
+        _safe_provider_response(
+            case=case,
+            api_key="unit-test-secret",
+            opener=lambda *_args, **_kwargs: _Response(_provider_payload(json.dumps(payload))),
+        )
+    assert captured.value.code.startswith("provider_extraction_shape_invalid:")
+
+
+def test_provider_uses_deterministic_salary_scale_and_ambiguity_rules() -> None:
+    dataset = load_evaluation_dataset(DATASET_PATH)
+    case = next(case for case in dataset.cases if case.id == "held-mixed-go-platform-003")
+    content = json.dumps(
+        {
+            "levels": [],
+            "experience": {"minimumYears": None, "maximumYears": None},
+            "salary": {"minimum": 40, "maximum": 60, "currency": "VND", "period": "month"},
+            "location": {"city": None, "province": None, "workMode": None},
+            "skills": [
+                {"name": "Go", "requirementType": "required", "evidence": "Go"},
+                {
+                    "name": "Apache Kafka",
+                    "requirementType": "required",
+                    "evidence": "Apache Kafka",
+                },
+                {"name": "Redis", "requirementType": "optional", "evidence": "Redis"},
+            ],
+        }
+    )
+
+    _response, extraction = _safe_provider_response(
+        case=case,
+        api_key="unit-test-secret",
+        opener=lambda *_args, **_kwargs: _Response(_provider_payload(content)),
+    )
+
+    assert extraction == case.expected
 
 
 def test_scoring_accepts_different_supported_evidence_for_same_skill_labels() -> None:
@@ -217,7 +291,9 @@ def test_rejected_extraction_preserves_provider_usage_and_cost() -> None:
     assert report.skill_recall == 0.0
     assert all(
         run.error_code is not None
-        and run.error_code.startswith("provider_extraction_schema_invalid:")
+        and run.error_code.startswith(
+            ("provider_extraction_shape_invalid:", "provider_extraction_schema_invalid:")
+        )
         for run in report.runs
     )
 

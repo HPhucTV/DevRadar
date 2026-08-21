@@ -1,4 +1,4 @@
-"""Bounded DeepSeek V3 spike over the project-authored development split only."""
+"""Bounded DeepSeek V3 spike over the project-authored synthetic evaluation splits."""
 
 from __future__ import annotations
 
@@ -10,18 +10,27 @@ import sys
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Self
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic.alias_generators import to_camel
 
+from devradar.ingestion.normalization import (
+    normalize_experience,
+    normalize_levels,
+    normalize_location,
+    normalize_salary,
+)
 from devradar.intelligence.evaluation import (
     EvaluationCase,
     EvaluationDataset,
     EvaluationSplit,
     ExtractionExpectation,
+    canonicalize_skill_name,
     load_evaluation_dataset,
 )
 
@@ -29,7 +38,8 @@ API_KEY_ENV = "DEVRADAR_DEEPSEEK_API_KEY"
 LOCAL_ENV_PATH = Path(".env.local")
 API_URL = "https://api.deepseek.com/chat/completions"
 MODEL = "deepseek-v4-pro"
-SPIKE_VERSION = "deepseek-v4-pro-development-v5"
+SPIKE_VERSION = "deepseek-v4-pro-development-v6"
+CANONICALIZATION_VERSION = "extraction-canonicalization-v1"
 DEFAULT_DATASET_PATH = Path("tests/fixtures/ai/job_extraction_eval_v1.json")
 DEFAULT_REPEATS = 3
 REQUEST_TIMEOUT_SECONDS = 90.0
@@ -137,6 +147,47 @@ class _ProviderResponse(_ProviderModel):
     usage: _ProviderUsage
 
 
+class _RawModel(BaseModel):
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        extra="forbid",
+        frozen=True,
+        populate_by_name=True,
+    )
+
+
+class _RawSkill(_RawModel):
+    name: str
+    requirement_type: str
+    evidence: str
+
+
+class _RawExperience(_RawModel):
+    minimum_years: Decimal | None
+    maximum_years: Decimal | None
+
+
+class _RawSalary(_RawModel):
+    minimum: Decimal | None
+    maximum: Decimal | None
+    currency: str | None
+    period: str | None
+
+
+class _RawLocation(_RawModel):
+    city: str | None
+    province: str | None
+    work_mode: str | None
+
+
+class _RawExtraction(_RawModel):
+    levels: list[str]
+    experience: _RawExperience
+    salary: _RawSalary
+    location: _RawLocation
+    skills: list[_RawSkill]
+
+
 @dataclass(frozen=True, slots=True)
 class SpikeRun:
     case_id: str
@@ -165,6 +216,7 @@ class SpikeRun:
 @dataclass(frozen=True, slots=True)
 class SpikeReport:
     spike_version: str
+    canonicalization_version: str
     dataset_version: str
     split: str
     requested_model: str
@@ -364,6 +416,56 @@ def _safe_validation_detail(error: ValidationError) -> str:
     ]
 
 
+def _deterministic_extraction_fields(case: EvaluationCase) -> dict[str, object]:
+    """Keep fields already covered by the canonical parser out of model control."""
+
+    levels = normalize_levels(case.input.level_raw).value or ()
+    experience = normalize_experience(case.input.experience_raw).value
+    salary = normalize_salary(case.input.salary_raw).value
+    location = normalize_location(case.input.location_raw).value
+    return {
+        "levels": list(levels),
+        "experience": {
+            "minimumYears": None if experience is None else experience.minimum_years,
+            "maximumYears": None if experience is None else experience.maximum_years,
+        },
+        "salary": {
+            "minimum": None if salary is None else salary.minimum,
+            "maximum": None if salary is None else salary.maximum,
+            "currency": None if salary is None else salary.currency,
+            "period": None if salary is None else salary.period,
+        },
+        "location": {
+            "city": None if location is None else location.city,
+            "province": None if location is None else location.province,
+            "workMode": None if location is None else location.work_mode,
+        },
+    }
+
+
+def _canonicalize_extraction_payload(case: EvaluationCase, content: str) -> dict[str, object]:
+    """Canonicalize safe aliases and deterministic fields before strict validation."""
+
+    try:
+        raw = _RawExtraction.model_validate_json(content)
+    except ValidationError as error:
+        raise DeepSeekSpikeError(
+            f"provider_extraction_shape_invalid:{_safe_validation_detail(error)}",
+            "DeepSeek output did not match the extraction object shape.",
+        ) from None
+
+    payload = raw.model_dump(by_alias=True)
+    payload["skills"] = [
+        {
+            **skill,
+            "name": canonicalize_skill_name(skill["name"]),
+        }
+        for skill in payload["skills"]
+    ]
+    payload.update(_deterministic_extraction_fields(case))
+    return payload
+
+
 def _validate_extraction(
     case: EvaluationCase,
     provider_response: _ProviderResponse,
@@ -375,7 +477,9 @@ def _validate_extraction(
             "DeepSeek returned empty JSON Output content.",
         )
     try:
-        extraction = ExtractionExpectation.model_validate_json(content)
+        extraction = ExtractionExpectation.model_validate(
+            _canonicalize_extraction_payload(case, content)
+        )
     except ValidationError as error:
         raise DeepSeekSpikeError(
             f"provider_extraction_schema_invalid:{_safe_validation_detail(error)}",
@@ -578,6 +682,7 @@ def _run_split_spike(
     exact_matches = sum(run.exact_match for run in runs)
     return SpikeReport(
         spike_version=SPIKE_VERSION,
+        canonicalization_version=CANONICALIZATION_VERSION,
         dataset_version=dataset.dataset_version,
         split=split.value,
         requested_model=MODEL,

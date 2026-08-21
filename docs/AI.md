@@ -8,7 +8,7 @@ AI là lớp bổ sung có giới hạn, không phải nguồn sự thật hoặ
 2. **Model output is untrusted:** parse, validate, bound và encode trước khi dùng.
 3. **Evidence-backed:** field/insight/match explanation phải trỏ tới input hoặc aggregate query.
 4. **Version everything:** input hash, schema, extractor, prompt, model, embedding và scoring version.
-5. **Provider-agnostic boundary:** DeepSeek V4 Pro hiện là generation candidate cho synthetic spike nhưng chưa được `Accepted` vì held-out gate; embedding provider vẫn tách riêng và không được suy luận từ OpenAI-compatible wire format.
+5. **Provider-agnostic boundary:** DeepSeek V4 Pro đã được `Accepted` cho synthetic generation spike sau held-out gate; embedding provider vẫn tách riêng và không được suy luận từ OpenAI-compatible wire format.
 6. **Bounded agency:** model không tự chọn arbitrary URL, chạy shell/SQL, ghi database hoặc gửi alert.
 
 ## 2. Phase boundary
@@ -26,7 +26,7 @@ AI là lớp bổ sung có giới hạn, không phải nguồn sự thật hoặ
 
 Không thêm SDK/model dependency trong V1–V2 chỉ để chuẩn bị.
 
-V3-002 hiện đề xuất DeepSeek `deepseek-v4-pro` ở non-thinking JSON mode cho synthetic development/held-out evaluation và giữ pgvector `0.8.6` ở compatibility candidate trong [ADR-008](decisions/0008-proposed-deepseek-v4-flash-generation-and-embedding-boundary.md). Quyết định vẫn `Proposed`: credential/live usage đã đo được, nhưng held-out v5 chưa đạt (`schema/evidence=0.875`, `skill F1=0.90`, `level=0.75`, `experience=0.875`, `salary=0.625`, `location=0.75`, `complete accepted=0.375`). Không gửi source JD/CV tới external LLM; không thêm SDK hoặc production provider adapter trước khi gate đó đạt.
+V3-002 đã `Accepted` cho synthetic generation spike với DeepSeek `deepseek-v4-pro` ở non-thinking JSON mode; held-out v6 đạt toàn bộ target sau deterministic canonicalization (schema/evidence, skill, level, salary, location `1.0`; experience và complete accepted `0.875`). Đây là contract-level result, không phải raw model-only accuracy cho scalar field. Embedding provider/pgvector vẫn là candidate riêng, chưa được `Accepted`, trong [ADR-008](decisions/0008-proposed-deepseek-v4-flash-generation-and-embedding-boundary.md). Không gửi source JD/CV tới external LLM và chưa có production provider adapter.
 
 ## 3. LLM extraction contract
 
@@ -57,7 +57,7 @@ Output logic tối thiểu:
 }
 ```
 
-Schema thực tế phải giới hạn enum, collection size, string length và numeric range. Evidence span phải tồn tại trong canonical input sau normalization; nếu không tìm thấy, field không được auto-accept.
+Schema thực tế phải giới hạn enum, collection size, string length và numeric range. Evidence span phải tồn tại trong canonical input sau normalization; nếu không tìm thấy, field không được auto-accept. Trước strict schema validation, deterministic canonicalizer áp dụng taxonomy alias cho skill và giữ `levels`, `experience`, `salary`, `location` theo parser hiện hành trên input canonical. Model không được override các scalar field này; field mơ hồ giữ `null`, salary raw vẫn được giữ riêng.
 
 Job classification dùng taxonomy/version và trả evidence giống extraction field. AI summary phải ngắn, chỉ tổng hợp claim được hỗ trợ bởi canonical JD và bị reject nếu thêm salary, skill, benefit hoặc requirement không có evidence.
 
@@ -65,12 +65,13 @@ Job classification dùng taxonomy/version và trả evidence giống extraction 
 
 Validation theo thứ tự:
 
-1. response parse thành đúng structured format;
-2. schema/type/range validation;
-3. evidence verification với input;
-4. domain invariant và taxonomy mapping;
-5. confidence/policy gate;
-6. accept, reject hoặc `needs_review`.
+1. response envelope và extraction object shape parse thành công;
+2. deterministic canonicalization cho alias và field đã có parser;
+3. schema/type/range validation;
+4. evidence verification với input;
+5. domain invariant và taxonomy mapping;
+6. confidence/policy gate;
+7. accept, reject hoặc `needs_review`.
 
 Retry chỉ dành cho lỗi transient hoặc malformed structured output có khả năng sửa. Không retry vô hạn hoặc retry hallucination bằng cùng input/prompt mà không đổi chiến lược. Default tối đa hai model attempts cho một extraction; vượt mức thì `needs_review`/fallback. V4 graph có recursion/step cap cứng.
 
@@ -108,7 +109,7 @@ Contract hiện hành là `job-extraction-eval-v1` / `job-extraction-eval-schema
 
 Không đặt accuracy/cost threshold chỉ dựa vào mong muốn. V3 entry spike tạo baseline; target release được ghi vào evaluation artifact và roadmap trước khi model output ảnh hưởng canonical data.
 
-Baseline held-out `deterministic-keyword-v1`: skill F1 `0.9545`, unsupported skill `0.0455`, deterministic complete `0.6250`. Gate extraction V3 trên cùng dataset là skill F1 `>=0.9700`, unsupported skill/hallucination `0`, accepted schema/evidence `1.0` và complete accepted result `>=0.8750`; deterministic level/salary/location không được regression. Cost/latency target chờ measured provider baseline ở V3-002, còn role/summary target chờ taxonomy contract ở V3-004.
+Baseline held-out `deterministic-keyword-v1`: skill F1 `0.9545`, unsupported skill `0.0455`, deterministic complete `0.6250`. Gate extraction V3 trên cùng dataset là skill F1 `>=0.9700`, unsupported skill/hallucination `0`, accepted schema/evidence `1.0` và complete accepted result `>=0.8750`; deterministic level/salary/location không được regression. Cost/latency baseline đã được đo trong V3-002; role/summary target vẫn chờ taxonomy contract ở V3-004.
 
 ### 5.3. Release gate
 

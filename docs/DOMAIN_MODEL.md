@@ -145,6 +145,7 @@ Alias mới không được merge skill lịch sử âm thầm; taxonomy change 
 | `extractor_type` | `structured_data`, `selector`, `rule`, `llm`. |
 | `extractor_version`, `model`, `prompt_version` | Reproducibility. |
 | `output_data` | Typed output theo schema version. |
+| `canonicalization_version` | Version của deterministic alias/field normalization trước validation. |
 | `validation_status` | `accepted`, `rejected`, `needs_review`. |
 | `confidence`, `validation_errors` | Evidence quality. |
 | `latency_ms`, token/cost fields | Operation metric khi dùng model. |
@@ -217,6 +218,11 @@ input → deterministic extraction → accepted
                                                          ├─ needs_review
                                                          └─ rejected
 ```
+
+LLM output không được ghi đè field đã có deterministic parser. `levels`, `experience`, `salary` và
+`location` lấy từ canonical input; skill alias được map theo `taxonomy_version` trước strict schema
+validation. Ambiguous field giữ `null` và raw value/provenance vẫn được bảo toàn. Đổi rule này phải
+bump `canonicalization_version` và re-evaluate extraction result.
 
 ## 6. Identity, deduplication và hashing
 

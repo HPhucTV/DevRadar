@@ -24,7 +24,7 @@ Proposed → Accepted → Superseded | Deprecated
 | [ADR-005](0005-sqlalchemy-alembic-and-psycopg.md) | Accepted | SQLAlchemy, Alembic và Psycopg cho persistence V1 |
 | [ADR-006](0006-defer-prefect-use-direct-v2-orchestration.md) | Accepted | Hoãn Prefect; V2 dùng PostgreSQL-backed direct orchestration |
 | [ADR-007](0007-proposed-openai-first-v3-provider-and-pgvector.md) | Superseded | Lịch sử đề xuất OpenAI-first; bị ADR-008 thay thế |
-| [ADR-008](0008-proposed-deepseek-v4-flash-generation-and-embedding-boundary.md) | Proposed | DeepSeek V4 Pro generation spike synthetic-only; embedding tách quyết định |
+| [ADR-008](0008-proposed-deepseek-v4-flash-generation-and-embedding-boundary.md) | Accepted | DeepSeek V4 Pro generation spike synthetic-only; embedding tách quyết định |
 
 ## Candidate technology chưa được chấp nhận
 

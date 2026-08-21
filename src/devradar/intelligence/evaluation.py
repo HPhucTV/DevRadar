@@ -187,6 +187,11 @@ _SKILL_ALIASES: dict[str, tuple[str, ...]] = {
     "terraform": ("terraform",),
     "typescript": ("typescript",),
 }
+_SKILL_ALIAS_TO_CANONICAL = {
+    alias.casefold(): canonical
+    for canonical, aliases in _SKILL_ALIASES.items()
+    for alias in aliases
+}
 _SKILL_PATTERNS = {
     name: tuple(
         re.compile(rf"(?<![a-z0-9]){re.escape(alias)}(?![a-z0-9])", re.IGNORECASE)
@@ -211,6 +216,13 @@ _NEGATED_MARKERS = (
     "không yêu cầu",
     "not required",
 )
+
+
+def canonicalize_skill_name(raw: str) -> str:
+    """Apply the versioned taxonomy alias map without inventing unknown skills."""
+
+    normalized = " ".join(raw.split()).casefold()
+    return _SKILL_ALIAS_TO_CANONICAL.get(normalized, normalized.replace(" ", "-"))
 
 
 def load_evaluation_dataset(path: Path) -> EvaluationDataset:
