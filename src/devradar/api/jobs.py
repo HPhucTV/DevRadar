@@ -9,7 +9,7 @@ from typing import Annotated, Any, Self
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
-from pydantic import Field, model_validator
+from pydantic import Field, JsonValue, model_validator
 from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
@@ -22,7 +22,7 @@ from devradar.api.common import (
     PaginationQuery,
     pagination_data,
 )
-from devradar.catalog.models import Job, JobLevel, JobStatus
+from devradar.catalog.models import Job, JobChange, JobChangeType, JobLevel, JobStatus
 from devradar.ingestion.models import ParseStatus, RawJobSnapshot, Source
 from devradar.platform.database import get_database_session
 
@@ -133,6 +133,22 @@ class JobDetail(JobSummary):
 
 JobListResponse = ListResponse[JobSummary]
 JobDetailResponse = DataResponse[JobDetail]
+
+
+class JobChangeData(ApiModel):
+    id: UUID
+    job_id: UUID
+    crawl_run_id: UUID
+    change_type: JobChangeType
+    field_name: str
+    old_value: JsonValue
+    new_value: JsonValue
+    from_snapshot_id: UUID | None
+    to_snapshot_id: UUID | None
+    detected_at: datetime
+
+
+JobChangeListResponse = ListResponse[JobChangeData]
 
 
 def _decimal_number(value: Decimal | None) -> float | None:
@@ -272,4 +288,52 @@ def get_job(
                 parse_status=snapshot.parse_status,
             ),
         )
+    )
+
+
+@router.get(
+    "/{jobId}/changes",
+    response_model=JobChangeListResponse,
+    responses={
+        **ERROR_RESPONSES,
+        404: {"model": ErrorResponse, "description": "Job was not found."},
+    },
+)
+def list_job_changes(
+    job_id: Annotated[UUID, Path(alias="jobId")],
+    pagination: Annotated[PaginationQuery, Query()],
+    session: DatabaseSession,
+) -> JobChangeListResponse:
+    if session.get(Job, job_id) is None:
+        raise HTTPException(status_code=404)
+    total_items = (
+        session.scalar(
+            select(func.count()).select_from(JobChange).where(JobChange.job_id == job_id)
+        )
+        or 0
+    )
+    changes = session.scalars(
+        select(JobChange)
+        .where(JobChange.job_id == job_id)
+        .order_by(JobChange.detected_at.desc(), JobChange.id.asc())
+        .offset((pagination.page - 1) * pagination.page_size)
+        .limit(pagination.page_size)
+    ).all()
+    return JobChangeListResponse(
+        data=[
+            JobChangeData(
+                id=change.id,
+                job_id=change.job_id,
+                crawl_run_id=change.crawl_run_id,
+                change_type=change.change_type,
+                field_name=change.field_name,
+                old_value=change.old_value,
+                new_value=change.new_value,
+                from_snapshot_id=change.from_snapshot_id,
+                to_snapshot_id=change.to_snapshot_id,
+                detected_at=change.detected_at,
+            )
+            for change in changes
+        ],
+        pagination=pagination_data(pagination, total_items),
     )

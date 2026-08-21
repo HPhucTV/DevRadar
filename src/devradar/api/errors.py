@@ -17,6 +17,14 @@ from devradar.api.common import ErrorData, ErrorDetail, ErrorResponse
 from devradar.platform.observability import record_api_error, record_http_request
 
 
+class ApiContractError(RuntimeError):
+    def __init__(self, status_code: int, code: str, message: str) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.code = code
+        self.message = message
+
+
 def _request_id(request: Request) -> str:
     value = getattr(request.state, "request_id", None)
     return value if isinstance(value, str) else uuid4().hex
@@ -106,6 +114,19 @@ def install_error_handlers(app: FastAPI) -> None:
             code="validation_error",
             message="Request không hợp lệ.",
             details=details,
+        )
+
+    @app.exception_handler(ApiContractError)
+    async def api_contract_error_handler(
+        request: Request,
+        error: ApiContractError,
+    ) -> JSONResponse:
+        request.state.exception_type = type(error).__name__
+        return _error_response(
+            request,
+            status_code=error.status_code,
+            code=error.code,
+            message=error.message,
         )
 
     @app.exception_handler(StarletteHTTPException)

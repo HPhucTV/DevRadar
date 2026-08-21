@@ -59,6 +59,7 @@ class RunReport:
     run_id: UUID
     source_key: str
     source_id: UUID
+    requested_at: datetime
     trigger_type: CrawlTriggerType
     trigger_key: str | None
     scheduled_for: datetime | None
@@ -312,6 +313,7 @@ def _report(run: CrawlRun, source_key: str, *, reused: bool = False) -> RunRepor
         run_id=run.id,
         source_key=source_key,
         source_id=run.source_id,
+        requested_at=run.requested_at,
         trigger_type=run.trigger_type,
         trigger_key=run.trigger_key,
         scheduled_for=run.scheduled_for,

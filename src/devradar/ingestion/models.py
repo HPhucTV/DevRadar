@@ -218,6 +218,12 @@ class CrawlRun(Base):
             "trigger_key IS NULL OR length(btrim(trigger_key)) > 0",
             name="ck_crawl_runs_trigger_key_not_blank",
         ),
+        CheckConstraint(
+            "(requested_by IS NULL AND request_hash IS NULL) OR "
+            "(requested_by IS NOT NULL AND trigger_key IS NOT NULL "
+            "AND request_hash ~ '^[0-9a-f]{64}$')",
+            name="ck_crawl_runs_request_identity",
+        ),
         UniqueConstraint("id", "source_id", name="uq_crawl_runs_id_source_id"),
         UniqueConstraint("retry_of_run_id", name="uq_crawl_runs_retry_of_run_id"),
         Index("ix_crawl_runs_source_started_at", "source_id", "started_at"),
@@ -234,6 +240,13 @@ class CrawlRun(Base):
             "source_id",
             unique=True,
             postgresql_where=text("status IN ('pending', 'running')"),
+        ),
+        Index(
+            "uq_crawl_runs_requester_trigger_key",
+            "requested_by",
+            "trigger_key",
+            unique=True,
+            postgresql_where=text("requested_by IS NOT NULL"),
         ),
     )
 
@@ -280,6 +293,12 @@ class CrawlRun(Base):
         server_default=text("'unknown'"),
     )
     trigger_key: Mapped[str | None] = mapped_column(String(200))
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=text("CURRENT_TIMESTAMP"),
+    )
+    requested_by: Mapped[str | None] = mapped_column(String(100))
+    request_hash: Mapped[str | None] = mapped_column(String(64))
     scheduled_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     retry_of_run_id: Mapped[UUID | None] = mapped_column(
         PostgreSQLUUID(as_uuid=True),

@@ -60,7 +60,9 @@ Implementation hiện map `Source`, `CrawlRun`, `RawJobSnapshot` vào module `in
 |---|---|
 | `id`, `source_id` | Định danh run và source. |
 | `trigger_type` | `manual`, `scheduled`, `retry`, `replay`. |
+| `requested_at` | Thời điểm trigger/request được persist, kể cả khi run còn `pending`. |
 | `trigger_key`, `scheduled_for` | Idempotency identity và UTC slot cho trigger có key; scheduled run bắt buộc có cả hai. |
+| `requested_by`, `request_hash` | Internal local-principal/request identity đã hash; không thuộc public response. |
 | `retry_of_run_id`, `attempt_number` | Retry provenance; một run chỉ có tối đa một direct retry và tổng policy tối đa ba attempt. |
 | `retry_after_seconds` | Bounded server hint đã sanitize, tối đa 3.600 giây. |
 | `started_at`, `finished_at` | Boundary thời gian. |
@@ -73,6 +75,8 @@ Implementation hiện map `Source`, `CrawlRun`, `RawJobSnapshot` vào module `in
 Chỉ run `succeeded` và `coverage_status=complete` được dùng để tăng missing count.
 
 PostgreSQL chỉ cho một `pending|running` CrawlRun mỗi Source. Cùng `(source_id, trigger_key)` trả lại history hiện hữu; nó không tạo execution thứ hai.
+
+Operator API dùng unique `(requested_by, trigger_key)` để cùng key không thể tạo request khác source; raw `Idempotency-Key` không được persist hoặc log.
 
 ### 4.3. RawJobSnapshot
 

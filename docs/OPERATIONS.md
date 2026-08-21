@@ -25,6 +25,7 @@ Không dùng production secret/data trong CI. Không gọi source/LLM thật t�
 - `.env.example` chỉ chứa key và placeholder, không chứa credential thật.
 - `.env`, local override, key/certificate và exported data phải bị ignore khi scaffold Git.
 - API key, database password, session secret, webhook token và source credential không được hardcode hoặc log.
+- `DEVRADAR_OPERATOR_WRITE_ENABLED` mặc định `false`; đây chỉ là local deployment gate, không phải auth. Không bật write API trên public ingress trước V6 auth/authorization.
 - External provider/source mới phải có owner, mục đích, data classification và rotation/revocation path.
 - Nếu secret từng bị commit hoặc lộ trong log, rotate/revoke trước; chỉ xóa khỏi file không đủ.
 
@@ -104,6 +105,7 @@ PostgreSQL test hiện dùng `DEVRADAR_TEST_DATABASE_URL`, tạo database tên n
 - File upload kiểm tra extension, MIME và signature; bounded size/page/decompression; parser không thực thi macro/script và chạy với least privilege.
 - Authenticated deployment dùng HTTPS, restricted CORS, security headers, secure/httpOnly/sameSite session cookie nếu chọn session strategy.
 - Authorization kiểm tra owner/operator ở server trên mọi protected resource.
+- V2 local write API chỉ nhận `sourceId` + custom idempotency header, enqueue DB và không nhận URL/outbound option; default-disabled gate cùng loopback Compose binding giảm accidental exposure nhưng không thay authentication.
 - Error public generic; detail nội bộ được sanitize và correlation bằng request ID.
 - LLM tool default deny, output không đi vào SQL/shell/path/HTML và có token/step/cost cap.
 - Dependency/lockfile được audit; finding chỉ được defer khi có reachability assessment, owner và review date.

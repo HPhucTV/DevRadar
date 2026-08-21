@@ -4,7 +4,7 @@
 
 DevRadar cung cấp REST JSON dưới `/api/v1`. OpenAPI tại `/api/v1/openapi.json` là wire contract chính cho endpoint đã triển khai; tài liệu này giữ intent, quyền truy cập và phase availability cho cả phần đã có và phần còn planned.
 
-V1 hiện đã triển khai process health cùng sáu endpoint đọc Job, Source và CrawlRun trong bảng dưới. OpenAPI và PostgreSQL contract test là bằng chứng wire behavior; endpoint mutation và capability V2+ vẫn chỉ là planned.
+V2 hiện đã triển khai process health, bảy endpoint đọc Job/JobChange/Source/CrawlRun và một local-gated CrawlRun mutation trong bảng dưới. OpenAPI và PostgreSQL contract test là nguồn bằng chứng wire behavior.
 
 ## 2. Quy ước
 
@@ -96,8 +96,8 @@ V1 dùng page-based pagination vì dataset portfolio còn bounded và UI cần t
 | `GET /api/v1/sources/{sourceId}` | Source detail đã sanitize | V1 — implemented | local/read |
 | `GET /api/v1/crawl-runs` | List crawl runs | V1 — implemented | operator/read |
 | `GET /api/v1/crawl-runs/{runId}` | Run detail, metric và safe error | V1 — implemented | operator/read |
-| `GET /api/v1/jobs/{jobId}/changes` | Lịch sử thay đổi | V2 | local/read |
-| `POST /api/v1/crawl-runs` | Tạo run cho source approved | V2 | operator/write |
+| `GET /api/v1/jobs/{jobId}/changes` | Lịch sử thay đổi | V2 — implemented | local/read |
+| `POST /api/v1/crawl-runs` | Tạo pending run cho source approved | V2 — implemented | local/operator write gate |
 | `GET /api/v1/skills` | Taxonomy và frequency | V3 | local/read |
 | `GET /api/v1/skill-trends` | Cohort/time-window trend | V3 | local/read |
 | `GET /api/v1/agent-runs` | Audit run đã redact | V4 | operator/read |
@@ -160,6 +160,10 @@ Source response chỉ trả identity, adapter key, approval/health và review/la
   "id": "run-id",
   "sourceId": "source-id",
   "triggerType": "manual",
+  "requestedAt": "2026-08-21T07:59:59Z",
+  "scheduledFor": null,
+  "retryOfRunId": null,
+  "attemptNumber": 1,
   "status": "succeeded",
   "coverageStatus": "complete",
   "startedAt": "2026-08-21T08:00:00Z",
@@ -170,15 +174,21 @@ Source response chỉ trả identity, adapter key, approval/health và review/la
     "itemsUpdated": 7,
     "itemsMissing": 0,
     "itemsRemoved": 0,
+    "itemsReactivated": 0,
     "itemsFailed": 0
   },
+  "healthSignalCode": null,
   "error": null
 }
 ```
 
-`POST /crawl-runs` nhận duy nhất `sourceId` và optional approved execution options có schema. URL, adapter path, arbitrary header hoặc secret không được nhận từ client. Header `Idempotency-Key` là bắt buộc; cùng key và cùng principal/request trả cùng run, khác payload trả `409`.
+`POST /crawl-runs` hiện nhận đúng `{"sourceId":"uuid"}`. URL, adapter path, arbitrary header, secret và option chưa support đều bị `422`. Header `Idempotency-Key` là bắt buộc; cùng key và local principal/request trả cùng pending run, khác payload trả `409`. Raw key được hash trước persistence. Endpoint trả `202`, không gọi network trong HTTP request.
 
-V1 `GET /crawl-runs` trả counters và `error.code`; `error.message` là thông báo công khai cố định, không phản chiếu `error_summary` trong database. Default order là `startedAt desc nulls last`, sau đó `id asc`. `itemsMissing` và `itemsRemoved` vẫn bằng `0` vì absence lifecycle chỉ được bật từ V2.
+Write endpoint chỉ hoạt động khi local deployment đặt `DEVRADAR_OPERATOR_WRITE_ENABLED=true`; default là `false`. Gate này không phải authentication và không được dùng để bảo vệ public mutation. Public exposure phải chờ auth/authorization V6.
+
+`GET /crawl-runs` trả counters, retry/schedule relation, safe health signal và `error.code`; `error.message` không phản chiếu `error_summary` trong database. Default order là `startedAt desc nulls last`, sau đó `id asc`. Pending run có `startedAt/finishedAt=null`.
+
+`GET /jobs/{jobId}/changes` trả page envelope với `changeType`, `fieldName`, old/new JSON value, `crawlRunId`, from/to snapshot ID và `detectedAt`; order là `detectedAt desc, id asc`. Description change chỉ expose hash evidence đã persist, không trả raw snapshot/HTML.
 
 ### 6.3. ResumeProfile upload
 
