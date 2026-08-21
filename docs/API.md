@@ -184,6 +184,8 @@ Source response chỉ trả identity, adapter key, approval/health và review/la
 
 `POST /crawl-runs` hiện nhận đúng `{"sourceId":"uuid"}`. URL, adapter path, arbitrary header, secret và option chưa support đều bị `422`. Header `Idempotency-Key` là bắt buộc; cùng key và local principal/request trả cùng pending run, khác payload trả `409`. Raw key được hash trước persistence. Endpoint trả `202`, không gọi network trong HTTP request.
 
+Pending run được process `work-one` claim ngoài HTTP lifecycle. Claim giữ nguyên run ID/request provenance; nếu lỗi transient, retry là CrawlRun mới liên kết qua `retryOfRunId`. Nhiều worker process cùng lúc không được xử lý cùng pending row nhờ PostgreSQL row lock và active-run constraint.
+
 Write endpoint chỉ hoạt động khi local deployment đặt `DEVRADAR_OPERATOR_WRITE_ENABLED=true`; default là `false`. Gate này không phải authentication và không được dùng để bảo vệ public mutation. Public exposure phải chờ auth/authorization V6.
 
 `GET /crawl-runs` trả counters, retry/schedule relation, safe health signal và `error.code`; `error.message` không phản chiếu `error_summary` trong database. Default order là `startedAt desc nulls last`, sau đó `id asc`. Pending run có `startedAt/finishedAt=null`.

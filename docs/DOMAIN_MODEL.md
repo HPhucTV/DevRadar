@@ -78,6 +78,8 @@ PostgreSQL chỉ cho một `pending|running` CrawlRun mỗi Source. Cùng `(sour
 
 Operator API dùng unique `(requested_by, trigger_key)` để cùng key không thể tạo request khác source; raw `Idempotency-Key` không được persist hoặc log.
 
+One-shot worker chọn tối đa một run `pending` theo `requested_at, id`, dùng row lock `SKIP LOCKED`, persist `running/started_at/adapter_version/config_version` rồi mới thực hiện network work. Retry transient tạo CrawlRun mới có `trigger_type=retry`; nó không đổi identity của request ban đầu.
+
 ### 4.3. RawJobSnapshot
 
 | Field logic | Ý nghĩa |

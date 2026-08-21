@@ -8,6 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
@@ -123,6 +124,7 @@ def orchestrate_source(
     clock: Clock = lambda: datetime.now(UTC),
     sleeper: Sleeper = time.sleep,
     jitter_source: JitterSource = random.random,
+    claimed_run_id: UUID | None = None,
 ) -> OrchestrationResult:
     """Run one idempotent trigger and bounded transient-only retry chain."""
 
@@ -145,6 +147,7 @@ def orchestrate_source(
             scheduled_for=next_scheduled_for,
             retry_of_run_id=retry_of_run_id,
             attempt_number=attempt_number,
+            claimed_run_id=claimed_run_id if not reports else None,
         )
         reports.append(report)
         if (

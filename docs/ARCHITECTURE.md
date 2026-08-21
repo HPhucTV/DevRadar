@@ -2,7 +2,7 @@
 
 ## 1. Trạng thái và phạm vi
 
-Kiến trúc nền tảng là **modular monolith, phase-gated stack** theo [ADR-001](decisions/0001-modular-monolith-and-phase-gated-stack.md). V1 khóa Python, FastAPI, PostgreSQL và Docker Compose; [ADR-005](decisions/0005-sqlalchemy-alembic-and-psycopg.md) khóa SQLAlchemy/Alembic/Psycopg cho persistence V1 sau khi fresh migration và PostgreSQL integration pass. V2 đã defer Prefect và dùng PostgreSQL-backed direct orchestration theo [ADR-006](decisions/0006-defer-prefect-use-direct-v2-orchestration.md). pgvector, LangGraph, Next.js và Redis chỉ trở thành dependency khi phase tương ứng bắt đầu và ADR/entry gate cho phép.
+Kiến trúc nền tảng là **modular monolith, phase-gated stack** theo [ADR-001](decisions/0001-modular-monolith-and-phase-gated-stack.md). V1 khóa Python, FastAPI, PostgreSQL và Docker Compose; [ADR-005](decisions/0005-sqlalchemy-alembic-and-psycopg.md) khóa SQLAlchemy/Alembic/Psycopg cho persistence V1. V2 đã hoàn tất PostgreSQL-backed direct orchestration theo [ADR-006](decisions/0006-defer-prefect-use-direct-v2-orchestration.md). V3 hiện active nhưng LLM provider và pgvector vẫn `Proposed` cho tới khi evaluation/provider spike tương ứng đạt; LangGraph, Next.js và Redis vẫn bị phase gate ở V4+.
 
 Tài liệu này mô tả boundary và data flow. Nó không quy định folder/class chi tiết trước khi scaffold và không biến module logic thành microservice.
 
@@ -74,7 +74,7 @@ flowchart TD
     I --> J["Finalize CrawlRun metrics"]
 ```
 
-V2 hiện persist `JobChange` và chạy absence lifecycle trong catalog transaction. Run chỉ được dùng để đánh dấu job vắng mặt khi run đó là `succeeded` và coverage được xác nhận là complete. Failure trước bước finalize không được làm thay đổi trạng thái hiện hữu.
+V2 persist `JobChange` và chạy absence lifecycle trong catalog transaction. Run chỉ được dùng để đánh dấu job vắng mặt khi run đó là `succeeded` và coverage được xác nhận là complete. Failure trước bước finalize không được làm thay đổi trạng thái hiện hữu. Operator API chỉ enqueue `pending`; one-shot worker khóa hàng bằng `FOR UPDATE SKIP LOCKED`, chuyển sang `running`, commit trước network work rồi gọi cùng orchestration use case. Đây là process/CLI từ cùng codebase, không phải queue service hoặc distributed worker pool.
 
 ### 5.2. AI extraction
 
@@ -101,12 +101,12 @@ Upload validation và text extraction chạy trước. File gốc được xóa 
 |---|---|---|
 | V1 | PostgreSQL, FastAPI process, on-demand crawler/CLI từ cùng codebase | Accepted |
 | V2 | V1 + deterministic scheduler/runner từ cùng codebase, PostgreSQL coordination | Accepted theo ADR-006 |
-| V3 | V2 + LLM/embedding adapter; bật pgvector extension | Proposed |
+| V3 | V2 + evaluation trước; LLM/embedding adapter và pgvector chỉ sau spike | In progress; dependency vẫn Proposed |
 | V4 | V3 + LangGraph chạy trong worker/application process | Proposed |
 | V5 | V4 + Next.js và optional alert connector | Proposed |
 | V6 | Public ingress, auth, managed secrets, backup/monitoring; Redis/worker pool nếu metric yêu cầu | Proposed |
 
-Crawler CLI và API dùng cùng code nhưng là entrypoint/process khác nhau. Điều này cho phép scale process sau này mà không cần tách service sớm.
+Crawler/one-shot worker CLI và API dùng cùng code nhưng là entrypoint/process khác nhau. Điều này giữ network work ngoài HTTP request mà không tách service sớm.
 
 ## 7. Trust boundaries và controls
 

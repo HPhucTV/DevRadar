@@ -2,7 +2,7 @@
 
 ## 1. Mục tiêu
 
-Tài liệu này định nghĩa bằng chứng cần có để nói DevRadar chạy đúng, an toàn và có thể chẩn đoán. Scaffold, PostgreSQL schema/migration, safe HTTP/raw snapshot boundary, ba V1 source adapters, current-state Job upsert, read-only domain API và structured observability đã có verified test/static/live evidence; run-level orchestration vẫn chưa pass.
+Tài liệu này định nghĩa bằng chứng cần có để nói DevRadar chạy đúng, an toàn và có thể chẩn đoán. V1 data pipeline và V2 schedule/retry/lifecycle/health/operator queue đã có verified PostgreSQL, static và bounded live evidence. V3 AI/semantic capability chưa được coi là triển khai cho tới khi fixed evaluation và provider/pgvector gate tương ứng pass.
 
 ## 2. Environment
 
@@ -50,6 +50,7 @@ Chạy nhanh, deterministic, không network:
 - migration up/down hoặc forward/rollback strategy phù hợp;
 - FastAPI → PostgreSQL với OpenAPI/contract assertion;
 - V2 scheduler/retry → run state/metrics;
+- V2 API pending request → `SKIP LOCKED` one-shot claim → ingestion/retry chain, không chạy network trong HTTP request;
 - V3 pgvector query với model-version filter;
 - V5 upload parser trong isolated test và owner access control;
 - alert retry/idempotency với fake connector.
@@ -61,7 +62,7 @@ PostgreSQL test hiện dùng `DEVRADAR_TEST_DATABASE_URL`, tạo database tên n
 ### 4.3. End-to-end và acceptance
 
 - V1: trigger approved adapter qua operator path, ingest dataset và query qua API.
-- V2: scheduled run phát hiện new/update/missing/removed mà không false removal khi partial.
+- V2: nhiều scheduled fixture cycles phát hiện new/update/missing/removed/reactivated, duplicate slot không process lại, partial/anomaly không false removal và quarantine recovery đúng policy.
 - V3: deterministic extraction + LLM fallback trên labeled suite và semantic query.
 - V4: invalid extraction đi qua bounded validator decision, retry/review và audit.
 - V5: upload CV hợp lệ, xem match/evidence, xóa profile và xác nhận artifact hết hiệu lực.
@@ -74,6 +75,7 @@ PostgreSQL test hiện dùng `DEVRADAR_TEST_DATABASE_URL`, tạo database tên n
 | Replay cùng snapshot | Không duplicate Job hoặc JobChange; metric idempotent. |
 | Crawl network/parser fail | Run `partial/failed`; không tăng missing count. |
 | Source chưa approved | Bị chặn trước outbound request. |
+| Duplicate schedule/API trigger hoặc hai worker claim | Một trigger/pending row chỉ được process một lần; replay trả history hiện hữu. |
 | Redirect/private address | Bị chặn và ghi safe policy error; không follow. |
 | Empty/anomalous source response | Coverage không được coi complete nếu invariant chưa đạt. |
 | HTML/JD malformed | Snapshot còn để replay; parser fail có taxonomy. |
@@ -208,11 +210,12 @@ Command cụ thể trong README/AGENTS phải từng chạy thành công và đ�
 
 ## 11. Deployment gates
 
-### Local V1
+### Local V1–V4
 
 - clean setup từ documented prerequisites;
 - migration chạy trên PostgreSQL mới;
 - một approved fixture/source run và API smoke;
+- pending operator run được xử lý ngoài HTTP bằng one-shot worker; queue rỗng exit thành công, source mismatch fail trước network;
 - teardown không xóa volume/data nếu thiếu explicit operator action.
 
 ### Protected demo V5

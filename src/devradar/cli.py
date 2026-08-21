@@ -1,4 +1,4 @@
-"""Verified local operator entrypoint for orchestrated on-demand ingestion."""
+"""Verified local operator entrypoints for ingestion and pending-run work."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from devradar.automation.orchestrator import orchestrate_source
+from devradar.automation.worker import work_one_pending_run
 from devradar.ingestion.models import CrawlRunStatus
 from devradar.ingestion.runner import IngestionRunError, resolve_v1_source
 from devradar.ingestion.source_registry import V1_SOURCE_REGISTRY
@@ -57,6 +58,13 @@ def _parser() -> argparse.ArgumentParser:
         "--idempotency-key",
         help="optional opaque key (1..200 characters) for safe operator retry",
     )
+    worker = subparsers.add_parser("work-one", help="process at most one pending crawl run")
+    worker.add_argument(
+        "--deadline-minutes",
+        type=_deadline_minutes,
+        default=60,
+        help="hard run deadline from now (1..360, default 60)",
+    )
     return parser
 
 
@@ -73,21 +81,30 @@ def _json_value(value: Any) -> Any:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     configure_structured_logging()
-    if args.command != "crawl":
-        raise AssertionError("argparse accepted an unsupported command")
     engine: Engine | None = None
+    report = None
     try:
-        resolved = resolve_v1_source(args.source)
         engine = create_engine(get_database_url())
         with Session(engine) as session:
-            result = orchestrate_source(
-                session,
-                config=resolved.config,
-                adapter=resolved.adapter,
-                deadline=datetime.now(UTC) + timedelta(minutes=args.deadline_minutes),
-                max_items=args.max_items,
-                trigger_key=args.idempotency_key,
-            )
+            deadline = datetime.now(UTC) + timedelta(minutes=args.deadline_minutes)
+            if args.command == "crawl":
+                resolved = resolve_v1_source(args.source)
+                result = orchestrate_source(
+                    session,
+                    config=resolved.config,
+                    adapter=resolved.adapter,
+                    deadline=deadline,
+                    max_items=args.max_items,
+                    trigger_key=args.idempotency_key,
+                )
+            elif args.command == "work-one":
+                worker_result = work_one_pending_run(session, deadline=deadline)
+                if worker_result is None:
+                    print(json.dumps({"processed": False}))
+                    return 0
+                result = worker_result
+            else:
+                raise AssertionError("argparse accepted an unsupported command")
             report = result.final_report
     except KeyboardInterrupt:
         return 130
@@ -117,6 +134,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if engine is not None:
             engine.dispose()
 
+    assert report is not None
     print(
         json.dumps(
             {key: _json_value(value) for key, value in asdict(report).items()},

@@ -5,10 +5,10 @@
 | Thuộc tính | Giá trị |
 |---|---|
 | Project status | `implementation` |
-| Active phase | `v2` (`in_progress`) |
+| Active phase | `v3` (`in_progress`) |
 | Code scaffold | Có — FastAPI health + read-only domain API, PostgreSQL schema/migration, test/static gates và Compose local |
 | Source approved | `3/3` cho bounded local non-commercial scope |
-| Runtime/test evidence | V1 [complete](evidence/V1-closeout.md): [scaffold](evidence/V1-001-scaffold.md), [schema](evidence/V1-002-postgresql-schema.md), [source registry](evidence/V1-003-source-registry.md), [fetch/snapshot](evidence/V1-004-safe-fetch-and-snapshot.md), [normalization](evidence/V1-005-normalization-and-hashing.md), [three adapters](evidence/V1-013-live-inventory.md), [upsert](evidence/V1-009-job-upsert.md), [read API](evidence/V1-010-read-api.md), [observability](evidence/V1-011-observability.md) và [Compose/runner](evidence/V1-012-compose-and-runner.md) |
+| Runtime/test evidence | V1 [complete](evidence/V1-closeout.md); V2 [complete](evidence/V2-006-v2-closeout.md) với direct orchestration, lifecycle, health/quarantine, operator API và one-shot pending-run worker |
 
 Task-level status có thể được theo dõi bằng `TASK_BOARD.md` cục bộ. File này bị Git ignore và không thay đổi phase gate hoặc exit criteria của roadmap.
 
@@ -102,7 +102,9 @@ Persisted JobChange, missing/removal lifecycle, Prefect, LLM, embeddings, LangGr
 
 ## 4. V2 — Automation, change detection và health
 
-**Status:** `in_progress`
+**Status:** `complete` — 2026-08-21.
+
+Completion evidence: [V2 closeout](evidence/V2-006-v2-closeout.md), cùng task evidence [V2-001](evidence/V2-001-prefect-spike.md), [V2-002](evidence/V2-002-direct-orchestration.md), [V2-003](evidence/V2-003-job-change-and-absence-lifecycle.md), [V2-004](evidence/V2-004-source-health-and-quarantine.md) và [V2-005](evidence/V2-005-operator-api-and-history.md).
 
 ### Mục tiêu
 
@@ -142,7 +144,7 @@ Adaptive LLM planner, distributed queue, public mutation API và AI-generated in
 
 ## 5. V3 — AI extraction, taxonomy và semantic search
 
-**Status:** `proposed`
+**Status:** `in_progress`
 
 ### Mục tiêu
 

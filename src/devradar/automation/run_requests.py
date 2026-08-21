@@ -52,7 +52,7 @@ def _trigger_key(idempotency_key: str) -> str:
     return f"api:{sha256(idempotency_key.encode()).hexdigest()}"
 
 
-def _matching_config(source: Source) -> SourceConfig | None:
+def matching_source_config(source: Source) -> SourceConfig | None:
     return next(
         (
             config
@@ -122,7 +122,7 @@ def request_crawl_run(
     if source is None:
         session.rollback()
         raise RunRequestError("source_not_found", "Source was not found.")
-    config = _matching_config(source)
+    config = matching_source_config(source)
     if source.approval_status is not SourceApprovalStatus.APPROVED or config is None:
         session.rollback()
         raise RunRequestError(

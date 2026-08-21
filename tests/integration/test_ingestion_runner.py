@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
@@ -16,6 +17,8 @@ from devradar.automation.orchestrator import (
     scheduled_slot,
     scheduled_trigger_key,
 )
+from devradar.automation.run_requests import LOCAL_OPERATOR_PRINCIPAL, request_crawl_run
+from devradar.automation.worker import work_one_pending_run
 from devradar.catalog.models import Job, JobChange, JobChangeType, JobStatus
 from devradar.ingestion.contracts import (
     FetchResult,
@@ -40,7 +43,7 @@ from devradar.ingestion.models import (
     SourceHealthStatus,
 )
 from devradar.ingestion.runner import IngestionRunError, run_approved_source
-from devradar.ingestion.source_registry import VNG_CAREERS, FetchPolicy
+from devradar.ingestion.source_registry import VNG_CAREERS, FetchPolicy, ResolvedSource
 from devradar.platform.database import DATABASE_URL_ENV
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -152,6 +155,14 @@ class SequencedFakeVngAdapter(FakeVngAdapter):
         return super().discover(run_context)
 
 
+def _fixture_resolver(adapter: JobSourceAdapter) -> Callable[[str], ResolvedSource]:
+    def resolve(source_key: str) -> ResolvedSource:
+        assert source_key == VNG_CAREERS.source_key
+        return ResolvedSource(config=VNG_CAREERS, adapter=adapter)
+
+    return resolve
+
+
 @pytest.mark.postgresql
 def test_runner_preserves_evidence_handles_partial_and_replay_without_false_removal(
     fresh_postgresql_url: str,
@@ -253,6 +264,173 @@ def test_runner_preserves_evidence_handles_partial_and_replay_without_false_remo
             assert bounded.items_failed == 0
             assert session.scalar(select(func.count()).select_from(Job)) == 1
             assert session.scalar(select(func.count()).select_from(CrawlRun)) == 4
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.postgresql
+def test_pending_api_run_is_claimed_once_and_retried_outside_http(
+    fresh_postgresql_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(DATABASE_URL_ENV, fresh_postgresql_url)
+    command.upgrade(Config(str(PROJECT_ROOT / "alembic.ini")), "head")
+    engine = create_engine(fresh_postgresql_url)
+    try:
+        with Session(engine) as session:
+            baseline = run_approved_source(
+                session,
+                config=VNG_CAREERS,
+                adapter=FakeVngAdapter(("801",), fetched_at=BASE_TIME),
+                deadline=datetime.now(UTC) + timedelta(minutes=5),
+            )
+            key = "worker-request-0001"
+            requested = request_crawl_run(
+                session,
+                source_id=baseline.source_id,
+                idempotency_key=key,
+            )
+            requested_id = requested.crawl_run.id
+            session.rollback()
+            replayed = request_crawl_run(
+                session,
+                source_id=baseline.source_id,
+                idempotency_key=key,
+            )
+            assert replayed.reused is True
+            assert replayed.crawl_run.id == requested_id
+            session.rollback()
+
+            with pytest.raises(IngestionRunError) as invalid_deadline:
+                work_one_pending_run(
+                    session,
+                    deadline=datetime.now(UTC) - timedelta(seconds=1),
+                    resolver=_fixture_resolver(FakeVngAdapter(("801",), fetched_at=BASE_TIME)),
+                )
+            assert invalid_deadline.value.code == "invalid_deadline"
+            still_pending = session.get(CrawlRun, requested_id)
+            assert still_pending is not None
+            assert still_pending.status is CrawlRunStatus.PENDING
+            session.rollback()
+
+            adapter = SequencedFakeVngAdapter(
+                ("801",),
+                fetched_at=BASE_TIME + timedelta(minutes=1),
+                discovery_errors=(FakeAdapterError("network_timeout", "fixture timeout"),),
+            )
+            sleeps: list[float] = []
+            result = work_one_pending_run(
+                session,
+                deadline=datetime.now(UTC) + timedelta(minutes=5),
+                resolver=_fixture_resolver(adapter),
+                retry_policy=RetryPolicy(
+                    base_delay_seconds=1,
+                    max_delay_seconds=5,
+                    jitter_ratio=0,
+                ),
+                sleeper=sleeps.append,
+                jitter_source=lambda: 0.5,
+            )
+            assert result is not None
+            assert [report.run_id for report in result.reports[:1]] == [requested_id]
+            assert [report.trigger_type for report in result.reports] == [
+                CrawlTriggerType.MANUAL,
+                CrawlTriggerType.RETRY,
+            ]
+            assert result.final_report.status is CrawlRunStatus.SUCCEEDED
+            assert result.reports[1].retry_of_run_id == requested_id
+            assert adapter.discovery_calls == 2
+            assert sleeps == [1]
+
+            persisted_request = session.get(CrawlRun, requested_id)
+            assert persisted_request is not None
+            assert persisted_request.requested_by == LOCAL_OPERATOR_PRINCIPAL
+            assert persisted_request.trigger_key is not None
+            assert key not in persisted_request.trigger_key
+            session.rollback()
+            assert (
+                work_one_pending_run(
+                    session,
+                    deadline=datetime.now(UTC) + timedelta(minutes=5),
+                    resolver=_fixture_resolver(adapter),
+                    sleeper=sleeps.append,
+                )
+                is None
+            )
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.postgresql
+def test_v2_scheduled_acceptance_cycles_cover_lifecycle_and_duplicate_trigger(
+    fresh_postgresql_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(DATABASE_URL_ENV, fresh_postgresql_url)
+    command.upgrade(Config(str(PROJECT_ROOT / "alembic.ini")), "head")
+    engine = create_engine(fresh_postgresql_url)
+    try:
+        with Session(engine) as session:
+            reports = []
+            cycles = (
+                (("901", "902"), "Backend Engineer"),
+                (("901", "902"), "Senior Backend Engineer"),
+                (("901",), "Senior Backend Engineer"),
+                (("901",), "Senior Backend Engineer"),
+                (("901", "902"), "Senior Backend Engineer"),
+            )
+            for index, (inventory, title_prefix) in enumerate(cycles):
+                scheduled_for = BASE_TIME + timedelta(minutes=15 * index)
+                adapter = FakeVngAdapter(
+                    inventory,
+                    fetched_at=BASE_TIME + timedelta(minutes=index),
+                    title_prefix=title_prefix,
+                )
+                result = orchestrate_source(
+                    session,
+                    config=VNG_CAREERS,
+                    adapter=adapter,
+                    deadline=datetime.now(UTC) + timedelta(minutes=5),
+                    trigger_type=CrawlTriggerType.SCHEDULED,
+                    trigger_key=scheduled_trigger_key(VNG_CAREERS.source_key, scheduled_for),
+                    scheduled_for=scheduled_for,
+                )
+                reports.append(result.final_report)
+
+            assert reports[0].items_new == 2
+            assert reports[1].items_updated == 2
+            assert reports[2].items_missing == 1
+            assert reports[3].items_removed == 1
+            assert reports[4].items_reactivated == 1
+            assert all(report.status is CrawlRunStatus.SUCCEEDED for report in reports)
+            assert all(report.coverage_status is CoverageStatus.COMPLETE for report in reports)
+
+            duplicate_adapter = FakeVngAdapter(("999",), fetched_at=datetime.now(UTC))
+            duplicate = orchestrate_source(
+                session,
+                config=VNG_CAREERS,
+                adapter=duplicate_adapter,
+                deadline=datetime.now(UTC) + timedelta(minutes=5),
+                trigger_type=CrawlTriggerType.SCHEDULED,
+                trigger_key=reports[-1].trigger_key,
+                scheduled_for=reports[-1].scheduled_for,
+            )
+            assert duplicate.final_report.run_id == reports[-1].run_id
+            assert duplicate.final_report.reused is True
+            assert duplicate_adapter.discovery_calls == 0
+            assert session.scalar(select(func.count()).select_from(CrawlRun)) == 5
+
+            changes = session.scalars(select(JobChange)).all()
+            assert {change.change_type for change in changes} >= {
+                JobChangeType.CREATED,
+                JobChangeType.UPDATED,
+                JobChangeType.MISSING,
+                JobChangeType.REMOVED,
+                JobChangeType.REACTIVATED,
+            }
+            jobs = session.scalars(select(Job).order_by(Job.external_id)).all()
+            assert [job.external_id for job in jobs] == ["901", "902"]
+            assert all(job.status is JobStatus.ACTIVE for job in jobs)
     finally:
         engine.dispose()
 

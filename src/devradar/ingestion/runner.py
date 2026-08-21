@@ -110,7 +110,7 @@ def _rate_limit_policy(config: SourceConfig) -> dict[str, int | None]:
     }
 
 
-def _source_matches_config(source: Source, config: SourceConfig) -> bool:
+def source_matches_config(source: Source, config: SourceConfig) -> bool:
     return bool(
         source.name == config.name
         and source.base_url == config.base_url
@@ -140,7 +140,7 @@ def _ensure_source(session: Session, config: SourceConfig) -> UUID:
         )
         session.add(source)
         session.flush()
-    elif not _source_matches_config(source, config):
+    elif not source_matches_config(source, config):
         raise IngestionRunError(
             "source_config_mismatch",
             "Persisted source does not match the approved registry configuration.",
@@ -425,6 +425,7 @@ def run_approved_source(
     scheduled_for: datetime | None = None,
     retry_of_run_id: UUID | None = None,
     attempt_number: int = 1,
+    claimed_run_id: UUID | None = None,
 ) -> RunReport:
     """Own one claimed run lifecycle; network work happens outside DB transactions."""
 
@@ -449,33 +450,45 @@ def run_approved_source(
             "invalid_trigger_key",
             "Trigger key must contain 1..200 non-blank characters.",
         )
+    if claimed_run_id is not None and (
+        trigger_type is not CrawlTriggerType.MANUAL
+        or trigger_key is not None
+        or scheduled_for is not None
+        or retry_of_run_id is not None
+        or attempt_number != 1
+    ):
+        raise IngestionRunError(
+            "invalid_claimed_run",
+            "A claimed run uses its persisted trigger identity.",
+        )
     scheduled_time_is_aware = bool(
         scheduled_for is not None
         and scheduled_for.tzinfo is not None
         and scheduled_for.utcoffset() is not None
     )
-    if trigger_type is CrawlTriggerType.SCHEDULED:
-        if not scheduled_time_is_aware or trigger_key is None:
+    if claimed_run_id is None:
+        if trigger_type is CrawlTriggerType.SCHEDULED:
+            if not scheduled_time_is_aware or trigger_key is None:
+                raise IngestionRunError(
+                    "invalid_scheduled_trigger",
+                    "Scheduled runs require an aware scheduled time and trigger key.",
+                )
+        elif scheduled_for is not None:
             raise IngestionRunError(
                 "invalid_scheduled_trigger",
-                "Scheduled runs require an aware scheduled time and trigger key.",
+                "Only scheduled runs may carry a scheduled time.",
             )
-    elif scheduled_for is not None:
-        raise IngestionRunError(
-            "invalid_scheduled_trigger",
-            "Only scheduled runs may carry a scheduled time.",
-        )
-    if trigger_type is CrawlTriggerType.RETRY:
-        if retry_of_run_id is None or attempt_number < 2 or trigger_key is None:
+        if trigger_type is CrawlTriggerType.RETRY:
+            if retry_of_run_id is None or attempt_number < 2 or trigger_key is None:
+                raise IngestionRunError(
+                    "invalid_retry_trigger",
+                    "Retry runs require a previous run, attempt number, and trigger key.",
+                )
+        elif retry_of_run_id is not None or attempt_number != 1:
             raise IngestionRunError(
                 "invalid_retry_trigger",
-                "Retry runs require a previous run, attempt number, and trigger key.",
+                "Only retry runs may carry retry relation or attempt number greater than one.",
             )
-    elif retry_of_run_id is not None or attempt_number != 1:
-        raise IngestionRunError(
-            "invalid_retry_trigger",
-            "Only retry runs may carry retry relation or attempt number greater than one.",
-        )
 
     try:
         source_id = _ensure_source(session, config)
@@ -486,26 +499,48 @@ def run_approved_source(
     if source is None:
         session.rollback()
         raise IngestionRunError("source_not_found", "Persisted source could not be loaded.")
-    if not source_allows_trigger(source, trigger_type):
+    effective_trigger_type = trigger_type
+    if claimed_run_id is not None:
+        claimed_run = session.get(CrawlRun, claimed_run_id, with_for_update=True)
+        if (
+            claimed_run is None
+            or claimed_run.source_id != source_id
+            or claimed_run.status is not CrawlRunStatus.RUNNING
+            or claimed_run.started_at is None
+            or claimed_run.finished_at is not None
+            or claimed_run.adapter_version != adapter.adapter_version
+            or claimed_run.config_version != config.config_version
+        ):
+            session.rollback()
+            raise IngestionRunError(
+                "claimed_run_not_available",
+                "Claimed crawl run is not available for execution.",
+            )
+        effective_trigger_type = claimed_run.trigger_type
+    if not source_allows_trigger(source, effective_trigger_type):
         session.rollback()
         raise IngestionRunError(
             "source_quarantined",
             "Scheduled and retry triggers are disabled while source is quarantined.",
         )
     session.rollback()
-    started_at = datetime.now(UTC)
-    run_id, created = _create_run(
-        session,
-        source_id=source_id,
-        config=config,
-        adapter=adapter,
-        started_at=started_at,
-        trigger_type=trigger_type,
-        trigger_key=trigger_key,
-        scheduled_for=scheduled_for,
-        retry_of_run_id=retry_of_run_id,
-        attempt_number=attempt_number,
-    )
+    if claimed_run_id is not None:
+        run_id = claimed_run_id
+        created = True
+    else:
+        started_at = datetime.now(UTC)
+        run_id, created = _create_run(
+            session,
+            source_id=source_id,
+            config=config,
+            adapter=adapter,
+            started_at=started_at,
+            trigger_type=trigger_type,
+            trigger_key=trigger_key,
+            scheduled_for=scheduled_for,
+            retry_of_run_id=retry_of_run_id,
+            attempt_number=attempt_number,
+        )
     if not created:
         existing = session.get(CrawlRun, run_id)
         if existing is None:

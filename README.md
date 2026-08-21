@@ -7,12 +7,12 @@
 | Thuộc tính | Giá trị |
 |---|---|
 | Trạng thái | `implementation` |
-| Phase hiện tại | `v2` — Automation, change detection và health (`in_progress`) |
+| Phase hiện tại | `v3` — AI extraction, taxonomy và semantic search (`in_progress`) |
 | Mô hình sử dụng ban đầu | Portfolio cá nhân, single-operator |
 | Thị trường ưu tiên | Job IT Việt Nam, nội dung Việt/Anh, lương VND |
-| Code chạy được | Có — ba source adapters, Job/JobChange lifecycle, schedule/retry/health, bảy read endpoints, local-gated idempotent CrawlRun enqueue và structured JSON events |
+| Code chạy được | Có — ba source adapters, V2 schedule/retry/lifecycle/health, PostgreSQL one-shot worker, bảy read endpoints, local-gated CrawlRun enqueue và structured JSON events |
 
-V1 đã hoàn tất với FastAPI, PostgreSQL schema/migration, approved source registry, safe HTTPS fetcher, raw snapshot persistence, deterministic normalization/canonical hash, ba concrete source adapters, transactional current-state Job upsert, read-only Job/Source/CrawlRun API, structured observability và operator CLI. Ba source đã ingest toàn bộ inventory quan sát được: 78 canonical jobs với identity/provenance 1:1 và full replay không tạo update giả. Mục tiêu `>=500` được chuyển sang V3, trước khi tuyên bố semantic/trend analytics có quy mô. V2 đã defer Prefect sau compatibility/deployment spike và đang dùng direct PostgreSQL-backed orchestration; dự án chưa public release.
+V1 đã hoàn tất với FastAPI, PostgreSQL schema/migration, approved source registry, safe fetch/snapshot pipeline, ba concrete source adapters và REST API. Ba source đã ingest toàn bộ inventory quan sát được: 78 canonical jobs với identity/provenance 1:1 và full replay không tạo update giả. V2 đã hoàn tất direct PostgreSQL-backed schedule/retry, JobChange lifecycle, source health/quarantine, operator enqueue và one-shot pending-run worker. V3 đang bắt đầu bằng evaluation dataset/baseline; repo chưa có LLM provider, pgvector hay public release. Mục tiêu `>=500` vẫn là gate trước khi tuyên bố semantic/trend analytics có quy mô.
 
 ## Mục tiêu
 
@@ -52,7 +52,7 @@ flowchart LR
     G --> X
 ```
 
-Các thành phần ghi kèm phiên bản chưa thuộc V1. Kiến trúc và dependency được kích hoạt theo phase, không được cài sẵn chỉ vì có trong tầm nhìn dài hạn.
+Các thành phần ghi kèm phiên bản chỉ được triển khai khi task/entry gate tương ứng đạt. V3 đang active không tự động chấp nhận LLM provider hoặc pgvector trước spike/evaluation.
 
 ## Roadmap tóm tắt
 
@@ -97,6 +97,7 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [V2 lifecycle evidence](docs/evidence/V2-003-job-change-and-absence-lifecycle.md): meaningful changes, two-run removal, false-removal guard và reactivation.
 - [V2 source health evidence](docs/evidence/V2-004-source-health-and-quarantine.md): inventory baseline/anomaly, quarantine, operator recovery và safe API view.
 - [V2 operator API evidence](docs/evidence/V2-005-operator-api-and-history.md): fail-closed write gate, idempotent pending runs, JobChange history và negative trust-boundary tests.
+- [V2 closeout evidence](docs/evidence/V2-006-v2-closeout.md): one-shot worker, five scheduled acceptance cycles, exit-criteria mapping và chuyển phase sang V3.
 - [Roadmap](docs/ROADMAP.md): kế hoạch V1–V6 và definition of done.
 - [Architecture Decision Records](docs/decisions/README.md): quyết định đã chấp nhận và quyết định còn đề xuất.
 - [Ý tưởng ban đầu](DevRadar_Agentic_Job_Market_Intelligence.md): tài liệu tham khảo gốc, không phải bằng chứng trạng thái triển khai.
@@ -151,6 +152,14 @@ docker compose --env-file .env.example down
 ```
 
 API bind tại `127.0.0.1:8000`; PostgreSQL bind tại `127.0.0.1:55432`. `docker compose down` giữ named volume. Chỉ xóa volume khi operator chủ động chấp nhận mất dữ liệu local.
+
+Khi local operator đã bật write gate và enqueue một run qua API, xử lý tối đa một pending request ngoài HTTP lifecycle bằng:
+
+```powershell
+docker compose --env-file .env.example --profile crawler run --rm crawler work-one --deadline-minutes 60
+```
+
+Queue rỗng trả `{"processed": false}` và exit `0`. Command này có thể gọi network nếu có pending run hợp lệ; nó chỉ resolve source từ allow-list đã duyệt và không nhận URL tùy ý.
 
 Migration phải chạy trước application feature dùng database. Health hiện vẫn là process liveness, không phải database readiness; PostgreSQL integration evidence được kiểm tra riêng.
 
