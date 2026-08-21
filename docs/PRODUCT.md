@@ -173,4 +173,4 @@ Các con số về accuracy/latency/cost cho V3–V6 không được bịa trư�
 - Nội dung job có thể là tiếng Việt, tiếng Anh hoặc trộn hai ngôn ngữ.
 - V1 giữ salary gốc và normalized amount/period/currency khi có thể; không tự quy đổi.
 - Portfolio ban đầu là single-operator. Chức năng ghi dữ liệu nhạy cảm không được public trước V6.
-- Ba source cụ thể chưa được chọn. Việc chọn source là entry gate của V1, không phải quyết định ngầm của crawler implementer.
+- Ba source V1 đã được operator duyệt cho bounded local non-commercial scope: VNG Careers, NAVER Vietnam/Greenhouse và MoMo Careers. Mỗi adapter vẫn bị giới hạn bởi approval record/allow-list riêng; quyết định này không cấp quyền public full-JD, commercial reuse hoặc AI training. GeoComply/Lever giữ `permission_required` vì employer terms cấm automated retrieval.

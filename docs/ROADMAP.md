@@ -4,11 +4,11 @@
 
 | Thuộc tính | Giá trị |
 |---|---|
-| Project status | `planning` |
-| Active phase | `pre_v1` |
+| Project status | `implementation` |
+| Active phase | `v1` |
 | Code scaffold | Chưa có |
-| Source approved | Chưa có |
-| Runtime/test evidence | Chưa có |
+| Source approved | `3/3` cho bounded local non-commercial scope |
+| Runtime/test evidence | Chỉ có local prerequisite/source spike; chưa có application runtime |
 
 Task-level status có thể được theo dõi bằng `TASK_BOARD.md` cục bộ. File này bị Git ignore và không thay đổi phase gate hoặc exit criteria của roadmap.
 
@@ -28,7 +28,7 @@ Không có deadline tuần cố định trong roadmap này. Thứ tự dependenc
 
 ## 2. Pre-V1 — Documentation và source discovery
 
-**Status:** `in_progress` cho tới khi bộ docs được chấp nhận và source gate hoàn tất.
+**Status:** `complete` — 2026-08-21.
 
 ### Mục tiêu
 
@@ -48,11 +48,11 @@ Chuyển ý tưởng thành contract triển khai được mà không khởi t�
 - ba source thật đạt policy và technical approval gate;
 - V1 có source fixtures/spike plan, chưa cần production crawler.
 
-Việc tạo bộ docs hoàn thành phần documentation của Pre-V1, nhưng **không hoàn thành toàn phase** cho tới khi ba source được approved.
+Completion evidence: [VNG Careers](sources/vng-careers.md), [NAVER Vietnam/Greenhouse](sources/naver-vietnam-greenhouse.md), [MoMo Careers](sources/momo-careers.md), [local prerequisites](evidence/PRE-007-local-prerequisites.md) và [Pre-V1 closeout](evidence/PRE-008-pre-v1-closeout.md). GeoComply/Lever giữ `permission_required` và được thay khỏi V1 critical path; xem [record](sources/geocomply-lever.md).
 
 ## 3. V1 — Crawler MVP và REST API
 
-**Status:** `planned`
+**Status:** `in_progress`
 
 ### Mục tiêu
 

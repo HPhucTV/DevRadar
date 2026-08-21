@@ -13,6 +13,8 @@ Tài liệu này định nghĩa bằng chứng cần có để nói DevRadar ch�
 | Demo | Portfolio demo từ V5 | dataset đã sanitize; CV ephemeral | protected hoặc read-only |
 | Production-like | V6 public deployment | dữ liệu công khai + owner data có policy | HTTPS, auth, monitoring |
 
+Kết quả kiểm tra capability máy phát triển trước V1 được ghi riêng tại [PRE-007 local prerequisites evidence](evidence/PRE-007-local-prerequisites.md); đây không phải Quick Start hoặc runtime proof của ứng dụng.
+
 Không dùng production secret/data trong CI. Không gọi source/LLM thật từ default unit test; live integration phải opt-in, có budget và được gắn nhãn rõ.
 
 ## 3. Configuration và secrets

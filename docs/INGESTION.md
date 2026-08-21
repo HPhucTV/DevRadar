@@ -8,6 +8,8 @@ Ingestion tạo dataset có thể tin cậy và replay từ các nguồn job cô
 
 Một source chỉ chuyển từ `candidate` sang `approved` khi có record trả lời đầy đủ:
 
+Danh sách discovery hiện tại nằm tại [Shortlist nguồn V1](sources/SHORTLIST.md). Shortlist chỉ ghi evidence và thứ tự review; nó không phải approval record và không cấp quyền chạy crawler.
+
 ### 2.1. Policy và phạm vi
 
 - trang/feed/API có thể truy cập công khai, không cần đăng nhập hoặc token lấy bằng cách không được phép;

@@ -6,8 +6,8 @@
 
 | Thuộc tính | Giá trị |
 |---|---|
-| Trạng thái | `Planning` |
-| Phase hiện tại | Chuẩn bị trước V1 |
+| Trạng thái | `implementation` |
+| Phase hiện tại | `v1` — Crawler MVP và REST API (`in_progress`) |
 | Mô hình sử dụng ban đầu | Portfolio cá nhân, single-operator |
 | Thị trường ưu tiên | Job IT Việt Nam, nội dung Việt/Anh, lương VND |
 | Code chạy được | Chưa có |
@@ -76,6 +76,8 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [API](docs/API.md): REST contract dưới `/api/v1` và phase availability.
 - [AI](docs/AI.md): deterministic-first, evaluation, agent boundary, chi phí và quyền riêng tư.
 - [Operations](docs/OPERATIONS.md): test, security, observability, retention, CI/CD và deployment gates.
+- [Source discovery](docs/sources/SHORTLIST.md): evidence và approval outcome; VNG, NAVER Vietnam/Greenhouse và MoMo đã được duyệt cho bounded local non-commercial scope, GeoComply/Lever vẫn `permission_required`.
+- [Pre-V1 local evidence](docs/evidence/PRE-007-local-prerequisites.md): Docker/PostgreSQL capability và constraint đã xác minh.
 - [Roadmap](docs/ROADMAP.md): kế hoạch V1–V6 và definition of done.
 - [Architecture Decision Records](docs/decisions/README.md): quyết định đã chấp nhận và quyết định còn đề xuất.
 - [Ý tưởng ban đầu](DevRadar_Agentic_Job_Market_Intelligence.md): tài liệu tham khảo gốc, không phải bằng chứng trạng thái triển khai.
