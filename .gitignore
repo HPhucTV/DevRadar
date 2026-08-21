@@ -1,0 +1,81 @@
+# Local-only project tracking
+/TASK_BOARD.md
+
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+!.env.*.example
+.envrc
+.direnv/
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+__pypackages__/
+.pytest_cache/
+.hypothesis/
+.mypy_cache/
+.pyright/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Node.js and Next.js
+node_modules/
+.next/
+out/
+.turbo/
+.vercel/
+.pnpm-store/
+coverage/
+*.tsbuildinfo
+
+# Test and tool artifacts
+playwright-report/
+test-results/
+blob-report/
+.prefect/
+.cache/
+
+# Runtime data and local databases
+/data/
+/storage/
+/uploads/
+/backups/
+/artifacts/
+/logs/
+/tmp/
+/temp/
+/pgdata/
+/postgres-data/
+*.log
+*.db
+*.sqlite
+*.sqlite3
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Operating systems
+.DS_Store
+Thumbs.db
+Desktop.ini

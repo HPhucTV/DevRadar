@@ -1,0 +1,101 @@
+# DevRadar
+
+**DevRadar — Agentic Job Market Intelligence Platform** là dự án portfolio thu thập, chuẩn hóa và phân tích dữ liệu tuyển dụng IT công khai, ưu tiên thị trường Việt Nam. Hệ thống được phát triển theo nguyên tắc **data pipeline trước, Agent sau**: dữ liệu, provenance và tính đúng đắn phải ổn định trước khi thêm LLM hoặc agentic workflow.
+
+## Trạng thái
+
+| Thuộc tính | Giá trị |
+|---|---|
+| Trạng thái | `Planning` |
+| Phase hiện tại | Chuẩn bị trước V1 |
+| Mô hình sử dụng ban đầu | Portfolio cá nhân, single-operator |
+| Thị trường ưu tiên | Job IT Việt Nam, nội dung Việt/Anh, lương VND |
+| Code chạy được | Chưa có |
+
+Repository hiện chỉ chứa đặc tả và quyết định kiến trúc. Chưa có ứng dụng, dependency, database migration, Docker image hoặc lệnh build/test đã được xác minh.
+
+## Mục tiêu
+
+DevRadar hướng tới các khả năng sau:
+
+- thu thập job định kỳ từ các nguồn công khai đã được phê duyệt;
+- lưu raw snapshot có provenance và chuẩn hóa dữ liệu job;
+- xử lý idempotency, deduplication và change detection;
+- trích xuất skill bằng deterministic parser trước, LLM fallback sau;
+- phân tích xu hướng kỹ năng và semantic search;
+- so khớp CV với job mà vẫn bảo vệ dữ liệu cá nhân;
+- dùng agent cho các quyết định cần reasoning, không dùng agent để thay thế workflow xác định;
+- cung cấp dashboard, alert và bằng chứng vận hành đủ tốt cho một portfolio kỹ thuật.
+
+## Nguyên tắc thiết kế
+
+1. **Data pipeline trước, Agent sau.** V1–V2 tập trung vào ingestion và khả năng vận hành; AI bắt đầu ở V3, agentic workflow ở V4.
+2. **Modular monolith trước.** Chỉ tách service hoặc thêm hạ tầng phân tán khi có nhu cầu đã đo được.
+3. **Nguồn hợp lệ mới được crawl.** Không bypass CAPTCHA, authentication, anti-bot hoặc điều khoản truy cập.
+4. **Provenance không được mất.** Mọi dữ liệu chuẩn hóa phải truy ngược được về source, URL, thời điểm fetch và raw snapshot.
+5. **Deterministic-first.** JSON-LD, selector và parser được ưu tiên trước LLM; kết quả AI luôn phải qua schema validation.
+6. **Không tuyên bố nhiều hơn bằng chứng.** Trạng thái roadmap chỉ được nâng khi có test, metric hoặc demo artifact tương ứng.
+
+## Kiến trúc định hướng
+
+```mermaid
+flowchart LR
+    S["Approved public sources"] --> I["Ingestion modules"]
+    I --> P[("PostgreSQL")]
+    P --> A["FastAPI /api/v1"]
+    P --> X["Analytics and matching"]
+    X --> A
+    A --> W["Next.js dashboard - V5"]
+    O["Prefect - V2"] --> I
+    L["LLM and pgvector - V3"] --> X
+    G["LangGraph - V4"] --> I
+    G --> X
+```
+
+Các thành phần ghi kèm phiên bản chưa thuộc V1. Kiến trúc và dependency được kích hoạt theo phase, không được cài sẵn chỉ vì có trong tầm nhìn dài hạn.
+
+## Roadmap tóm tắt
+
+| Phiên bản | Trọng tâm | Công nghệ/capability được mở |
+|---|---|---|
+| V1 | Crawler MVP và REST API | Python, FastAPI, PostgreSQL, Docker Compose |
+| V2 | Automation và change detection | Prefect, retry, crawl health |
+| V3 | AI extraction và semantic search | LLM boundary, skill taxonomy, pgvector |
+| V4 | Agentic decision layer | LangGraph cho planner/validator/analyst |
+| V5 | Trải nghiệm người dùng | Next.js, dashboard, CV matching |
+| V6 | Production hardening | Auth, rate limit, CI/CD, monitoring; Redis chỉ khi có bằng chứng cần |
+
+Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm trong [Roadmap](docs/ROADMAP.md).
+
+## Tài liệu
+
+- [Product specification](docs/PRODUCT.md): bài toán, người dùng, phạm vi và yêu cầu.
+- [Architecture](docs/ARCHITECTURE.md): module boundary, data flow, trust boundary và topology theo phase.
+- [Domain model](docs/DOMAIN_MODEL.md): ubiquitous language, entity và lifecycle.
+- [Ingestion](docs/INGESTION.md): source approval, crawler contract, normalization, deduplication và change detection.
+- [API](docs/API.md): REST contract dưới `/api/v1` và phase availability.
+- [AI](docs/AI.md): deterministic-first, evaluation, agent boundary, chi phí và quyền riêng tư.
+- [Operations](docs/OPERATIONS.md): test, security, observability, retention, CI/CD và deployment gates.
+- [Roadmap](docs/ROADMAP.md): kế hoạch V1–V6 và definition of done.
+- [Architecture Decision Records](docs/decisions/README.md): quyết định đã chấp nhận và quyết định còn đề xuất.
+- [Ý tưởng ban đầu](DevRadar_Agentic_Job_Market_Intelligence.md): tài liệu tham khảo gốc, không phải bằng chứng trạng thái triển khai.
+
+## Quick Start
+
+Chưa có Quick Start vì project chưa được scaffold. Khi V1 tạo ra ứng dụng chạy được, pull request đó phải bổ sung và kiểm chứng tối thiểu các lệnh:
+
+- khởi động môi trường local;
+- chạy migration;
+- chạy test;
+- chạy lint/type check;
+- dừng và dọn môi trường local an toàn.
+
+Không sao chép lệnh dự kiến vào README trước khi chúng thực sự chạy thành công.
+
+## Nguồn sự thật
+
+- Roadmap xác định phase hiện tại và điều kiện hoàn thành.
+- ADR `Accepted` giải thích các quyết định khó đảo ngược.
+- Các tài liệu domain/API/ingestion là contract thiết kế trước khi có code.
+- Sau khi FastAPI tồn tại, OpenAPI sinh từ code là nguồn sự thật cho wire contract; thay đổi phải đồng bộ tài liệu trong cùng thay đổi.
+- Tài liệu ý tưởng ban đầu giữ vai trò tầm nhìn, không được dùng để kết luận một feature đã được triển khai.
