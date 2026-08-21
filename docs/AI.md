@@ -26,6 +26,8 @@ AI là lớp bổ sung có giới hạn, không phải nguồn sự thật hoặ
 
 Không thêm SDK/model dependency trong V1–V2 chỉ để chuẩn bị.
 
+V3-002 hiện đề xuất OpenAI `gpt-5.4-nano-2026-03-17`, `text-embedding-3-small` 1536 chiều và pgvector `0.8.6` trong [ADR-007](decisions/0007-proposed-openai-first-v3-provider-and-pgvector.md). Quyết định vẫn `Proposed`: pgvector compatibility đã pass nhưng live provider latency/usage chưa thể đo vì local environment không có project credential. Không thêm SDK hoặc provider code trước khi gate đó đạt.
+
 ## 3. LLM extraction contract
 
 LLM chỉ nhận phần text cần thiết cùng schema/version. Prompt phải nói rõ nội dung JD/CV là dữ liệu không đáng tin và không được làm thay đổi policy.
