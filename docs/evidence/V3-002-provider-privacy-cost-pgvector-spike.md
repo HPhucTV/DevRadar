@@ -81,4 +81,4 @@ Observed local one-shot query evidence:
 
 ## Điều kiện mở khóa
 
-Operator cung cấp key DeepSeek mới đã rotate qua `DEVRADAR_DEEPSEEK_API_KEY` bằng secret mechanism ngoài Git/log, với spend cap nhỏ (đề xuất USD 1 cho spike). Chạy development split qua module spike đã khóa, tối thiểu 3 repeat/case, ghi actual model ID, system fingerprint, usage, latency p50/p95, cost và schema/error behavior. Không dùng held-out làm prompt tuning; held-out chỉ chạy release evaluation sau khi prompt/schema đã khóa. Embedding provider vẫn là gate riêng trước V3-005.
+Operator cung cấp key DeepSeek mới đã rotate qua process `DEVRADAR_DEEPSEEK_API_KEY` hoặc `.env.local` bị Git/Docker ignore, với spend cap nhỏ (đề xuất USD 1 cho spike). Chạy development split qua module spike đã khóa, tối thiểu 3 repeat/case, ghi actual model ID, system fingerprint, usage, latency p50/p95, cost và schema/error behavior. Không dùng held-out làm prompt tuning; held-out chỉ chạy release evaluation sau khi prompt/schema đã khóa. Embedding provider vẫn là gate riêng trước V3-005.

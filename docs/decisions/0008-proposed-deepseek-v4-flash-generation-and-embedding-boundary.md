@@ -19,7 +19,7 @@ Repository đã có dataset synthetic `job-extraction-eval-v1` với development
 - Dùng `deepseek-v4-flash` qua `POST https://api.deepseek.com/chat/completions` cho live provider spike trên development split synthetic mà thôi.
 - Chọn non-thinking bằng `thinking: {"type": "disabled"}`; không gửi `tools`, `tool_choice`, file, CV, raw HTML hoặc source credential.
 - Bật JSON Output bằng `response_format: {"type": "json_object"}`; prompt phải chứa từ `json` và ví dụ schema. Response vẫn là untrusted input: parse bằng schema strict, kiểm tra evidence là substring của input, reject duplicate/unsupported field và không persist raw output.
-- API key chỉ đọc từ `DEVRADAR_DEEPSEEK_API_KEY`; không ghi vào file, log, report, command hoặc exception. Base URL/model là constant của spike, không nhận URL tùy ý.
+- API key đọc từ process `DEVRADAR_DEEPSEEK_API_KEY` hoặc fallback `.env.local` đã bị Git/Docker ignore; environment được ưu tiên. Không ghi key vào tracked file, log, report, command hoặc exception. Base URL/model là constant của spike, không nhận URL tùy ý.
 - Ghi lại trong report chỉ model ID trả về, system fingerprint, usage token, latency, cost estimate, schema/error code và match count. Không ghi prompt, output, job text hoặc secret.
 - Chạy tối đa 3 repeat/case trên development split để lấy p50/p95 và usage. Không dùng held-out để tuning; chỉ chạy held-out sau khi prompt/schema khóa cho release evaluation.
 - Giữ pgvector/PostgreSQL làm candidate system-of-record/vector capability. Embedding provider và model là quyết định riêng, defer tới khi có official API/terms, dimension, cost, latency và evaluation evidence.

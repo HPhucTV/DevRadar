@@ -137,20 +137,24 @@ Chỉ khi chạy MoMo adapter local, cài Chromium đúng version Playwright đ�
 
 ### V3 DeepSeek synthetic spike (opt-in)
 
-Module này chỉ gửi 4 case `development` synthetic đã khóa; không gửi JD nguồn thật, CV hoặc file `.env`. Key đã dán trong chat phải revoke/rotate trước. Sau khi có key mới, nạp vào process bằng input masked rồi tự xóa biến môi trường:
+Module này chỉ gửi 4 case `development` synthetic đã khóa; không gửi JD nguồn thật hoặc CV. Key đã dán trong chat phải revoke/rotate trước. Cách đơn giản nhất là tự tạo `.env.local` tại root repository với đúng một dòng:
+
+```dotenv
+DEVRADAR_DEEPSEEK_API_KEY=YOUR_NEW_ROTATED_KEY
+```
+
+`.env.local` đã bị Git và Docker ignore; không sửa `.env.example` và không gửi nội dung file qua chat. Environment variable hiện hữu được ưu tiên hơn file. Chạy spike từ root repository:
 
 ```powershell
-$env:DEVRADAR_DEEPSEEK_API_KEY = Read-Host 'Rotated DeepSeek API key' -MaskInput
 $env:PYTHONPATH = (Join-Path (Get-Location) 'src')
 try {
     .venv\Scripts\python -m devradar.intelligence.deepseek_spike
 } finally {
-    Remove-Item Env:\DEVRADAR_DEEPSEEK_API_KEY -ErrorAction SilentlyContinue
     Remove-Item Env:\PYTHONPATH -ErrorAction SilentlyContinue
 }
 ```
 
-Lệnh live này chưa được chạy trong evidence hiện tại vì chưa có key mới an toàn; khi chạy phải lưu lại chỉ model/fingerprint, usage, latency, cost và validation summary, không lưu prompt/output.
+Lệnh live này chưa được chạy trong evidence hiện tại vì chưa có key mới an toàn; khi chạy phải lưu lại chỉ model/fingerprint, usage, latency, cost và validation summary, không lưu prompt/output. Xóa `.env.local` sau spike nếu không còn cần dùng local.
 
 PostgreSQL integration là opt-in và tạo/xóa database test tên ngẫu nhiên. Với database Compose đang chạy:
 

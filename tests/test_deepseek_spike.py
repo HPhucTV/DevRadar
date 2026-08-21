@@ -8,11 +8,13 @@ from urllib.error import HTTPError
 
 import pytest
 
+import devradar.intelligence.deepseek_spike as deepseek_spike
 from devradar.intelligence.deepseek_spike import (
     API_KEY_ENV,
     API_URL,
     MODEL,
     DeepSeekSpikeError,
+    _load_local_api_key,
     _request_payload,
     _safe_provider_response,
     main,
@@ -162,8 +164,10 @@ def test_development_spike_never_calls_held_out_and_reports_no_content() -> None
 def test_spike_cli_fails_closed_without_key(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
 ) -> None:
     monkeypatch.delenv(API_KEY_ENV, raising=False)
+    monkeypatch.setattr(deepseek_spike, "LOCAL_ENV_PATH", tmp_path / ".env.local")
 
     assert main([]) == 1
     captured = capsys.readouterr()
@@ -174,3 +178,28 @@ def test_spike_cli_fails_closed_without_key(
         }
     }
     assert captured.out == ""
+
+
+def test_local_env_loader_reads_only_exact_key_and_supports_quotes(tmp_path: Path) -> None:
+    local_env = tmp_path / ".env.local"
+    local_env.write_text(
+        "IGNORED=value\nDEVRADAR_DEEPSEEK_API_KEY='unit-test-secret'\n",
+        encoding="utf-8",
+    )
+
+    assert _load_local_api_key(local_env) == "unit-test-secret"
+
+
+def test_local_env_loader_rejects_duplicate_key_without_exposing_values(tmp_path: Path) -> None:
+    local_env = tmp_path / ".env.local"
+    local_env.write_text(
+        "DEVRADAR_DEEPSEEK_API_KEY=first-secret\nDEVRADAR_DEEPSEEK_API_KEY=second-secret\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(DeepSeekSpikeError) as captured:
+        _load_local_api_key(local_env)
+
+    assert captured.value.code == "local_env_invalid"
+    assert "first-secret" not in str(captured.value)
+    assert "second-secret" not in str(captured.value)

@@ -26,6 +26,7 @@ from devradar.intelligence.evaluation import (
 )
 
 API_KEY_ENV = "DEVRADAR_DEEPSEEK_API_KEY"
+LOCAL_ENV_PATH = Path(".env.local")
 API_URL = "https://api.deepseek.com/chat/completions"
 MODEL = "deepseek-v4-flash"
 SPIKE_VERSION = "deepseek-v4-flash-development-v1"
@@ -34,6 +35,7 @@ DEFAULT_REPEATS = 3
 REQUEST_TIMEOUT_SECONDS = 90.0
 MAX_RESPONSE_BYTES = 256 * 1024
 MAX_OUTPUT_TOKENS = 1_200
+MAX_LOCAL_ENV_BYTES = 16 * 1024
 
 # DeepSeek list prices read on 2026-08-21. The live report keeps usage components
 # separate so cost can be recalculated if the provider changes pricing.
@@ -163,6 +165,57 @@ class SpikeReport:
 
 Opener = Callable[..., Any]
 Clock = Callable[[], float]
+
+
+def _load_local_api_key(path: Path) -> str:
+    """Read one exact key from a small ignored local env file without mutating os.environ."""
+
+    if not path.exists():
+        return ""
+    try:
+        if not path.is_file() or path.stat().st_size > MAX_LOCAL_ENV_BYTES:
+            raise DeepSeekSpikeError(
+                "local_env_invalid",
+                "Local environment file must be a small regular file.",
+            )
+        text = path.read_text(encoding="utf-8")
+    except DeepSeekSpikeError:
+        raise
+    except (OSError, UnicodeError):
+        raise DeepSeekSpikeError(
+            "local_env_invalid",
+            "Local environment file could not be read safely.",
+        ) from None
+
+    values: list[str] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        name, separator, raw_value = line.partition("=")
+        if name.strip() != API_KEY_ENV:
+            continue
+        if not separator:
+            raise DeepSeekSpikeError(
+                "local_env_invalid",
+                "DeepSeek key entry in local environment file is malformed.",
+            )
+        value = raw_value.strip()
+        if value[:1] in {'"', "'"}:
+            if len(value) < 2 or value[-1] != value[0]:
+                raise DeepSeekSpikeError(
+                    "local_env_invalid",
+                    "DeepSeek key entry in local environment file has unmatched quotes.",
+                )
+            value = value[1:-1]
+        values.append(value)
+
+    if len(values) > 1:
+        raise DeepSeekSpikeError(
+            "local_env_invalid",
+            "Local environment file contains duplicate DeepSeek key entries.",
+        )
+    return values[0] if values else ""
 
 
 def _request_payload(case: EvaluationCase) -> dict[str, object]:
@@ -414,9 +467,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     _parser().parse_args(argv)
     try:
         dataset = load_evaluation_dataset(DEFAULT_DATASET_PATH)
+        api_key = os.environ.get(API_KEY_ENV, "").strip() or _load_local_api_key(LOCAL_ENV_PATH)
         report = run_development_spike(
             dataset,
-            api_key=os.environ.get(API_KEY_ENV, ""),
+            api_key=api_key,
         )
     except (DeepSeekSpikeError, OSError, ValidationError, ValueError) as error:
         code = error.code if isinstance(error, DeepSeekSpikeError) else "spike_configuration_error"
