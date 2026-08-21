@@ -80,6 +80,10 @@ parse(snapshot) -> ParsedJob | ParseFailure
 
 Adapter không tự commit Job hoặc quyết định retry. Application workflow persist snapshot, validate output và điều khiển transaction/retry.
 
+### 3.1. Raw snapshot storage V1
+
+V1 lưu text payload đã qua fetch limit trực tiếp trong PostgreSQL `RawJobSnapshot.raw_content`, cùng HTTP metadata và `raw_content_hash`. Fetcher phải reject payload vượt `max_response_bytes` hoặc content type chưa duyệt trước khi mở transaction persistence; schema `Text` không thay thế byte-limit control. Raw column được deferred khi ORM query để read path không vô tình tải payload. Object storage chỉ được xem xét lại khi có số đo size/retention cho thấy PostgreSQL không còn phù hợp.
+
 ## 4. Fetch policy
 
 - Chỉ chấp nhận URL được tạo từ source config/adapter, không nhận URL tùy ý từ API user.

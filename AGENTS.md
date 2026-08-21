@@ -100,16 +100,28 @@ python -m venv .venv
 .venv\Scripts\python -m pip check
 ```
 
+Default test không tự chạm PostgreSQL. Khi task yêu cầu PostgreSQL integration thật:
+
+```powershell
+docker compose --env-file .env.example up database --wait
+$env:DEVRADAR_TEST_DATABASE_URL = 'postgresql+psycopg://devradar:devradar_local_only@127.0.0.1:55432/postgres'
+.venv\Scripts\python -m pytest
+Remove-Item Env:\DEVRADAR_TEST_DATABASE_URL
+```
+
 ### Docker Compose
 
 ```powershell
 docker compose --env-file .env.example config --quiet
-docker compose --env-file .env.example up --build --wait
+docker compose --env-file .env.example build api
+docker compose --env-file .env.example up database --wait
+docker compose --env-file .env.example run --rm api python -m alembic upgrade head
+docker compose --env-file .env.example up api --wait
 Invoke-RestMethod http://127.0.0.1:8000/api/v1/health
 docker compose --env-file .env.example down
 ```
 
-`down` không xóa named volume. Không thêm `--volumes` vào teardown mặc định. Migration chưa có trước `V1-002`; không bịa migration command hoặc gọi process health là database integration.
+`down` không xóa named volume. Không thêm `--volumes` vào teardown mặc định. Migration là schema source of truth; không dùng `Base.metadata.create_all()` thay Alembic và không gọi process health là database integration.
 
 ### Khi thay đổi dependency
 
@@ -117,8 +129,8 @@ Chỉ sửa file `.in`, rồi sinh lại lock bằng generator đã pin và ki�
 
 ```powershell
 .venv\Scripts\python -m pip install pip-tools==7.6.1
-.venv\Scripts\pip-compile --generate-hashes --strip-extras --output-file requirements.lock requirements.in
-.venv\Scripts\pip-compile --generate-hashes --strip-extras --output-file requirements-dev.lock requirements-dev.in
+.venv\Scripts\python -m piptools compile --generate-hashes --strip-extras --output-file requirements.lock requirements.in
+.venv\Scripts\python -m piptools compile --generate-hashes --strip-extras --output-file requirements-dev.lock requirements-dev.in
 python -m venv --clear .venv
 .venv\Scripts\python -m pip install --require-hashes --requirement requirements-dev.lock
 ```

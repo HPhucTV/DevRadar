@@ -1,6 +1,7 @@
 [tool.pytest.ini_options]
 addopts = "--strict-markers"
 filterwarnings = ["error"]
+markers = ["postgresql: requires a live PostgreSQL server"]
 pythonpath = ["src"]
 testpaths = ["tests"]
 

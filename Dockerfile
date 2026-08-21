@@ -13,6 +13,8 @@ RUN python -m pip install --require-hashes --requirement requirements.lock \
     && groupadd --system devradar \
     && useradd --system --gid devradar --home-dir /nonexistent --shell /usr/sbin/nologin devradar
 
+COPY --chown=devradar:devradar alembic.ini ./alembic.ini
+COPY --chown=devradar:devradar migrations ./migrations
 COPY --chown=devradar:devradar src ./src
 
 USER devradar

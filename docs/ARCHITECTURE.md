@@ -2,7 +2,7 @@
 
 ## 1. Trạng thái và phạm vi
 
-Kiến trúc nền tảng là **modular monolith, phase-gated stack** theo [ADR-001](decisions/0001-modular-monolith-and-phase-gated-stack.md). V1 khóa Python, FastAPI, PostgreSQL và Docker Compose. Các thành phần Prefect, pgvector, LangGraph, Next.js và Redis chỉ trở thành dependency khi phase tương ứng bắt đầu và ADR/entry gate cho phép.
+Kiến trúc nền tảng là **modular monolith, phase-gated stack** theo [ADR-001](decisions/0001-modular-monolith-and-phase-gated-stack.md). V1 khóa Python, FastAPI, PostgreSQL và Docker Compose; [ADR-005](decisions/0005-sqlalchemy-alembic-and-psycopg.md) khóa SQLAlchemy/Alembic/Psycopg cho persistence V1 sau khi fresh migration và PostgreSQL integration pass. Các thành phần Prefect, pgvector, LangGraph, Next.js và Redis chỉ trở thành dependency khi phase tương ứng bắt đầu và ADR/entry gate cho phép.
 
 Tài liệu này mô tả boundary và data flow. Nó không quy định folder/class chi tiết trước khi scaffold và không biến module logic thành microservice.
 

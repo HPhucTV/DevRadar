@@ -2,7 +2,7 @@
 
 ## 1. Mục tiêu
 
-Tài liệu này định nghĩa bằng chứng cần có để nói DevRadar chạy đúng, an toàn và có thể chẩn đoán. Scaffold hiện đã có verified setup/test/static/Compose command và process health; migration, PostgreSQL application integration, crawler và domain API gates vẫn là contract chưa pass.
+Tài liệu này định nghĩa bằng chứng cần có để nói DevRadar chạy đúng, an toàn và có thể chẩn đoán. Scaffold cùng PostgreSQL schema/migration đã có verified test/static/Compose evidence; crawler, ingestion transaction và domain API gates vẫn chưa pass.
 
 ## 2. Environment
 
@@ -15,7 +15,7 @@ Tài liệu này định nghĩa bằng chứng cần có để nói DevRadar ch�
 
 Kết quả kiểm tra capability máy phát triển trước V1 được ghi riêng tại [PRE-007 local prerequisites evidence](evidence/PRE-007-local-prerequisites.md); đây không phải Quick Start hoặc runtime proof của ứng dụng.
 
-Kết quả scaffold hiện tại nằm tại [V1-001 evidence](evidence/V1-001-scaffold.md). Health endpoint chỉ chứng minh API process sống; database readiness tiếp tục yêu cầu integration/migration evidence ở task sau.
+Kết quả scaffold nằm tại [V1-001 evidence](evidence/V1-001-scaffold.md); fresh PostgreSQL migration/schema integration nằm tại [V1-002 evidence](evidence/V1-002-postgresql-schema.md). Health endpoint chỉ chứng minh API process sống, chưa chứng minh API có thể query database.
 
 Không dùng production secret/data trong CI. Không gọi source/LLM thật từ default unit test; live integration phải opt-in, có budget và được gắn nhãn rõ.
 
@@ -53,6 +53,8 @@ Chạy nhanh, deterministic, không network:
 - alert retry/idempotency với fake connector.
 
 Test được gọi “PostgreSQL integration” chỉ khi thực sự chạy PostgreSQL, không phải SQLite/mock. Test AI live không được thay thế evaluation trên fixed dataset.
+
+PostgreSQL test hiện dùng `DEVRADAR_TEST_DATABASE_URL`, tạo database tên ngẫu nhiên rồi drop bằng `WITH (FORCE)`. Chỉ trỏ biến này tới local/CI role riêng có quyền tạo database tạm; không chạy với production credential.
 
 ### 4.3. End-to-end và acceptance
 

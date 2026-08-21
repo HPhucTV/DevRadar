@@ -7,6 +7,9 @@ services:
     depends_on:
       database:
         condition: service_healthy
+    environment:
+      DEVRADAR_DATABASE_URL: >-
+        postgresql+psycopg://${POSTGRES_USER:-devradar}:${POSTGRES_PASSWORD:-devradar_local_only}@database:5432/${POSTGRES_DB:-devradar}
     ports:
       - "127.0.0.1:${DEVRADAR_API_HOST_PORT:-8000}:8000"
     read_only: true

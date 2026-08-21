@@ -21,8 +21,8 @@ Proposed → Accepted → Superseded | Deprecated
 | [ADR-002](0002-data-pipeline-before-ai.md) | Accepted | Data pipeline trước AI/agentic workflow |
 | [ADR-003](0003-postgresql-system-of-record.md) | Accepted | PostgreSQL là system of record |
 | [ADR-004](0004-approved-source-allow-list.md) | Accepted | Chỉ crawl source đã duyệt qua allow-list |
+| [ADR-005](0005-sqlalchemy-alembic-and-psycopg.md) | Accepted | SQLAlchemy, Alembic và Psycopg cho persistence V1 |
 
 ## Candidate technology chưa được chấp nhận
 
 Prefect (V2), pgvector/LLM provider (V3), LangGraph (V4), Next.js/notification connector (V5), authentication strategy và Redis/worker topology (V6) vẫn là `Proposed`. Khi phase bắt đầu, spike phải xác minh compatibility, vận hành và chi phí; quyết định khó đảo ngược cần ADR mới hoặc amendment qua ADR kế tiếp, không âm thầm sửa lịch sử các ADR trên.
-

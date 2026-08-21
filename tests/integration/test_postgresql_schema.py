@@ -1,0 +1,264 @@
+from __future__ import annotations
+
+import os
+from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+from pathlib import Path
+from uuid import uuid4
+
+import psycopg
+import pytest
+from alembic import command
+from alembic.config import Config
+from psycopg import sql
+from sqlalchemy import create_engine, inspect, select
+from sqlalchemy.engine import URL, make_url
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from devradar.catalog.models import Job, JobLevel
+from devradar.ingestion.models import (
+    CoverageStatus,
+    CrawlRun,
+    CrawlRunStatus,
+    CrawlTriggerType,
+    ParseStatus,
+    RawJobSnapshot,
+    Source,
+    SourceApprovalStatus,
+)
+from devradar.platform.database import DATABASE_URL_ENV
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+TEST_DATABASE_URL_ENV = "DEVRADAR_TEST_DATABASE_URL"
+DOMAIN_TABLES = {"sources", "crawl_runs", "raw_job_snapshots", "jobs"}
+
+
+@pytest.fixture
+def fresh_postgresql_url() -> Iterator[str]:
+    configured_url = os.environ.get(TEST_DATABASE_URL_ENV)
+    if not configured_url:
+        pytest.skip(f"{TEST_DATABASE_URL_ENV} is not set")
+
+    sqlalchemy_url = make_url(configured_url)
+    if sqlalchemy_url.drivername != "postgresql+psycopg":
+        pytest.fail(f"{TEST_DATABASE_URL_ENV} must use postgresql+psycopg://")
+
+    database_name = f"devradar_test_{uuid4().hex}"
+    admin_url = _psycopg_url(sqlalchemy_url, database="postgres")
+
+    with psycopg.connect(admin_url, autocommit=True) as connection:
+        connection.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database_name)))
+
+    test_url = sqlalchemy_url.set(database=database_name).render_as_string(hide_password=False)
+    try:
+        yield test_url
+    finally:
+        with psycopg.connect(admin_url, autocommit=True) as connection:
+            connection.execute(
+                sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(database_name))
+            )
+
+
+def _psycopg_url(url: URL, *, database: str) -> str:
+    return url.set(drivername="postgresql", database=database).render_as_string(hide_password=False)
+
+
+def _alembic_config() -> Config:
+    return Config(str(PROJECT_ROOT / "alembic.ini"))
+
+
+def _assert_constraint_rejects(session: Session, instance: object, constraint_name: str) -> None:
+    session.add(instance)
+    with pytest.raises(IntegrityError) as captured:
+        session.commit()
+    session.rollback()
+    assert constraint_name in str(captured.value.orig)
+
+
+def _approved_source(name: str, host: str, reviewed_at: datetime) -> Source:
+    return Source(
+        name=name,
+        base_url=f"https://{host}/careers",
+        adapter_key=f"{name.lower()}_adapter",
+        approval_status=SourceApprovalStatus.APPROVED,
+        rate_limit_policy={"requests_per_second": 0.5, "concurrency": 1},
+        allowed_hosts=[host],
+        terms_reviewed_at=reviewed_at,
+        robots_reviewed_at=reviewed_at,
+    )
+
+
+@pytest.mark.postgresql
+def test_migration_and_domain_invariants_on_postgresql(
+    fresh_postgresql_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(DATABASE_URL_ENV, fresh_postgresql_url)
+    alembic_config = _alembic_config()
+
+    command.upgrade(alembic_config, "head")
+    command.upgrade(alembic_config, "head")
+    command.check(alembic_config)
+
+    engine = create_engine(fresh_postgresql_url)
+    inspector = inspect(engine)
+    assert DOMAIN_TABLES <= set(inspector.get_table_names())
+
+    expected_checks = {
+        "sources": {"ck_sources_approved_has_policy_reviews", "ck_sources_approval_status"},
+        "crawl_runs": {"ck_crawl_runs_status_time_boundary", "ck_crawl_runs_coverage_status"},
+        "raw_job_snapshots": {
+            "ck_raw_job_snapshots_content_hash",
+            "ck_raw_job_snapshots_parse_status",
+        },
+        "jobs": {"ck_jobs_salary_range", "ck_jobs_levels_allowed_values"},
+    }
+    for table_name, constraint_names in expected_checks.items():
+        reflected_names = {
+            constraint["name"] for constraint in inspector.get_check_constraints(table_name)
+        }
+        assert constraint_names <= reflected_names
+
+    now = datetime.now(UTC)
+    with Session(engine) as session:
+        source = _approved_source("VNG", "careers.vng.com.vn", now)
+        session.add(source)
+        session.flush()
+
+        crawl_run = CrawlRun(
+            source_id=source.id,
+            trigger_type=CrawlTriggerType.MANUAL,
+            status=CrawlRunStatus.SUCCEEDED,
+            coverage_status=CoverageStatus.COMPLETE,
+            started_at=now,
+            finished_at=now + timedelta(seconds=1),
+            pages_found=1,
+            items_found=1,
+            adapter_version="fixture-v1",
+            config_version="source-v1",
+        )
+        session.add(crawl_run)
+        session.flush()
+
+        snapshot = RawJobSnapshot(
+            crawl_run_id=crawl_run.id,
+            source_id=source.id,
+            source_url="https://careers.vng.com.vn/job/123",
+            external_id="123",
+            fetched_at=now,
+            http_status=200,
+            content_type="text/html; charset=utf-8",
+            raw_content_hash="a" * 64,
+            raw_content="<html>fixture</html>",
+            parse_status=ParseStatus.PARSED,
+        )
+        session.add(snapshot)
+        session.flush()
+
+        job = Job(
+            source_id=source.id,
+            external_id="123",
+            canonical_url="https://careers.vng.com.vn/job/123",
+            title="Senior Backend Engineer",
+            company_name="VNG",
+            salary_raw="30-50 triệu VND/tháng",
+            salary_min=Decimal("30000000"),
+            salary_max=Decimal("50000000"),
+            currency="VND",
+            salary_period="month",
+            level_raw="Senior",
+            levels=[JobLevel.SENIOR.value],
+            first_seen_at=now,
+            last_seen_at=now,
+            current_snapshot_id=snapshot.id,
+            job_content_hash="b" * 64,
+        )
+        session.add(job)
+        session.commit()
+
+        persisted_job = session.scalar(select(Job).where(Job.id == job.id))
+        assert persisted_job is not None
+        assert persisted_job.source_id == source.id
+        assert persisted_job.salary_raw == "30-50 triệu VND/tháng"
+        assert persisted_job.levels == [JobLevel.SENIOR.value]
+
+        _assert_constraint_rejects(
+            session,
+            Source(
+                name="Missing policy evidence",
+                base_url="https://example.test/jobs",
+                adapter_key="missing_policy",
+                approval_status=SourceApprovalStatus.APPROVED,
+                rate_limit_policy={"concurrency": 1},
+                allowed_hosts=["example.test"],
+            ),
+            "ck_sources_approved_has_policy_reviews",
+        )
+
+        _assert_constraint_rejects(
+            session,
+            Job(
+                source_id=source.id,
+                external_id="salary-invalid",
+                canonical_url="https://careers.vng.com.vn/job/salary-invalid",
+                title="Invalid salary",
+                company_name="VNG",
+                salary_min=Decimal("50000000"),
+                salary_max=Decimal("30000000"),
+                levels=[],
+                first_seen_at=now,
+                last_seen_at=now,
+                current_snapshot_id=snapshot.id,
+                job_content_hash="c" * 64,
+            ),
+            "ck_jobs_salary_range",
+        )
+
+        second_source = _approved_source("NAVER", "recruit.navercorp.com", now)
+        session.add(second_source)
+        session.commit()
+
+        _assert_constraint_rejects(
+            session,
+            Job(
+                source_id=second_source.id,
+                external_id="wrong-provenance",
+                canonical_url="https://recruit.navercorp.com/job/wrong-provenance",
+                title="Wrong provenance",
+                company_name="NAVER",
+                levels=[],
+                first_seen_at=now,
+                last_seen_at=now,
+                current_snapshot_id=snapshot.id,
+                job_content_hash="d" * 64,
+            ),
+            "fk_jobs_current_snapshot_source",
+        )
+
+        _assert_constraint_rejects(
+            session,
+            Job(
+                source_id=source.id,
+                external_id="123",
+                canonical_url="https://careers.vng.com.vn/job/duplicate-id",
+                title="Duplicate external ID",
+                company_name="VNG",
+                levels=[],
+                first_seen_at=now,
+                last_seen_at=now,
+                current_snapshot_id=snapshot.id,
+                job_content_hash="e" * 64,
+            ),
+            "uq_jobs_source_external_id",
+        )
+
+    engine.dispose()
+    command.downgrade(alembic_config, "base")
+
+    downgraded_engine = create_engine(fresh_postgresql_url)
+    assert not (DOMAIN_TABLES & set(inspect(downgraded_engine).get_table_names()))
+    downgraded_engine.dispose()
+
+    command.upgrade(alembic_config, "head")
+    command.check(alembic_config)

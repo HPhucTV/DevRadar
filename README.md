@@ -10,9 +10,9 @@
 | Phase hiện tại | `v1` — Crawler MVP và REST API (`in_progress`) |
 | Mô hình sử dụng ban đầu | Portfolio cá nhân, single-operator |
 | Thị trường ưu tiên | Job IT Việt Nam, nội dung Việt/Anh, lương VND |
-| Code chạy được | Có — scaffold/health contract; domain API và ingestion chưa được triển khai |
+| Code chạy được | Có — scaffold, PostgreSQL migration/schema và health contract; domain API/ingestion chưa có |
 
-Repository đã có FastAPI scaffold tối thiểu, dependency lock, unit/OpenAPI contract test và Docker Compose local cho API + PostgreSQL. Chưa có database migration, job/source/run endpoint hoặc crawler; các capability đó tiếp tục theo task V1 tương ứng.
+Repository đã có FastAPI scaffold tối thiểu, dependency lock, PostgreSQL schema/migration cho bốn entity V1, integration test trên database thật và Docker Compose local. Chưa có source registry runtime, job/source/run endpoint hoặc crawler; các capability đó tiếp tục theo task V1 tương ứng.
 
 ## Mục tiêu
 
@@ -79,6 +79,7 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [Source discovery](docs/sources/SHORTLIST.md): evidence và approval outcome; VNG, NAVER Vietnam/Greenhouse và MoMo đã được duyệt cho bounded local non-commercial scope, GeoComply/Lever vẫn `permission_required`.
 - [Pre-V1 local evidence](docs/evidence/PRE-007-local-prerequisites.md): Docker/PostgreSQL capability và constraint đã xác minh.
 - [V1 scaffold evidence](docs/evidence/V1-001-scaffold.md): clean install, test/static gates, live API và Docker Compose smoke.
+- [V1 PostgreSQL evidence](docs/evidence/V1-002-postgresql-schema.md): schema invariants, fresh migration, integration test và container migration smoke.
 - [Roadmap](docs/ROADMAP.md): kế hoạch V1–V6 và definition of done.
 - [Architecture Decision Records](docs/decisions/README.md): quyết định đã chấp nhận và quyết định còn đề xuất.
 - [Ý tưởng ban đầu](DevRadar_Agentic_Job_Market_Intelligence.md): tài liệu tham khảo gốc, không phải bằng chứng trạng thái triển khai.
@@ -107,17 +108,28 @@ Mở `http://127.0.0.1:8000/docs` hoặc kiểm tra process health ở `http://1
 .venv\Scripts\python -m pip check
 ```
 
+PostgreSQL integration là opt-in và tạo/xóa database test tên ngẫu nhiên. Với database Compose đang chạy:
+
+```powershell
+$env:DEVRADAR_TEST_DATABASE_URL = 'postgresql+psycopg://devradar:devradar_local_only@127.0.0.1:55432/postgres'
+.venv\Scripts\python -m pytest
+Remove-Item Env:\DEVRADAR_TEST_DATABASE_URL
+```
+
 ### Docker Compose local
 
 ```powershell
-docker compose --env-file .env.example up --build --wait
+docker compose --env-file .env.example build api
+docker compose --env-file .env.example up database --wait
+docker compose --env-file .env.example run --rm api python -m alembic upgrade head
+docker compose --env-file .env.example up api --wait
 Invoke-RestMethod http://127.0.0.1:8000/api/v1/health
 docker compose --env-file .env.example down
 ```
 
 API bind tại `127.0.0.1:8000`; PostgreSQL bind tại `127.0.0.1:55432`. `docker compose down` giữ named volume. Chỉ xóa volume khi operator chủ động chấp nhận mất dữ liệu local.
 
-Migration command chưa tồn tại vì schema/migration thuộc `V1-002`; không dùng scaffold health smoke như bằng chứng database integration.
+Migration phải chạy trước application feature dùng database. Health hiện vẫn là process liveness, không phải database readiness; PostgreSQL integration evidence được kiểm tra riêng.
 
 ## Nguồn sự thật
 

@@ -1,0 +1,6 @@
+Alembic migrations cho PostgreSQL system of record.
+
+- URL bắt buộc lấy từ `DEVRADAR_DATABASE_URL` và dùng `postgresql+psycopg://`.
+- `Base.metadata` từ các module domain là input cho autogenerate.
+- Candidate revision phải được review; chạy `alembic check` trên PostgreSQL thật để phát hiện drift.
+- Application/test không dùng `Base.metadata.create_all()` thay migration.
