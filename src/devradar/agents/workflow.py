@@ -28,6 +28,7 @@ from devradar.agents.decisions import (
 )
 from devradar.agents.persistence import finalize_agent_run, start_agent_run
 from devradar.agents.responsibilities import (
+    AnalystFacts,
     PlannerFacts,
     ResponsibilityInput,
     ValidatorFacts,
@@ -53,7 +54,7 @@ class ProposalRequest(AgentModel):
     schema_version: Literal["agent-proposal-request-v1"] = "agent-proposal-request-v1"
     responsibility: Responsibility
     input_refs: tuple[DecisionRef, ...] = Field(min_length=1, max_length=2)
-    facts: PlannerFacts | ValidatorFacts
+    facts: PlannerFacts | ValidatorFacts | AnalystFacts
     attempt_number: int = Field(ge=1, le=2)
 
     @model_validator(mode="after")
@@ -71,6 +72,13 @@ class ProposalRequest(AgentModel):
             expected_refs = (self.facts.extraction_result_ref,)
             if self.facts.raw_snapshot_ref is not None:
                 expected_refs += (self.facts.raw_snapshot_ref,)
+        elif self.responsibility is Responsibility.ANALYST:
+            if not isinstance(self.facts, AnalystFacts):
+                raise ValueError("analyst facts are required")
+            expected_refs = (
+                self.facts.aggregate_query_ref,
+                self.facts.trend_metric_ref,
+            )
         else:
             raise ValueError("responsibility is not implemented by this workflow")
         if self.input_refs != expected_refs:
