@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
@@ -11,9 +12,12 @@ from devradar.catalog.models import Job, JobLevel
 from devradar.intelligence.extraction import (
     CANONICALIZATION_VERSION,
     DETERMINISTIC_EXTRACTOR_VERSION,
+    EXTRACTION_SCHEMA_VERSION,
+    ExtractionCacheKey,
     ExtractionPayload,
     deterministic_extract,
 )
+from devradar.intelligence.models import ExtractionInputType, ExtractionType
 
 
 def _job(*, description: str | None, levels: list[str] | None = None) -> Job:
@@ -76,3 +80,28 @@ def test_payload_rejects_extra_fields() -> None:
 
     with pytest.raises(ValidationError):
         ExtractionPayload.model_validate(payload)
+
+
+def test_cache_key_changes_for_each_version_dimension() -> None:
+    base = ExtractionCacheKey(
+        input_type=ExtractionInputType.JOB,
+        input_ref=uuid4(),
+        input_hash="a" * 64,
+        extractor_type=ExtractionType.LLM,
+        extractor_version="provider-boundary-v1",
+        schema_version=EXTRACTION_SCHEMA_VERSION,
+        prompt_version="prompt-v1",
+        model="test-model",
+        canonicalization_version=CANONICALIZATION_VERSION,
+    )
+
+    changed_keys = (
+        replace(base, input_hash="b" * 64),
+        replace(base, extractor_version="changed"),
+        replace(base, schema_version="changed"),
+        replace(base, prompt_version="changed"),
+        replace(base, model="changed"),
+        replace(base, canonicalization_version="changed"),
+    )
+    for changed in changed_keys:
+        assert changed != base
