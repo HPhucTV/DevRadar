@@ -229,10 +229,12 @@ def load_evaluation_dataset(path: Path) -> EvaluationDataset:
     return EvaluationDataset.model_validate_json(path.read_text(encoding="utf-8"))
 
 
-def _extract_skill_labels(case: EvaluationCase) -> set[tuple[str, RequirementType]]:
-    labels: dict[str, RequirementType] = {}
-    text = f"{case.input.title}\n{case.input.description_text}"
-    clauses = tuple(part.strip() for part in re.split(r"[\n;]+", text) if part.strip())
+def extract_skill_expectations(title: str, description_text: str) -> tuple[SkillExpectation, ...]:
+    """Extract versioned skill labels and source evidence from job text."""
+
+    labels: dict[str, tuple[RequirementType, str]] = {}
+    source_text = f"{title}\n{description_text}"
+    clauses = tuple(part.strip() for part in re.split(r"[\n;]+", source_text) if part.strip())
     for clause in clauses:
         folded = clause.casefold()
         if any(marker in folded for marker in _NEGATED_MARKERS):
@@ -243,11 +245,26 @@ def _extract_skill_labels(case: EvaluationCase) -> set[tuple[str, RequirementTyp
             else RequirementType.REQUIRED
         )
         for name, patterns in _SKILL_PATTERNS.items():
-            if any(pattern.search(folded) for pattern in patterns):
-                previous = labels.get(name)
-                if previous is None or requirement_type is RequirementType.REQUIRED:
-                    labels[name] = requirement_type
-    return set(labels.items())
+            match = next(
+                (match for pattern in patterns if (match := pattern.search(clause)) is not None),
+                None,
+            )
+            if match is None:
+                continue
+            previous = labels.get(name)
+            if previous is None or requirement_type is RequirementType.REQUIRED:
+                labels[name] = (requirement_type, match.group(0))
+    return tuple(
+        SkillExpectation(name=name, requirement_type=kind, evidence=evidence)
+        for name, (kind, evidence) in sorted(labels.items())
+    )
+
+
+def _extract_skill_labels(case: EvaluationCase) -> set[tuple[str, RequirementType]]:
+    return {
+        (skill.name, skill.requirement_type)
+        for skill in extract_skill_expectations(case.input.title, case.input.description_text)
+    }
 
 
 def _experience_tuple(case: EvaluationCase) -> tuple[Decimal | None, Decimal | None]:
