@@ -12,6 +12,7 @@ from sqlalchemy import create_engine, inspect, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
+import devradar.intelligence.extraction as extraction_module
 from devradar.catalog.models import Job
 from devradar.ingestion.models import (
     CoverageStatus,
@@ -35,6 +36,7 @@ from devradar.intelligence.extraction import (
 )
 from devradar.intelligence.models import (
     ExtractionInputType,
+    ExtractionResult,
     ExtractionType,
     ExtractionValidationStatus,
 )
@@ -318,3 +320,67 @@ def test_accepted_cache_hit_never_calls_provider(
     assert outcome.result.id == seed.id
     assert outcome.cache_hit is True
     assert calls == 0
+
+
+@pytest.mark.postgresql
+def test_failed_transaction_leaves_no_half_result(
+    extraction_session: Session, seeded_job: UUID
+) -> None:
+    job = extraction_session.get(Job, seeded_job)
+    assert job is not None
+    persist_extraction_result(
+        extraction_session,
+        key=_cache_key(job),
+        output_data=_payload(),
+        status=ExtractionValidationStatus.ACCEPTED,
+        validation_errors=None,
+    )
+    extraction_session.rollback()
+
+    assert extraction_session.scalar(select(ExtractionResult)) is None
+
+
+@pytest.mark.postgresql
+def test_duplicate_accepted_insert_re_reads_winner(
+    extraction_engine: Engine,
+    extraction_session: Session,
+    seeded_job: UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    job = extraction_session.get(Job, seeded_job)
+    assert job is not None
+    key = _cache_key(job)
+    winner, _ = persist_extraction_result(
+        extraction_session,
+        key=key,
+        output_data=_payload(),
+        status=ExtractionValidationStatus.ACCEPTED,
+        validation_errors=None,
+    )
+    extraction_session.commit()
+
+    real_lookup = extraction_module.load_accepted_cache
+    lookup_calls = 0
+
+    def simulated_race(
+        session: Session, cache_key: ExtractionCacheKey
+    ) -> ExtractionResult | None:
+        nonlocal lookup_calls
+        lookup_calls += 1
+        if lookup_calls == 1:
+            return None
+        return real_lookup(session, cache_key)
+
+    monkeypatch.setattr(extraction_module, "load_accepted_cache", simulated_race)
+    with Session(extraction_engine) as second_session:
+        second, cache_hit = persist_extraction_result(
+            second_session,
+            key=key,
+            output_data=_payload(),
+            status=ExtractionValidationStatus.ACCEPTED,
+            validation_errors=None,
+        )
+
+    assert second.id == winner.id
+    assert cache_hit is True
+    assert lookup_calls == 2
