@@ -37,7 +37,9 @@ resume_profile_id
 + job_id
 + job_content_hash
 + scoring_version
-+ embedding_provider/model/revision
++ profile_embedding_input_version
++ job_embedding_input_schema_version
++ embedding_provider/model/revision/dimension
 ```
 
 Row cũ không bị diễn giải là current khi Job hash, profile parser/content, scoring version hoặc model identity đổi. `ResumeProfile` deleted/expired không được đọc/generate; xóa profile cascade toàn bộ matches. Job bị xóa cascade matches; Job đổi chỉ làm row cũ stale theo hash join và lần generation mới tạo identity mới.
@@ -48,7 +50,7 @@ Row cũ không bị diễn giải là current khi Job hash, profile parser/conte
 - nullable `skill_score`, `semantic_score`, `experience_score`, `location_score`, `role_score`;
 - bounded canonical `matched_skills`, `missing_skills`;
 - deterministic `explanation`, không chứa raw CV/JD;
-- profile/job hash, scoring/model version và `created_at`.
+- profile/job hash, profile/job embedding schema, scoring/model version/dimension và `created_at`.
 
 Không persist profile vector, raw profile text, Job description, owner token/hash trong `JobMatch` hoặc response.
 
@@ -89,6 +91,8 @@ Locations: ...
 ```
 
 Danh sách sort/deduplicate, text tối đa 2.000 ký tự và không có filename/hash/owner/raw text. Dùng fixed local MiniLM identity đã Accepted ở ADR-010; inference local-files-only, không download/fallback external. Vector chỉ sống trong memory cho một generation rồi bị bỏ.
+
+Profile input version là `resume-match-embedding-input-v1`; Job vector phải giữ exact `job-embedding-input-v2` + provider/model/revision/dimension hiện hành. Model là symmetric multilingual MiniLM không dùng query/passage prefix; runtime gọi bounded local passage embedding cho profile text để không vượt query input cap 300 ký tự.
 
 Generation xét toàn bộ Job `active` có current compatible `JobEmbedding`; exact cosine chạy trong PostgreSQL. Job thiếu vector bị đếm `unavailableJobs` và không được đưa vào top 100. Latest accepted ExtractionResult chỉ bổ sung structured component; thiếu extraction không loại Job vì semantic vẫn là evidence.
 
@@ -149,7 +153,7 @@ Tạo một project-authored synthetic dataset, không chứa CV/JD thật hoặ
 - mỗi group có tối thiểu 3 candidate với relevance label `0..3` và risk tags;
 - coverage bắt buộc: missing skill/extraction/location/experience/role, semantic conflict, sparse evidence, overqualified experience, bilingual profile/job và deterministic tie.
 
-Development split so sánh tối thiểu ba weight sets: original level hypothesis, semantic-heavy và recommended skill-first role-aware. Held-out chỉ chạy sau khi dataset/version/hash và recommended weights đã khóa.
+Development split so sánh tối thiểu ba weight sets trên cùng năm component khả dụng: skill-heavy, semantic-heavy và balanced role-aware được đề xuất. Held-out chỉ chạy sau khi dataset/version/hash và recommended weights đã khóa.
 
 Release gates:
 
