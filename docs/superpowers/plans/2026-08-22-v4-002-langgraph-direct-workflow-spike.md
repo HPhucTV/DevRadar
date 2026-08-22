@@ -16,7 +16,7 @@
 - Create local-only: `tmp/v4-002-langgraph-spike/.venv/`
 - Do not modify: `requirements.in`, `requirements-dev.in`, `requirements.lock`, `requirements-dev.lock`
 
-- [ ] **Step 1: Capture clean repository and baseline environment size**
+- [x] **Step 1: Capture clean repository and baseline environment size**
 
 Run from repository root:
 
@@ -32,7 +32,7 @@ $baselineBytes = (Get-ChildItem -LiteralPath $sitePackages -Recurse -File |
 
 Expected: Git has no tracked changes beyond this plan commit; `tmp/` remains ignored; baseline byte count is printed without filesystem names.
 
-- [ ] **Step 2: Install the exact candidate and measure delta**
+- [x] **Step 2: Install the exact candidate and measure delta**
 
 ```powershell
 $python = Join-Path $spikeRoot '.venv\Scripts\python.exe'
@@ -60,7 +60,7 @@ Expected: exact `langgraph 1.2.10`, `pip check` clean and aggregate install size
 - Create local-only: `tmp/v4-002-langgraph-spike/test_spike.py`
 - Create local-only: `tmp/v4-002-langgraph-spike/spike.py`
 
-- [ ] **Step 1: Write the failing standard-library tests**
+- [x] **Step 1: Write the failing standard-library tests**
 
 Create `test_spike.py` with tests that define the full expected contract before the implementation exists:
 
@@ -107,7 +107,7 @@ if __name__ == "__main__":
     unittest.main()
 ```
 
-- [ ] **Step 2: Run RED and confirm the missing implementation**
+- [x] **Step 2: Run RED and confirm the missing implementation**
 
 ```powershell
 Push-Location $spikeRoot
@@ -120,7 +120,7 @@ try {
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'spike'`; fix only test syntax if failure reason differs.
 
-- [ ] **Step 3: Implement the minimal direct/graph runners**
+- [x] **Step 3: Implement the minimal direct/graph runners**
 
 Create `spike.py`. The implementation must use only synthetic enums/counters, bound retry to two attempts and compile a fresh graph/checkpointer per recovery test:
 
@@ -296,7 +296,7 @@ if __name__ == "__main__":
     print(json.dumps(aggregate, sort_keys=True))
 ```
 
-- [ ] **Step 4: Run GREEN twice**
+- [x] **Step 4: Run GREEN twice**
 
 ```powershell
 Push-Location $spikeRoot
@@ -316,7 +316,7 @@ Expected: three tests pass; both aggregate runs have identical functional/node-c
 **Files:**
 - No tracked file until observed measurements exist
 
-- [ ] **Step 1: Measure cold imports without emitting environment data**
+- [x] **Step 1: Measure cold imports without emitting environment data**
 
 ```powershell
 $samples = @()
@@ -337,7 +337,7 @@ $ordered = $samples | Sort-Object
 
 Expected: ten successful fresh-process imports and aggregate-only p50/p95.
 
-- [ ] **Step 2: Compare observed capability with current need**
+- [x] **Step 2: Compare observed capability with current need**
 
 Apply the spec gate literally:
 
@@ -359,7 +359,7 @@ Record the chosen branch before editing ADR/roadmap. Latency alone cannot select
 - Modify: `docs/ROADMAP.md`
 - Modify local-only: `TASK_BOARD.md`
 
-- [ ] **Step 1: Write evidence from exact observed output**
+- [x] **Step 1: Write evidence from exact observed output**
 
 Evidence must contain:
 
@@ -371,7 +371,7 @@ Evidence must contain:
 - selected decision and untested boundaries;
 - no raw state, environment value, filesystem listing or secret.
 
-- [ ] **Step 2: Write ADR-012 and align terminology**
+- [x] **Step 2: Write ADR-012 and align terminology**
 
 For the expected direct branch, ADR decision is:
 
@@ -386,7 +386,7 @@ For the expected direct branch, ADR decision is:
 
 Add missing ADR-011 and new ADR-012 rows to the decision index. Update roadmap/architecture/task wording from `graph state` to `run state` only if the ADR selects direct; keep V4 `in_progress`, mark V4-002 `Done` locally and open V4-003 `Ready`.
 
-- [ ] **Step 3: Run final verification**
+- [x] **Step 3: Run final verification**
 
 ```powershell
 .venv\Scripts\python -m pytest
@@ -401,7 +401,7 @@ git status --short --branch --ignored
 
 Also run the repository Markdown internal-link scan used by V4-001. Expected: all gates pass, dependency diff empty, `tmp/`/`TASK_BOARD.md`/`.env.local` ignored.
 
-- [ ] **Step 4: Commit tracked decision artifacts**
+- [x] **Step 4: Commit tracked decision artifacts**
 
 ```powershell
 git add README.md docs/AI.md docs/ARCHITECTURE.md docs/ROADMAP.md `

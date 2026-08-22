@@ -2,7 +2,7 @@
 
 ## 1. Trạng thái và phạm vi
 
-Kiến trúc nền tảng là **modular monolith, phase-gated stack** theo [ADR-001](decisions/0001-modular-monolith-and-phase-gated-stack.md). V1 khóa Python, FastAPI, PostgreSQL và Docker Compose; [ADR-005](decisions/0005-sqlalchemy-alembic-and-psycopg.md) khóa SQLAlchemy/Alembic/Psycopg cho persistence V1. V2 đã hoàn tất PostgreSQL-backed direct orchestration theo [ADR-006](decisions/0006-defer-prefect-use-direct-v2-orchestration.md). V3 đã chấp nhận DeepSeek cho synthetic generation boundary theo ADR-008 và fixed-revision local multilingual MiniLM + exact pgvector cho private deployment theo [ADR-010](decisions/0010-accept-fastembed-minilm-semantic-remediation.md). Production DeepSeek adapter, external embedding, HNSW, LangGraph, Next.js và Redis vẫn bị phase/evidence gate.
+Kiến trúc nền tảng là **modular monolith, phase-gated stack** theo [ADR-001](decisions/0001-modular-monolith-and-phase-gated-stack.md). V1 khóa Python, FastAPI, PostgreSQL và Docker Compose; [ADR-005](decisions/0005-sqlalchemy-alembic-and-psycopg.md) khóa SQLAlchemy/Alembic/Psycopg cho persistence V1. V2 đã hoàn tất PostgreSQL-backed direct orchestration theo [ADR-006](decisions/0006-defer-prefect-use-direct-v2-orchestration.md). V3 đã chấp nhận DeepSeek cho synthetic generation boundary theo ADR-008 và fixed-revision local multilingual MiniLM + exact pgvector cho private deployment theo [ADR-010](decisions/0010-accept-fastembed-minilm-semantic-remediation.md). [ADR-012](decisions/0012-accept-direct-v4-agent-workflow-defer-langgraph.md) chấp nhận direct bounded workflow và hoãn LangGraph tới khi có measured durable-workflow need. Production DeepSeek adapter, external embedding, HNSW, Next.js và Redis vẫn bị phase/evidence gate.
 
 Tài liệu này mô tả boundary và data flow. Nó không quy định folder/class chi tiết trước khi scaffold và không biến module logic thành microservice.
 
@@ -114,7 +114,7 @@ Embedding model call chạy ngoài database transaction; persistence re-check Jo
 
 ### 5.4. Agent decision boundary
 
-V4-001 thêm internal decision boundary nhưng chưa thêm agent runtime:
+V4-001 thêm internal decision boundary; V4-002 khóa direct runtime direction nhưng chưa thêm model/provider:
 
 ```mermaid
 flowchart LR
@@ -125,7 +125,7 @@ flowchart LR
     A --> W["Existing application use case owns mutation"]
 ```
 
-Tool authorization là default deny và responsibility-specific. `agents` không nhận database session, arbitrary argument/URL/SQL/shell hoặc mutation handle. Retry eligibility/quarantine/cap, validator accept gate và analyst denominator/query/metric support đều do deterministic context cấp. Xem [V4-001 evidence](evidence/V4-001-deterministic-agent-policy.md).
+Tool authorization là default deny và responsibility-specific. `agents` không nhận database session, arbitrary argument/URL/SQL/shell hoặc mutation handle. Retry eligibility/quarantine/cap, validator accept gate và analyst denominator/query/metric support đều do deterministic context cấp. V4-003 thêm typed run state/`AgentRun` trực tiếp; không dùng graph checkpoint làm audit state. Xem [V4-001 evidence](evidence/V4-001-deterministic-agent-policy.md) và [V4-002 decision evidence](evidence/V4-002-langgraph-direct-workflow-spike.md).
 
 ### 5.5. CV matching
 
@@ -138,7 +138,7 @@ Upload validation và text extraction chạy trước. File gốc được xóa 
 | V1 | PostgreSQL, FastAPI process, on-demand crawler/CLI từ cùng codebase | Accepted |
 | V2 | V1 + deterministic scheduler/runner từ cùng codebase, PostgreSQL coordination | Accepted theo ADR-006 |
 | V3 | V2 + extraction/taxonomy; local FastEmbed multilingual MiniLM artifact, pgvector `vector(384)`, exact semantic search và bounded analytics | Complete; ADR-010 Accepted cho local/private |
-| V4 | V3 + internal typed decision/tool/application boundary; LangGraph hoặc direct runtime chờ V4-002 decision | In progress; graph runtime Proposed |
+| V4 | V3 + direct typed decision/tool/application/run-state boundary; LangGraph deferred | In progress; ADR-012 Accepted |
 | V5 | V4 + Next.js và optional alert connector | Proposed |
 | V6 | Public ingress, auth, managed secrets, backup/monitoring; Redis/worker pool nếu metric yêu cầu | Proposed |
 

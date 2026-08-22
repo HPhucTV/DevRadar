@@ -12,7 +12,7 @@
 | Thị trường ưu tiên | Job IT Việt Nam, nội dung Việt/Anh, lương VND |
 | Code chạy được | Có — V1/V2 data pipeline, PostgreSQL one-shot worker, REST contract và V3 extraction/taxonomy/local semantic capabilities |
 
-V1 đã hoàn tất safe fetch/snapshot pipeline, ba concrete source adapters, PostgreSQL persistence và REST API. V2 đã hoàn tất direct schedule/retry, JobChange lifecycle, source health/quarantine, operator enqueue và one-shot worker. V3 đã đóng với `3339` canonical jobs từ approved complete runs, semantic held-out gate đạt, `1003/3339` accepted deterministic extraction results, `3339/3339` current embeddings và analytics denominator/coverage có evidence. ADR-010 chấp nhận local `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` 384d cùng exact pgvector; RemoteJobs.org là cohort remote thứ cấp, không đại diện cho claim thị trường Việt Nam. V4-001 đã khóa typed decision, deterministic application boundary và default-deny read-only tool policy; V4-002 sẽ đánh giá LangGraph so với direct workflow trước khi thêm runtime dependency.
+V1 đã hoàn tất safe fetch/snapshot pipeline, ba concrete source adapters, PostgreSQL persistence và REST API. V2 đã hoàn tất direct schedule/retry, JobChange lifecycle, source health/quarantine, operator enqueue và one-shot worker. V3 đã đóng với `3339` canonical jobs từ approved complete runs, semantic held-out gate đạt, `1003/3339` accepted deterministic extraction results, `3339/3339` current embeddings và analytics denominator/coverage có evidence. ADR-010 chấp nhận local `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` 384d cùng exact pgvector; RemoteJobs.org là cohort remote thứ cấp, không đại diện cho claim thị trường Việt Nam. V4-001 đã khóa typed decision/default-deny/application boundary; V4-002 spike chấp nhận direct bounded workflow và defer LangGraph theo ADR-012. V4-003 sẽ thêm typed run state, `AgentRun` và hard limits mà không thêm graph dependency.
 
 ## Mục tiêu
 
@@ -48,8 +48,8 @@ flowchart LR
     A --> W["Next.js dashboard - V5"]
     O["Deterministic scheduler - V2"] --> I
     L["LLM and pgvector - V3"] --> X
-    G["LangGraph - V4"] --> I
-    G --> X
+    D["Direct bounded agent workflow - V4"] --> I
+    D --> X
 ```
 
 Các thành phần ghi kèm phiên bản chỉ được triển khai khi task/entry gate tương ứng đạt. ADR-010 hiện hành chấp nhận local multilingual MiniLM + exact pgvector cho V3 private deployment; external embedding provider, HNSW và công nghệ phase sau vẫn chưa được mở.
@@ -61,7 +61,7 @@ Các thành phần ghi kèm phiên bản chỉ được triển khai khi task/en
 | V1 | Crawler MVP và REST API | Python, FastAPI, PostgreSQL, Docker Compose |
 | V2 | Automation và change detection | PostgreSQL-backed schedule/retry, crawl health |
 | V3 | AI extraction và semantic search | LLM boundary, skill taxonomy, pgvector |
-| V4 | Agentic decision layer | LangGraph cho planner/validator/analyst |
+| V4 | Agentic decision layer | Direct bounded planner/validator/analyst; LangGraph deferred |
 | V5 | Trải nghiệm người dùng | Next.js, dashboard, CV matching |
 | V6 | Production hardening | Auth, rate limit, CI/CD, monitoring; Redis chỉ khi có bằng chứng cần |
 
@@ -77,6 +77,7 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [AI](docs/AI.md): deterministic-first, evaluation, agent boundary, chi phí và quyền riêng tư.
 - [V4-001 design spec](docs/superpowers/specs/2026-08-22-v4-001-deterministic-baseline-tool-policy-design.md): typed decision, baseline metric và default-deny tool policy trước khi chọn graph.
 - [V4-001 evidence](docs/evidence/V4-001-deterministic-agent-policy.md): TDD, policy matrix, deterministic failure gates và verification boundary.
+- [V4-002 spike evidence](docs/evidence/V4-002-langgraph-direct-workflow-spike.md): exact-version footprint/recovery benchmark và direct-workflow decision.
 - [Operations](docs/OPERATIONS.md): test, security, observability, retention, CI/CD và deployment gates.
 - [Source discovery](docs/sources/SHORTLIST.md): evidence và approval outcome; VNG, NAVER Vietnam/Greenhouse và MoMo đã được duyệt cho bounded Vietnam scope, RemoteJobs.org được duyệt riêng cho V3 remote cohort có attribution, GeoComply/Lever vẫn `permission_required`.
 - [Pre-V1 local evidence](docs/evidence/PRE-007-local-prerequisites.md): Docker/PostgreSQL capability và constraint đã xác minh.

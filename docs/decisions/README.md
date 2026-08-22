@@ -27,7 +27,9 @@ Proposed → Accepted → Superseded | Deprecated
 | [ADR-008](0008-proposed-deepseek-v4-flash-generation-and-embedding-boundary.md) | Accepted | DeepSeek V4 Pro generation spike synthetic-only; embedding tách quyết định |
 | [ADR-009](0009-accept-local-multilingual-e5-and-pgvector.md) | Superseded | Historical local multilingual E5 baseline; thay bởi ADR-010 |
 | [ADR-010](0010-accept-fastembed-minilm-semantic-remediation.md) | Accepted | FastEmbed multilingual MiniLM 384d + exact pgvector sau semantic remediation |
+| [ADR-011](0011-accept-secondary-remote-api-cohort.md) | Accepted | Cohort remote thứ cấp cho V3 scale gate |
+| [ADR-012](0012-accept-direct-v4-agent-workflow-defer-langgraph.md) | Accepted | Direct bounded V4 agent workflow; hoãn LangGraph tới khi có measured durable-workflow need |
 
 ## Candidate technology chưa được chấp nhận
 
-Prefect đã được đánh giá và defer theo ADR-006; chỉ đánh giá lại khi có measured need. ADR-007 được giữ để truy vết nhưng đã `Superseded` bởi ADR-008. ADR-010 hiện hành chấp nhận local multilingual MiniLM + exact pgvector cho V3 private deployment; external embedding provider, HNSW và mọi công nghệ V4–V6 vẫn cần phase gate/evidence riêng. Quyết định khó đảo ngược cần ADR mới hoặc amendment qua ADR kế tiếp, không âm thầm sửa lịch sử.
+Prefect đã được đánh giá và defer theo ADR-006; chỉ đánh giá lại khi có measured need. ADR-007 được giữ để truy vết nhưng đã `Superseded` bởi ADR-008. ADR-010 hiện hành chấp nhận local multilingual MiniLM + exact pgvector cho V3 private deployment. ADR-012 hoãn LangGraph và giữ V4 direct cho tới khi có measured durable-workflow need. External embedding provider, HNSW và mọi công nghệ V5–V6 vẫn cần phase gate/evidence riêng. Quyết định khó đảo ngược cần ADR mới hoặc amendment qua ADR kế tiếp, không âm thầm sửa lịch sử.

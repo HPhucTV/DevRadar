@@ -20,7 +20,7 @@ AI là lớp bổ sung có giới hạn, không phải nguồn sự thật hoặ
 | Job classification và bounded summary | V3 | V3-004 deterministic boundary implemented; evidence-validated |
 | Skill taxonomy assisted mapping | V3 | V3-004 versioned deterministic map; unknown cần review |
 | Embedding và pgvector | V3 | V3-005 local multilingual MiniLM 384d + exact pgvector implemented theo ADR-010; private/local |
-| Planner/validator/analyst graph | V4 | Proposed |
+| Planner/validator/analyst workflow | V4 | Direct bounded workflow Accepted theo ADR-012; runtime responsibilities chưa implement |
 | Resume extraction/matching | V5 | Proposed |
 | LLM-written alert/explanation | V5 | Optional; deterministic evidence required |
 
@@ -232,6 +232,8 @@ Input là aggregate query result có cohort, date range, denominator và provena
 V4-001 đã cài internal `agent-decision-v1` và deterministic validation boundary trong module `agents`. Envelope dùng responsibility-specific enum/data, bounded opaque reference, finite confidence và reject extra field/reference ngoài input. Tool policy hiện chỉ authorize read-only `read_source_health`/`read_run_health`, `read_extraction_result`/`read_evidence_reference` hoặc `read_aggregate` theo đúng responsibility; không có executor cho shell, SQL, HTTP hoặc mutation.
 
 Application context deterministic phải cấp explicit retry eligibility/cap/quarantine, validator accept gate và analyst denominator/query/metric support. Thiếu fact luôn fail closed. Boundary chỉ trả normalized action token, chưa có model/graph runtime, database session, `AgentRun` hoặc public API. Test/evidence chi tiết nằm tại [V4-001 deterministic agent policy](evidence/V4-001-deterministic-agent-policy.md).
+
+[ADR-012](decisions/0012-accept-direct-v4-agent-workflow-defer-langgraph.md) chấp nhận direct bounded workflow sau isolated LangGraph `1.2.10` spike. Graph đạt same-process checkpoint recovery nhưng current responsibility chưa cần durable multi-step pause/resume/replay; V4 không thêm LangGraph/checkpointer/LangSmith dependency. V4-003 dùng typed run state + `AgentRun`; chỉ đánh giá lại graph runtime khi có measured durable-workflow need. [V4-002 evidence](evidence/V4-002-langgraph-direct-workflow-spike.md) ghi exact footprint, scenario, recovery và timing boundary.
 
 ## 11. Privacy và retention
 
