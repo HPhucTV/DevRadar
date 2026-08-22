@@ -67,6 +67,12 @@ class ValidatorRetryStrategy(StrEnum):
     DETERMINISTIC_REPARSE = "deterministic_reparse"
 
 
+class AnalystTrendDirection(StrEnum):
+    INCREASED = "increased"
+    DECREASED = "decreased"
+    UNCHANGED = "unchanged"
+
+
 class AnalystClaimCode(StrEnum):
     SKILL_FREQUENCY = "skill_frequency"
     SKILL_TREND = "skill_trend"
@@ -140,6 +146,7 @@ class ValidatorDecisionData(AgentModel):
 
 class AnalystDecisionData(AgentModel):
     claim_code: AnalystClaimCode | None = None
+    trend_direction: AnalystTrendDirection | None = None
     supporting_metric_refs: tuple[DecisionRef, ...] = Field(default=(), max_length=16)
     caveat_codes: tuple[AnalystCaveatCode, ...] = Field(default=(), max_length=8)
 
@@ -250,14 +257,26 @@ class DecisionEnvelope(AgentModel):
             metric_keys = {ref.key() for ref in self.decision_data.supporting_metric_refs}
             if not metric_keys.issubset(evidence_keys):
                 raise ValueError("analyst metric references must be evidence references")
-            if (
-                self.decision is AnalystDecision.PUBLISH_INSIGHT
-                and self.decision_data.claim_code is None
+            if len(input_keys) != len(self.input_refs) or len(evidence_keys) != len(
+                self.evidence_refs
             ):
-                raise ValueError("publish_insight requires a typed claim code")
-            if self.decision is not AnalystDecision.PUBLISH_INSIGHT and (
+                raise ValueError("analyst references must be unique")
+            if len(metric_keys) != len(self.decision_data.supporting_metric_refs):
+                raise ValueError("analyst metric references must be unique")
+            if len(set(self.decision_data.caveat_codes)) != len(self.decision_data.caveat_codes):
+                raise ValueError("analyst caveat codes must be unique")
+            if self.decision is AnalystDecision.PUBLISH_INSIGHT:
+                if (
+                    self.decision_data.claim_code is None
+                    or self.decision_data.trend_direction is None
+                    or len(self.decision_data.supporting_metric_refs) != 1
+                ):
+                    raise ValueError("publish_insight requires claim, direction and one metric")
+            elif (
                 self.decision_data.claim_code is not None
+                or self.decision_data.trend_direction is not None
                 or self.decision_data.supporting_metric_refs
+                or self.decision_data.caveat_codes
             ):
                 raise ValueError("claim data is only valid for publish_insight")
         return self
@@ -269,6 +288,7 @@ __all__ = [
     "AnalystDecision",
     "AnalystDecisionData",
     "AnalystReasonCode",
+    "AnalystTrendDirection",
     "DecisionEnvelope",
     "DecisionRef",
     "DecisionRefKind",

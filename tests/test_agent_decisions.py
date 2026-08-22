@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from devradar.agents.decisions import (
     AnalystClaimCode,
     AnalystDecisionData,
+    AnalystTrendDirection,
     DecisionEnvelope,
     DecisionRef,
     DecisionRefKind,
@@ -59,7 +60,8 @@ def _analyst_payload() -> dict[str, object]:
         "reasonCode": "evidence_supported",
         "confidence": 0.9,
         "decisionData": {
-            "claimCode": "skill_frequency",
+            "claimCode": "skill_trend",
+            "trendDirection": "increased",
             "supportingMetricRefs": [metric],
             "caveatCodes": ["low_coverage"],
         },
@@ -93,11 +95,88 @@ def test_all_responsibilities_have_frozen_typed_envelopes(
         envelope.decision = envelope.decision
 
 
-def test_analyst_payload_uses_typed_claim_code() -> None:
+def test_analyst_payload_uses_typed_skill_trend_contract() -> None:
     envelope = DecisionEnvelope.model_validate(_analyst_payload())
 
     assert isinstance(envelope.decision_data, AnalystDecisionData)
-    assert envelope.decision_data.claim_code is AnalystClaimCode.SKILL_FREQUENCY
+    assert envelope.decision_data.claim_code is AnalystClaimCode.SKILL_TREND
+    assert envelope.decision_data.trend_direction is AnalystTrendDirection.INCREASED
+    assert len(envelope.decision_data.supporting_metric_refs) == 1
+
+
+@pytest.mark.parametrize(
+    "decision_data",
+    [
+        {
+            "claimCode": "skill_trend",
+            "supportingMetricRefs": [_ref("metric", "metric-1")],
+            "caveatCodes": [],
+        },
+        {
+            "claimCode": "skill_trend",
+            "trendDirection": "increased",
+            "supportingMetricRefs": [],
+            "caveatCodes": [],
+        },
+        {
+            "claimCode": "skill_trend",
+            "trendDirection": "increased",
+            "supportingMetricRefs": [
+                _ref("metric", "metric-1"),
+                _ref("metric", "metric-1"),
+            ],
+            "caveatCodes": [],
+        },
+        {
+            "claimCode": "skill_trend",
+            "trendDirection": "increased",
+            "supportingMetricRefs": [_ref("metric", "metric-1")],
+            "caveatCodes": ["low_coverage", "low_coverage"],
+        },
+    ],
+)
+def test_analyst_publish_requires_one_direction_metric_and_unique_caveats(
+    decision_data: dict[str, object],
+) -> None:
+    payload = _analyst_payload()
+    payload["decisionData"] = decision_data
+
+    with pytest.raises(ValidationError):
+        DecisionEnvelope.model_validate(payload)
+
+
+@pytest.mark.parametrize("decision", ["reject_claim", "needs_review"])
+def test_analyst_non_publish_forbids_claim_data(decision: str) -> None:
+    payload = _analyst_payload()
+    payload["decision"] = decision
+    payload["reasonCode"] = "ambiguous_claim"
+
+    with pytest.raises(ValidationError):
+        DecisionEnvelope.model_validate(payload)
+
+    payload["decisionData"] = {}
+    envelope = DecisionEnvelope.model_validate(payload)
+    assert envelope.decision_data == AnalystDecisionData()
+
+
+def test_analyst_rejects_duplicate_input_or_evidence_refs() -> None:
+    payload = _analyst_payload()
+    payload["inputRefs"] = [
+        payload["inputRefs"][0],  # type: ignore[index]
+        payload["inputRefs"][1],  # type: ignore[index]
+        payload["inputRefs"][1],  # type: ignore[index]
+    ]
+    with pytest.raises(ValidationError):
+        DecisionEnvelope.model_validate(payload)
+
+    payload = _analyst_payload()
+    payload["evidenceRefs"] = [
+        payload["evidenceRefs"][0],  # type: ignore[index]
+        payload["evidenceRefs"][1],  # type: ignore[index]
+        payload["evidenceRefs"][1],  # type: ignore[index]
+    ]
+    with pytest.raises(ValidationError):
+        DecisionEnvelope.model_validate(payload)
 
 
 @pytest.mark.parametrize(
@@ -138,7 +217,8 @@ def test_decision_rejects_mismatched_responsibility_decision_and_payload() -> No
 def test_analyst_metric_refs_must_be_declared_evidence() -> None:
     payload = _analyst_payload()
     payload["decisionData"] = {
-        "claimCode": "skill_frequency",
+        "claimCode": "skill_trend",
+        "trendDirection": "increased",
         "supportingMetricRefs": [_ref("metric", "not-declared")],
         "caveatCodes": [],
     }
