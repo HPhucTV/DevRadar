@@ -54,7 +54,7 @@ Row cũ không bị diễn giải là current khi Job hash, profile parser/conte
 
 Không persist profile vector, raw profile text, Job description, owner token/hash trong `JobMatch` hoặc response.
 
-## `scoring-v1`
+## `scoring-v2`
 
 Weights được chọn sau development comparison và tổng bằng `1.00`:
 
@@ -66,7 +66,7 @@ Weights được chọn sau development comparison và tổng bằng `1.00`:
 | `location` | `0.10` | Exact canonical overlap giữa profile location evidence và Job city/province. Đây là evidence overlap, không phải cam kết relocation. |
 | `role` | `0.10` | Exact overlap giữa profile role family và role deterministic từ Job title. Ambiguous/unknown role không tự match. |
 
-Giả thuyết ban đầu dùng `level`; V1 scoring thay bằng `role` vì ResumeProfile có role evidence nhưng không có level/preference đáng tin cậy. Experience đã bao phủ seniority định lượng; không suy level từ số năm. Future explicit level preference cần parser/profile contract mới và `scoring-v2`.
+Giả thuyết ban đầu dùng `level`; V2 scoring giữ `role` vì ResumeProfile có role evidence nhưng không có level/preference đáng tin cậy. Experience đã bao phủ seniority định lượng; không suy level từ số năm. Future explicit level preference cần parser/profile contract mới và `scoring-v3`.
 
 Missing component có value `null`, đóng góp `0` vào overall và không được đổi thành neutral/match. `evidence_coverage` là tổng weight của component có value. Công thức:
 
@@ -75,7 +75,7 @@ overall = sum(component_value * component_weight)
 coverage = sum(component_weight where component_value is available)
 ```
 
-Không renormalize khi thiếu component vì semantic-only result không được phép trông như full-evidence match. Score và component được round half-up đến bốn chữ số. Stable order là `overall_score desc`, `evidence_coverage desc`, `job_id asc`.
+Không renormalize khi thiếu component vì semantic-only result không được phép trông như full-evidence match. Score và component được round half-up đến bốn chữ số. Stable order là `overall_score desc`, `job_id asc`; `evidence_coverage` được trả để giải thích độ đầy đủ nhưng không thay đổi tie-break runtime.
 
 `matched_skills`/`missing_skills` chỉ lấy từ accepted current extraction và giữ canonical lowercase taxonomy name. Unknown/malformed extraction làm skill component unavailable, không echo value lỗi. Explanation được render từ allow-listed labels/status, ví dụ nêu số skill matched/missing, component unavailable và caveat location; không dùng LLM.
 
@@ -92,7 +92,7 @@ Locations: ...
 
 Danh sách sort/deduplicate, text tối đa 2.000 ký tự và không có filename/hash/owner/raw text. Dùng fixed local MiniLM identity đã Accepted ở ADR-010; inference local-files-only, không download/fallback external. Vector chỉ sống trong memory cho một generation rồi bị bỏ.
 
-Profile input version là `resume-match-embedding-input-v1`; Job vector phải giữ exact `job-embedding-input-v2` + provider/model/revision/dimension hiện hành. Model là symmetric multilingual MiniLM không dùng query/passage prefix; runtime gọi bounded local passage embedding cho profile text để không vượt query input cap 300 ký tự.
+Profile input version là `resume-match-embedding-input-v2`; Job vector phải giữ exact `job-embedding-input-v2` + provider/model/revision/dimension hiện hành. Model là symmetric multilingual MiniLM không dùng query/passage prefix; runtime gọi bounded local passage embedding cho profile text để không vượt query input cap 300 ký tự.
 
 Generation xét toàn bộ Job `active` có current compatible `JobEmbedding`; exact cosine chạy trong PostgreSQL. Job thiếu vector bị đếm `unavailableJobs` và không được đưa vào top 100. Latest accepted ExtractionResult chỉ bổ sung structured component; thiếu extraction không loại Job vì semantic vẫn là evidence.
 
@@ -108,7 +108,7 @@ Không có request body. Success `200`:
 {
   "data": {
     "profileId": "uuid",
-    "scoringVersion": "job-match-scoring-v1",
+    "scoringVersion": "job-match-scoring-v2",
     "consideredJobs": 3339,
     "availableJobs": 3339,
     "unavailableJobs": 0,
@@ -177,7 +177,7 @@ Metrics chỉ đánh giá ranking heuristic trên synthetic labels, không phả
 
 ## Definition of Done
 
-- Synthetic dataset/version/hash, development comparison và held-out report đạt gates trước khi nhận `job-match-scoring-v1`.
+- Synthetic dataset/version/hash, development comparison và held-out report đạt gates trước khi nhận `job-match-scoring-v2`.
 - Pure scoring tests khóa component, missing, coverage, monotonicity, stable tie và explanation evidence.
 - Migration/model tests khóa range, unique identity, stale hash và cascade delete trên PostgreSQL thật.
 - POST/GET OpenAPI + owner/gate/404/503/422/pagination/idempotency tests pass.

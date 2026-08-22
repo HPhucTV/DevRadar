@@ -235,7 +235,7 @@ Hai endpoint dưới đây dùng cùng local gate `DEVRADAR_CV_LOCAL_ENABLED=tru
 
 `POST /api/v1/resume-profiles/{profileId}/matches` chạy synchronous local MiniLM ngoài transaction, persist tối đa 100 current identities và trả counts `consideredJobs`, `availableJobs`, `unavailableJobs`, `storedMatches`, `createdMatches`, `reusedMatches`, cùng `scoringVersion`/`generatedAt`. Local model thiếu, sai artifact hoặc vector invalid trả `503 embedding_model_unavailable` và không lưu partial rows.
 
-`GET /api/v1/resume-profiles/{profileId}/matches?page=1&pageSize=20&minScore=0.5` side-effect free, chỉ join row current khi profile content/parser và Job content hash khớp, Job còn `active`; sort cố định `overallScore desc, jobId asc`. Unknown query trả `422`, pagination `page=1..`, `pageSize=1..100`, `minScore=0..1`.
+`GET /api/v1/resume-profiles/{profileId}/matches?page=1&pageSize=20&minScore=0.5` side-effect free, chỉ join row current khi profile content/parser, Job content hash, scoring version, extraction version/schema/canonicalization và embedding provider/model/revision/dimension đều tương thích, Job còn `active`; sort cố định `overallScore desc, jobId asc`. Unknown query trả `422`, pagination `page=1..`, `pageSize=1..100`, `minScore=0..1`.
 
 ```json
 {
@@ -252,7 +252,7 @@ Hai endpoint dưới đây dùng cùng local gate `DEVRADAR_CV_LOCAL_ENABLED=tru
   "matchedSkills": ["Python", "FastAPI", "PostgreSQL"],
   "missingSkills": ["Redis", "Kafka"],
   "explanation": ["skill_partial", "semantic_available"],
-  "scoringVersion": "job-match-scoring-v1",
+  "scoringVersion": "job-match-scoring-v2",
   "embeddingModel": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
   "embeddingRevision": "<fixed revision>",
   "createdAt": "2026-08-21T08:00:00Z"

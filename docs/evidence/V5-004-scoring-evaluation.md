@@ -2,14 +2,14 @@
 
 ## Kết quả
 
-Task 1 khóa evaluation contract synthetic và chọn `job-match-scoring-v1`. Scoring là ranking heuristic có version, không phải xác suất được tuyển dụng và không dùng để tự động quyết định tuyển dụng.
+Task 1 khóa evaluation contract synthetic và chọn `job-match-scoring-v2`. Scoring là ranking heuristic có version, không phải xác suất được tuyển dụng và không dùng để tự động quyết định tuyển dụng. V2 invalidates row cũ sau khi requirement weights được sửa; profile embedding input dùng `resume-match-embedding-input-v2` sau khi canonical field order được sửa.
 
 | Thuộc tính | Giá trị |
 |---|---|
 | Dataset | `tests/fixtures/matching/job_match_eval_v1.json` |
 | Evaluation version | `job-match-eval-v1` |
 | Schema version | `job-match-eval-schema-v1` |
-| SHA-256 | `8ebbf86c4994b0f63ea9ad248115618ca01f6b309b0375e6375b78d9212df1ae` |
+| SHA-256 | `31eff10b18c9883e7041cba56173ddec57ac8f3ee74e3c866765b30c0d1783e2` |
 | Provenance | `project-authored-synthetic-no-third-party-content` |
 | Split | 4 development + 8 held-out |
 | Candidate groups | 12, tối thiểu 3 candidate mỗi case |
@@ -48,6 +48,7 @@ Balanced weights thắng cả hai alternative trên development theo MRR và NDC
 | MRR | >= 0.9000 | 1.0000 |
 | NDCG@5 | >= 0.9000 | 1.0000 |
 | Score range rate | 1.0000 | 1.0000 |
+| Monotonicity rate | 1.0000 | 1.0000 |
 | Stable tie rate | 1.0000 | 1.0000 |
 | Missing behavior rate | 1.0000 | 1.0000 |
 | Evidence closure rate | 1.0000 | 1.0000 |
@@ -63,4 +64,3 @@ mypy scoring/evaluation/test files             no issues
 ```
 
 CLI evaluation chạy với `PYTHONPATH=src` và chỉ xuất version, dataset hash, weights và metrics; không xuất candidate text, CV/JD, vector hoặc owner identity. Default evaluation không chạm network, PostgreSQL hay external LLM.
-

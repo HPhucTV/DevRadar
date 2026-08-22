@@ -28,17 +28,30 @@ from devradar.api.resume_profiles import (
 )
 from devradar.catalog.models import Job, JobStatus
 from devradar.intelligence.embeddings import (
+    EMBEDDING_INPUT_SCHEMA_VERSION,
+    EMBEDDING_MODEL_ID,
+    EMBEDDING_MODEL_REVISION,
+    EMBEDDING_PROVIDER,
     EmbeddingModelUnavailable,
     EmbeddingValidationError,
     get_local_embedding_model,
 )
+from devradar.intelligence.extraction import (
+    CANONICALIZATION_VERSION as EXTRACTION_CANONICALIZATION_VERSION,
+)
+from devradar.intelligence.extraction import (
+    DETERMINISTIC_EXTRACTOR_VERSION,
+    EXTRACTION_SCHEMA_VERSION,
+)
 from devradar.matching.job_matches import (
+    PROFILE_EMBEDDING_INPUT_VERSION,
     MatchGenerationReport,
     MatchProfileUnavailable,
     generate_job_matches,
 )
 from devradar.matching.models import JobMatch
 from devradar.matching.resume_profiles import get_active_profile
+from devradar.matching.scoring import SCORING_VERSION
 from devradar.platform.database import get_database_session
 
 router = APIRouter(prefix="/resume-profiles", tags=["job-matches"])
@@ -168,6 +181,16 @@ def generate_matches_for_profile(
     session: DatabaseSession,
 ) -> GenerateMatchesResponse:
     try:
+        if (
+            get_active_profile(
+                session,
+                profile_id=profile_id,
+                owner_hash=owner_hash,
+                now=datetime.now(UTC),
+            )
+            is None
+        ):
+            raise MatchProfileUnavailable
         model = get_local_embedding_model()
         report = generate_job_matches(
             session,
@@ -223,6 +246,16 @@ def list_matches_for_profile(
         JobMatch.profile_content_hash == profile.content_hash,
         JobMatch.profile_parser_version == profile.parser_version,
         JobMatch.job_content_hash == Job.job_content_hash,
+        JobMatch.scoring_version == SCORING_VERSION,
+        JobMatch.profile_embedding_input_version == PROFILE_EMBEDDING_INPUT_VERSION,
+        JobMatch.job_embedding_input_schema_version == EMBEDDING_INPUT_SCHEMA_VERSION,
+        JobMatch.extraction_version == DETERMINISTIC_EXTRACTOR_VERSION,
+        JobMatch.extraction_schema_version == EXTRACTION_SCHEMA_VERSION,
+        JobMatch.extraction_canonicalization_version == EXTRACTION_CANONICALIZATION_VERSION,
+        JobMatch.embedding_provider == EMBEDDING_PROVIDER,
+        JobMatch.embedding_model == EMBEDDING_MODEL_ID,
+        JobMatch.embedding_revision == EMBEDDING_MODEL_REVISION,
+        JobMatch.embedding_dimension == 384,
         Job.status == JobStatus.ACTIVE,
     )
     conditions = [current]

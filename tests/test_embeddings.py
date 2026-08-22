@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from math import inf, nan
 from pathlib import Path
@@ -21,6 +22,7 @@ from devradar.intelligence.embeddings import (
     EmbeddingValidationError,
     LocalEmbeddingModel,
     canonical_job_embedding_text,
+    get_local_embedding_model,
     validate_embedding_vector,
 )
 from devradar.intelligence.models import JobEmbedding
@@ -82,6 +84,39 @@ def test_local_model_requires_preloaded_fixed_revision_path(tmp_path: Path) -> N
 
     assert EMBEDDING_MODEL_ID == "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     assert EMBEDDING_MODEL_REVISION == "faf4aa4225822f3bc6376869cb1164e8e3feedd0"
+
+
+def test_local_model_enables_telemetry_disable_before_load(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ORT_DISABLE_TELEMETRY", raising=False)
+    fake_model = object()
+    monkeypatch.setattr(
+        "devradar.intelligence.embeddings.LocalEmbeddingModel",
+        lambda _path: fake_model,
+    )
+    get_local_embedding_model.cache_clear()
+    try:
+        assert get_local_embedding_model() is fake_model
+        assert os.environ["ORT_DISABLE_TELEMETRY"] == "1"
+    finally:
+        get_local_embedding_model.cache_clear()
+
+
+def test_local_model_overrides_inherited_telemetry_setting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ORT_DISABLE_TELEMETRY", "0")
+    monkeypatch.setattr(
+        "devradar.intelligence.embeddings.LocalEmbeddingModel",
+        lambda _path: object(),
+    )
+    get_local_embedding_model.cache_clear()
+    try:
+        get_local_embedding_model()
+        assert os.environ["ORT_DISABLE_TELEMETRY"] == "1"
+    finally:
+        get_local_embedding_model.cache_clear()
 
 
 def test_local_model_normalizes_query_and_passage_without_logging_content(tmp_path: Path) -> None:

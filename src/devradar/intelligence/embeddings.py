@@ -359,4 +359,6 @@ class LocalEmbeddingModel:
 
 @lru_cache(maxsize=1)
 def get_local_embedding_model() -> LocalEmbeddingModel:
+    # Privacy boundary: an inherited value must not re-enable ONNX telemetry.
+    os.environ["ORT_DISABLE_TELEMETRY"] = "1"
     return LocalEmbeddingModel(get_embedding_model_path())

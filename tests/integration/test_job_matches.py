@@ -3,11 +3,12 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, inspect, select
+from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -26,7 +27,7 @@ from devradar.matching.models import JobMatch, ResumeProfile
 from devradar.platform.database import DATABASE_URL_ENV
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-PREVIOUS_REVISION = "b3c7d9e2f401"
+JOB_MATCH_BASE_REVISION = "d5e8f1a4c602"
 
 
 def _alembic_config() -> Config:
@@ -116,6 +117,9 @@ def _match(job: Job, profile: ResumeProfile, *, job_hash: str | None = None) -> 
         scoring_version="job-match-scoring-v1",
         profile_embedding_input_version="resume-match-embedding-input-v1",
         job_embedding_input_schema_version="job-embedding-input-v2",
+        extraction_version="deterministic-job-v2",
+        extraction_schema_version="job-extraction-schema-v1",
+        extraction_canonicalization_version="extraction-canonicalization-v1",
         overall_score=Decimal("0.7900"),
         evidence_coverage=Decimal("1.0000"),
         skill_score=Decimal("0.6000"),
@@ -157,6 +161,9 @@ def test_job_match_migration_schema_stale_identity_and_round_trip(
         "scoring_version",
         "profile_embedding_input_version",
         "job_embedding_input_schema_version",
+        "extraction_version",
+        "extraction_schema_version",
+        "extraction_canonicalization_version",
         "overall_score",
         "evidence_coverage",
         "skill_score",
@@ -220,6 +227,65 @@ def test_job_match_migration_schema_stale_identity_and_round_trip(
         session.commit()
         assert session.scalar(select(JobMatch).where(JobMatch.id == refreshed.id)) is not None
 
+    engine.dispose()
+
+
+@pytest.mark.postgresql
+def test_extraction_identity_migration_keeps_historical_rows_stale(
+    fresh_postgresql_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(DATABASE_URL_ENV, fresh_postgresql_url)
+    config = _alembic_config()
+    command.upgrade(config, JOB_MATCH_BASE_REVISION)
+    engine = create_engine(fresh_postgresql_url)
+    now = datetime.now(UTC)
+    with Session(engine) as session:
+        job, profile = _graph(session, now)
+        session.execute(
+            text(
+                """
+                INSERT INTO job_matches (
+                    id, resume_profile_id, job_id, profile_content_hash,
+                    profile_parser_version, job_content_hash, scoring_version,
+                    profile_embedding_input_version, job_embedding_input_schema_version,
+                    overall_score, evidence_coverage, skill_score, semantic_score,
+                    experience_score, location_score, role_score, matched_skills,
+                    missing_skills, explanation, embedding_provider, embedding_model,
+                    embedding_revision, embedding_dimension
+                ) VALUES (
+                    :id, :profile_id, :job_id, :profile_hash, :parser_version,
+                    :job_hash, 'job-match-scoring-v1',
+                    'resume-match-embedding-input-v1', 'job-embedding-input-v2',
+                    0.5000, 1.0000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000,
+                    CAST(:matched AS jsonb), CAST(:missing AS jsonb),
+                    CAST(:explanation AS jsonb), 'local_fastembed',
+                    'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2',
+                    :revision, 384
+                )
+                """
+            ),
+            {
+                "id": uuid4(),
+                "profile_id": profile.id,
+                "job_id": job.id,
+                "profile_hash": profile.content_hash,
+                "parser_version": profile.parser_version,
+                "job_hash": job.job_content_hash,
+                "matched": '["python"]',
+                "missing": "[]",
+                "explanation": '["legacy"]',
+                "revision": "f" * 40,
+            },
+        )
+        session.commit()
+    command.upgrade(config, "head")
+    with Session(engine) as session:
+        row = session.scalar(select(JobMatch))
+        assert row is not None
+        assert row.extraction_version == "legacy-pre-extraction-identity"
+        assert row.extraction_schema_version == "legacy-pre-extraction-identity"
+        assert row.extraction_canonicalization_version == "legacy-pre-extraction-identity"
     engine.dispose()
 
 

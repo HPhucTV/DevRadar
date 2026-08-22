@@ -280,7 +280,7 @@ Anonymous public CV storage, xác suất tuyển dụng, auto-apply, recruiter A
 - crawler health cùng source degraded.
 
 V5-003 evidence: [secure CV upload và ResumeProfile lifecycle](evidence/V5-003-secure-cv-upload.md).
-V5-004 evidence: [scoring evaluation](evidence/V5-004-scoring-evaluation.md); implementation closeout sẽ bổ sung generation/API/live smoke evidence sau khi full phase gate chạy.
+V5-004 evidence: [scoring evaluation](evidence/V5-004-scoring-evaluation.md) và [implementation closeout](evidence/V5-004-job-match.md), gồm generation/API/live smoke, full default/PostgreSQL/static/Compose gates. V5-005 đã sẵn sàng cho CV matching UI và deletion.
 
 ## 8. V6 — Production-like hardening
 

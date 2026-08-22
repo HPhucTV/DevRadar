@@ -191,11 +191,11 @@ Logical replay key hiện là `owner_hash + content_hash + parser_version` với
 
 ### 4.9. JobMatch
 
-`JobMatch` là derived row liên kết đúng một `ResumeProfile` và một `Job`. Row lưu `overall_score`, `evidence_coverage`, năm component nullable (`skill`, `semantic`, `experience`, `location`, `role`), sorted/disjoint `matched_skills`/`missing_skills`, bounded deterministic `explanation`, `scoring_version`, profile/job content hash, profile parser/input schema và embedding provider/model/revision/dimension cùng `created_at`.
+`JobMatch` là derived row liên kết đúng một `ResumeProfile` và một `Job`. Row lưu `overall_score`, `evidence_coverage`, năm component nullable (`skill`, `semantic`, `experience`, `location`, `role`), sorted/disjoint `matched_skills`/`missing_skills`, bounded deterministic `explanation`, `scoring_version`, profile/job content hash, profile parser/input schema, current deterministic extraction version/schema/canonicalization và embedding provider/model/revision/dimension cùng `created_at`.
 
-V5-004 chọn `job-match-scoring-v1`: skill `0.40`, semantic `0.25`, experience `0.15`, location `0.10`, role `0.10`. Component thiếu đóng góp `0` nhưng không renormalize; `evidence_coverage` là tổng weight có bằng chứng. `role` thay `level` vì ResumeProfile chưa có level/preference evidence đáng tin cậy. Score nằm trong `[0,1]`, là ranking heuristic chứ không phải xác suất tuyển dụng.
+V5-004 chọn `job-match-scoring-v2`: skill `0.40`, semantic `0.25`, experience `0.15`, location `0.10`, role `0.10`. Component thiếu đóng góp `0` nhưng không renormalize; `evidence_coverage` là tổng weight có bằng chứng. `role` thay `level` vì ResumeProfile chưa có level/preference evidence đáng tin cậy. Score nằm trong `[0,1]`, là ranking heuristic chứ không phải xác suất tuyển dụng. Version v2 loại row sinh theo trọng số v1; profile embedding input dùng `resume-match-embedding-input-v2` để loại vector sinh theo thứ tự field cũ.
 
-Logical identity gồm profile/job ID, content/parser/hash, scoring/input schema và embedding identity. GET/generation chỉ coi row là current khi profile còn hạn/không tombstone, Job `active` và các hash/version khớp; Job đổi hash tạo identity mới và row cũ stale. Profile hoặc Job xóa vật lý cascade `JobMatch`; soft-delete/expiry làm row invisible. Không lưu resume vector, raw CV/JD, owner hash/token hoặc extraction payload trong row/response.
+Logical identity gồm profile/job ID, content/parser/hash, scoring/input schema, extraction identity và embedding identity. GET/generation chỉ coi row là current khi profile còn hạn/không tombstone, Job `active` và các hash/version khớp; Job đổi hash hoặc extractor/model revision đổi tạo identity mới và row cũ stale. Profile hoặc Job xóa vật lý cascade `JobMatch`; soft-delete/expiry làm row invisible. Không lưu resume vector, raw CV/JD, owner hash/token hoặc extraction payload trong row/response.
 
 ### 4.10. AlertRule và AlertDelivery
 

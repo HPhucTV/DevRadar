@@ -118,6 +118,7 @@ def test_held_out_release_gates_and_missing_semantics(evaluation: ModuleType) ->
     assert report.mrr >= Decimal("0.90")
     assert report.ndcg_at_5 >= Decimal("0.90")
     assert report.score_range_rate == Decimal("1")
+    assert report.monotonicity_rate == Decimal("1")
     assert report.stable_tie_rate == Decimal("1")
     assert report.missing_behavior_rate == Decimal("1")
     assert report.evidence_closure_rate == Decimal("1")
@@ -125,7 +126,7 @@ def test_held_out_release_gates_and_missing_semantics(evaluation: ModuleType) ->
 
 
 def test_weight_contract_is_complete_and_normalized(evaluation: ModuleType) -> None:
-    assert evaluation.SCORING_VERSION == "job-match-scoring-v1"
+    assert evaluation.SCORING_VERSION == "job-match-scoring-v2"
     assert set(evaluation.RECOMMENDED_WEIGHTS) == {
         "skill",
         "semantic",

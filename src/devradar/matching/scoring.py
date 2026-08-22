@@ -10,7 +10,8 @@ from typing import Final
 
 from devradar.intelligence.evaluation import RequirementType, canonicalize_skill_name
 
-SCORING_VERSION: Final = "job-match-scoring-v1"
+# v2 invalidates rows produced with the pre-contract skill requirement weights.
+SCORING_VERSION: Final = "job-match-scoring-v2"
 COMPONENT_NAMES: Final = ("skill", "semantic", "experience", "location", "role")
 SCORE_QUANTUM: Final = Decimal("0.0001")
 RECOMMENDED_WEIGHTS: Final[Mapping[str, Decimal]] = MappingProxyType(
@@ -24,10 +25,10 @@ RECOMMENDED_WEIGHTS: Final[Mapping[str, Decimal]] = MappingProxyType(
 )
 REQUIREMENT_WEIGHTS: Final[Mapping[RequirementType, Decimal]] = MappingProxyType(
     {
-        RequirementType.REQUIRED: Decimal("0.60"),
-        RequirementType.PREFERRED: Decimal("0.40"),
-        RequirementType.OPTIONAL: Decimal("0.20"),
-        RequirementType.MENTIONED: Decimal("0.10"),
+        RequirementType.REQUIRED: Decimal("3"),
+        RequirementType.PREFERRED: Decimal("2"),
+        RequirementType.OPTIONAL: Decimal("1"),
+        RequirementType.MENTIONED: Decimal("1"),
     }
 )
 

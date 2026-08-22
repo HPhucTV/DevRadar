@@ -134,6 +134,9 @@ class JobMatch(Base):
             "length(btrim(scoring_version)) > 0 AND "
             "length(btrim(profile_embedding_input_version)) > 0 AND "
             "length(btrim(job_embedding_input_schema_version)) > 0 AND "
+            "length(btrim(extraction_version)) > 0 AND "
+            "length(btrim(extraction_schema_version)) > 0 AND "
+            "length(btrim(extraction_canonicalization_version)) > 0 AND "
             "embedding_provider = 'local_fastembed' AND "
             "embedding_revision ~ '^[0-9a-f]{40}$' AND embedding_dimension = 384",
             name="ck_job_matches_embedding_identity",
@@ -157,6 +160,9 @@ class JobMatch(Base):
             "scoring_version",
             "profile_embedding_input_version",
             "job_embedding_input_schema_version",
+            "extraction_version",
+            "extraction_schema_version",
+            "extraction_canonicalization_version",
             "embedding_provider",
             "embedding_model",
             "embedding_revision",
@@ -186,6 +192,9 @@ class JobMatch(Base):
     scoring_version: Mapped[str] = mapped_column(String(100))
     profile_embedding_input_version: Mapped[str] = mapped_column(String(100))
     job_embedding_input_schema_version: Mapped[str] = mapped_column(String(100))
+    extraction_version: Mapped[str] = mapped_column(String(100))
+    extraction_schema_version: Mapped[str] = mapped_column(String(100))
+    extraction_canonicalization_version: Mapped[str] = mapped_column(String(100))
     overall_score: Mapped[Decimal] = mapped_column(Numeric(5, 4))
     evidence_coverage: Mapped[Decimal] = mapped_column(Numeric(5, 4))
     skill_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 4))

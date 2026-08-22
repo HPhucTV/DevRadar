@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 from decimal import Decimal
 from pathlib import Path
 
@@ -36,10 +36,12 @@ from devradar.intelligence.extraction import (
 )
 from devradar.intelligence.models import ExtractionResult, JobEmbedding
 from devradar.matching.job_matches import (
+    PROFILE_EMBEDDING_INPUT_VERSION,
     MatchProfileUnavailable,
     generate_job_matches,
 )
 from devradar.matching.models import JobMatch, ResumeProfile
+from devradar.matching.scoring import SCORING_VERSION
 from devradar.platform.database import DATABASE_URL_ENV
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -210,6 +212,10 @@ def test_generation_is_bounded_private_and_replay_idempotent(
         assert second.created_matches == 0
         assert second.reused_matches == 100
         assert session.scalar(select(func.count()).select_from(JobMatch)) == 100
+        assert {
+            (row.scoring_version, row.profile_embedding_input_version)
+            for row in session.scalars(select(JobMatch))
+        } == {(SCORING_VERSION, PROFILE_EMBEDDING_INPUT_VERSION)}
         assert len(captured) == 2
         assert "private-profile.pdf" not in captured[0]
         assert profile.owner_hash not in captured[0]
@@ -306,6 +312,37 @@ def test_profile_invalidation_during_inference_stores_no_rows(
                 owner_hash=profile.owner_hash,
                 now=profile.created_at,
                 embed_profile=invalidate,
+            )
+        assert session.scalar(select(func.count()).select_from(JobMatch)) == 0
+    engine.dispose()
+
+
+@pytest.mark.postgresql
+def test_profile_expiry_during_inference_stores_no_rows(
+    fresh_postgresql_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(DATABASE_URL_ENV, fresh_postgresql_url)
+    command.upgrade(Config(str(PROJECT_ROOT / "alembic.ini")), "head")
+    engine = create_engine(fresh_postgresql_url)
+    with Session(engine) as session:
+        profile, _ = _seed(session)
+
+        class FutureClock:
+            @classmethod
+            def now(cls, tz: tzinfo | None = None) -> datetime:
+                return datetime.now(tz) + timedelta(days=2)
+
+        monkeypatch.setattr("devradar.matching.job_matches.datetime", FutureClock)
+        vector = tuple([1.0] + [0.0] * (EMBEDDING_DIMENSION - 1))
+
+        with pytest.raises(MatchProfileUnavailable):
+            generate_job_matches(
+                session,
+                profile_id=profile.id,
+                owner_hash=profile.owner_hash,
+                now=profile.created_at,
+                embed_profile=lambda _text: vector,
             )
         assert session.scalar(select(func.count()).select_from(JobMatch)) == 0
     engine.dispose()

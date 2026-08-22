@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from devradar.main import app
 from devradar.platform.database import DATABASE_URL_ENV, _database_engine
-from integration.test_job_match_generation import _seed  # type: ignore[import-not-found]
+from integration.test_job_match_generation import _seed
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 OWNER_TOKEN = "api-owner-local-token-0123456789abcdef"
@@ -87,6 +87,7 @@ def test_generate_replay_get_pagination_and_min_score(
     )
 
     assert generated.status_code == 200
+    assert generated.json()["data"]["scoringVersion"] == "job-match-scoring-v2"
     assert generated.json()["data"]["storedMatches"] == 1
     assert generated.json()["data"]["createdMatches"] == 1
     assert replay.status_code == 200
@@ -153,6 +154,11 @@ def test_match_api_fail_closed_gate_owner_model_and_unknown_query(
             raise EmbeddingModelUnavailable
 
     monkeypatch.setattr("devradar.api.job_matches.get_local_embedding_model", Unavailable)
+    wrong_owner_post = client.post(
+        f"/api/v1/resume-profiles/{profile_id}/matches",
+        headers={OWNER_HEADER: "other-owner-local-token-0123456789abcdef"},
+    )
+    assert wrong_owner_post.status_code == 404
     unavailable = client.post(f"/api/v1/resume-profiles/{profile_id}/matches", headers=headers)
     assert unavailable.status_code == 503
     assert unavailable.json()["error"]["code"] == "embedding_model_unavailable"

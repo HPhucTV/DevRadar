@@ -156,6 +156,7 @@ class MatchEvaluationReport(EvaluationModel):
     mrr: Decimal
     ndcg_at_5: Decimal
     score_range_rate: Decimal
+    monotonicity_rate: Decimal
     stable_tie_rate: Decimal
     missing_behavior_rate: Decimal
     evidence_closure_rate: Decimal
@@ -206,6 +207,7 @@ def evaluate_weight_set(
     reciprocal_rank = Decimal("0")
     ndcg_total = Decimal("0")
     score_range = 0
+    monotonicity = 0
     stable_ties = 0
     missing_behavior = 0
     evidence_closed = 0
@@ -227,6 +229,16 @@ def evaluate_weight_set(
             ).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
             case_missing_behavior &= score == expected_score and coverage == expected_coverage
             score_range += 0 <= score <= 1 and 0 <= coverage <= 1
+            monotonic = True
+            for name in COMPONENT_NAMES:
+                value = components[name]
+                if value is None or value == 1:
+                    continue
+                increased = dict(components)
+                increased[name] = min(Decimal("1"), value + Decimal("0.0001"))
+                increased_score, _ = weighted_component_score(increased, weights)
+                monotonic &= increased_score >= score
+            monotonicity += monotonic
             matched = candidate.matched_skills
             missing = candidate.missing_skills
             closed = (
@@ -239,10 +251,15 @@ def evaluate_weight_set(
             candidate_count += 1
             scored.append((score, coverage, candidate))
         ordered = sorted(scored, key=lambda item: (-item[0], item[2].id))
-        stable_ties += all(
-            left[0] != right[0] or left[2].id < right[2].id
-            for left, right in zip(ordered, ordered[1:], strict=False)
-        )
+        score_groups: dict[Decimal, list[str]] = {}
+        for score, _coverage, candidate in scored:
+            score_groups.setdefault(score, []).append(candidate.id)
+        expected_order = [
+            candidate_id
+            for score in sorted(score_groups, reverse=True)
+            for candidate_id in sorted(score_groups[score])
+        ]
+        stable_ties += [item[2].id for item in ordered] == expected_order
         missing_behavior += case_missing_behavior
         highest_relevance = max(item[2].relevance for item in ordered)
         top1 += ordered[0][2].relevance == highest_relevance
@@ -266,6 +283,7 @@ def evaluate_weight_set(
         mrr=_ratio(reciprocal_rank, case_count),
         ndcg_at_5=_ratio(ndcg_total, case_count),
         score_range_rate=_ratio(score_range, candidate_count),
+        monotonicity_rate=_ratio(monotonicity, candidate_count),
         stable_tie_rate=_ratio(stable_ties, case_count),
         missing_behavior_rate=_ratio(missing_behavior, case_count),
         evidence_closure_rate=_ratio(evidence_closed, candidate_count),

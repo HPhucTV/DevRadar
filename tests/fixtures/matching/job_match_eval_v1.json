@@ -449,17 +449,6 @@
       "riskTags": ["deterministic_tie"],
       "candidates": [
         {
-          "id": "alpha-equal-fit",
-          "skill": 0.8,
-          "semantic": 0.8,
-          "experience": 1,
-          "location": 1,
-          "role": 1,
-          "matchedSkills": ["synthetic-api"],
-          "missingSkills": ["synthetic-storage"],
-          "relevance": 3
-        },
-        {
           "id": "beta-equal-fit",
           "skill": 0.8,
           "semantic": 0.8,
@@ -469,6 +458,17 @@
           "matchedSkills": ["synthetic-api"],
           "missingSkills": ["synthetic-storage"],
           "relevance": 2
+        },
+        {
+          "id": "alpha-equal-fit",
+          "skill": 0.8,
+          "semantic": 0.8,
+          "experience": 1,
+          "location": 1,
+          "role": 1,
+          "matchedSkills": ["synthetic-api"],
+          "missingSkills": ["synthetic-storage"],
+          "relevance": 3
         },
         {
           "id": "gamma-lower-fit",

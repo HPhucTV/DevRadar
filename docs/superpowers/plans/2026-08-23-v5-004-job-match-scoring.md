@@ -10,7 +10,7 @@
 
 ---
 
-### Task 1: Freeze scoring evaluation and select `job-match-scoring-v1`
+### Task 1: Freeze scoring evaluation and select `job-match-scoring-v2`
 
 **Files:**
 - Create: `tests/fixtures/matching/job_match_eval_v1.json`
@@ -85,10 +85,28 @@ Implement frozen Pydantic models with `extra="forbid"`, Decimal component range 
 ```python
 EVALUATION_VERSION = "job-match-eval-v1"
 EVALUATION_SCHEMA_VERSION = "job-match-eval-schema-v1"
-SCORING_VERSION = "job-match-scoring-v1"
-SKILL_HEAVY_WEIGHTS = {"skill": Decimal("0.50"), "semantic": Decimal("0.20"), "experience": Decimal("0.15"), "location": Decimal("0.05"), "role": Decimal("0.10")}
-SEMANTIC_HEAVY_WEIGHTS = {"skill": Decimal("0.30"), "semantic": Decimal("0.40"), "experience": Decimal("0.15"), "location": Decimal("0.05"), "role": Decimal("0.10")}
-RECOMMENDED_WEIGHTS = {"skill": Decimal("0.40"), "semantic": Decimal("0.25"), "experience": Decimal("0.15"), "location": Decimal("0.10"), "role": Decimal("0.10")}
+SCORING_VERSION = "job-match-scoring-v2"
+SKILL_HEAVY_WEIGHTS = {
+    "skill": Decimal("0.50"),
+    "semantic": Decimal("0.20"),
+    "experience": Decimal("0.15"),
+    "location": Decimal("0.05"),
+    "role": Decimal("0.10"),
+}
+SEMANTIC_HEAVY_WEIGHTS = {
+    "skill": Decimal("0.30"),
+    "semantic": Decimal("0.40"),
+    "experience": Decimal("0.15"),
+    "location": Decimal("0.05"),
+    "role": Decimal("0.10"),
+}
+RECOMMENDED_WEIGHTS = {
+    "skill": Decimal("0.40"),
+    "semantic": Decimal("0.25"),
+    "experience": Decimal("0.15"),
+    "location": Decimal("0.10"),
+    "role": Decimal("0.10"),
+}
 ```
 
 `evaluate_weight_set()` must use missing-as-zero, half-up four-decimal scores, fixed `score desc, candidate id asc` order, Top-1/MRR/NDCG@5 and evidence/range/tie checks.
@@ -189,6 +207,7 @@ class JobSkill:
     name: str
     requirement_type: RequirementType
 
+
 @dataclass(frozen=True, slots=True)
 class MatchFacts:
     profile_skills: tuple[str, ...]
@@ -200,6 +219,7 @@ class MatchFacts:
     job_locations: tuple[str, ...]
     profile_roles: tuple[str, ...]
     job_role: str | None
+
 
 @dataclass(frozen=True, slots=True)
 class MatchComponents:
@@ -324,7 +344,8 @@ Export:
 ```python
 MAX_STORED_MATCHES = 100
 MAX_PROFILE_EMBEDDING_TEXT_CHARS = 2_000
-PROFILE_EMBEDDING_INPUT_VERSION = "resume-match-embedding-input-v1"
+PROFILE_EMBEDDING_INPUT_VERSION = "resume-match-embedding-input-v2"
+
 
 @dataclass(frozen=True, slots=True)
 class MatchGenerationReport:
@@ -337,6 +358,7 @@ class MatchGenerationReport:
     created_matches: int
     reused_matches: int
     generated_at: datetime
+
 
 def generate_job_matches(
     session: Session,

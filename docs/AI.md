@@ -160,7 +160,7 @@ rejected/needs-review rows vẫn được audit.
 - Semantic API dùng exact cosine, áp Job status/source/skill filter trước rank và tie-break bằng Job ID; `relevanceScore` là similarity trong `[-1,1]`, không phải probability.
 - CV embedding chỉ dùng `ResumeProfile` được phép xử lý từ V5; không reuse Job embedding boundary ngầm định.
 - Xóa/expire ResumeProfile phải xóa hoặc vô hiệu embedding và match liên quan.
-- Raw vector, model path và raw query/JD không được trả hoặc ghi log.
+- Raw vector, model path và raw query/JD không được trả hoặc ghi log. Local embedding boundary đặt `ORT_DISABLE_TELEMETRY=1` trước model load cả trong Docker và local venv.
 - Không thêm HNSW, Pinecone/Qdrant, Redis hoặc distributed embedding worker trước khi V3-006/V6 đo bottleneck thực tế.
 
 ## 8. Match score
@@ -176,7 +176,7 @@ overall =
   + 0.10 * role_match
 ```
 
-`scoringVersion=job-match-scoring-v1` dùng `role` thay cho `level` vì ResumeProfile chưa có level/preference evidence đáng tin cậy. Component vắng mặt đóng góp `0` và không renormalize; `evidenceCoverage` là tổng weight có evidence. Mỗi component/score làm tròn half-up bốn chữ số, score nằm trong `[0,1]`, tie-break là `score desc, candidate id asc`; explanation chỉ là token deterministic bounded. Chi tiết dataset/hash/gate nằm trong [V5-004 evaluation evidence](evidence/V5-004-scoring-evaluation.md).
+`scoringVersion=job-match-scoring-v2` dùng `role` thay cho `level` vì ResumeProfile chưa có level/preference evidence đáng tin cậy. Component vắng mặt đóng góp `0` và không renormalize; `evidenceCoverage` là tổng weight có evidence. Skill component dùng tỷ lệ requirement `required:preferred:optional|mentioned = 3:2:1`; một required match trên cặp required+preferred là `0.6000`. Mỗi component/score làm tròn half-up bốn chữ số, score nằm trong `[0,1]`, tie-break là `score desc, job id asc`; explanation chỉ là token deterministic bounded. Chi tiết dataset/hash/gate nằm trong [V5-004 evaluation evidence](evidence/V5-004-scoring-evaluation.md). V2 invalidates row cũ sau khi requirement weights được sửa; profile embedding input cũng đã tăng lên `resume-match-embedding-input-v2` sau khi canonical order được sửa.
 
 Trước khi mở scoring version mới, V5 phải:
 

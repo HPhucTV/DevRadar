@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -24,6 +24,7 @@ from devradar.intelligence.embeddings import (
 )
 from devradar.intelligence.extraction import (
     CANONICALIZATION_VERSION,
+    DETERMINISTIC_EXTRACTOR_VERSION,
     EXTRACTION_SCHEMA_VERSION,
     ExtractionPayload,
 )
@@ -40,7 +41,8 @@ from devradar.matching.scoring import (
 
 MAX_STORED_MATCHES = 100
 MAX_PROFILE_EMBEDDING_TEXT_CHARS = 2_000
-PROFILE_EMBEDDING_INPUT_VERSION = "resume-match-embedding-input-v1"
+# v2 invalidates vectors produced before the canonical Roles -> Skills ordering.
+PROFILE_EMBEDDING_INPUT_VERSION = "resume-match-embedding-input-v2"
 
 
 class MatchProfileUnavailable(LookupError):
@@ -119,14 +121,14 @@ def canonical_profile_embedding_text(profile: _ProfileFacts) -> str:
     skills = clean_values(profile.skills)
     roles = clean_values(profile.roles)
     locations = clean_values(profile.locations)
-    if skills:
-        parts.append("Skills: " + ", ".join(skills))
     if roles:
         parts.append("Roles: " + ", ".join(roles))
-    if locations:
-        parts.append("Locations: " + ", ".join(locations))
+    if skills:
+        parts.append("Skills: " + ", ".join(skills))
     if profile.experience_years is not None:
         parts.append(f"Experience years: {profile.experience_years}")
+    if locations:
+        parts.append("Locations: " + ", ".join(locations))
     text = "\n".join(parts)
     return text[:MAX_PROFILE_EMBEDDING_TEXT_CHARS]
 
@@ -208,6 +210,8 @@ def _current_extractions(
             or_(*identity_clauses),
             ExtractionResult.schema_version == EXTRACTION_SCHEMA_VERSION,
             ExtractionResult.canonicalization_version == CANONICALIZATION_VERSION,
+            ExtractionResult.extractor_type == "rule",
+            ExtractionResult.extractor_version == DETERMINISTIC_EXTRACTOR_VERSION,
             ExtractionResult.validation_status == ExtractionValidationStatus.ACCEPTED.value,
         )
         .order_by(ExtractionResult.created_at.desc(), ExtractionResult.id.desc())
@@ -234,6 +238,9 @@ def _match_row(
         "scoring_version": SCORING_VERSION,
         "profile_embedding_input_version": PROFILE_EMBEDDING_INPUT_VERSION,
         "job_embedding_input_schema_version": EMBEDDING_INPUT_SCHEMA_VERSION,
+        "extraction_version": DETERMINISTIC_EXTRACTOR_VERSION,
+        "extraction_schema_version": EXTRACTION_SCHEMA_VERSION,
+        "extraction_canonicalization_version": CANONICALIZATION_VERSION,
         "overall_score": score.overall_score,
         "evidence_coverage": score.evidence_coverage,
         "skill_score": components.skill,
@@ -259,12 +266,13 @@ def _persist_current_matches(
     now: datetime,
 ) -> MatchGenerationReport:
     with session.begin():
+        persistence_now = datetime.now(UTC)
         active_profile = session.scalar(
             select(ResumeProfile).where(
                 ResumeProfile.id == profile.id,
                 ResumeProfile.owner_hash == profile.owner_hash,
                 ResumeProfile.deleted_at.is_(None),
-                ResumeProfile.expires_at > now,
+                ResumeProfile.expires_at > persistence_now,
             )
         )
         if active_profile is None:
@@ -303,6 +311,9 @@ def _persist_current_matches(
             JobMatch.scoring_version,
             JobMatch.profile_embedding_input_version,
             JobMatch.job_embedding_input_schema_version,
+            JobMatch.extraction_version,
+            JobMatch.extraction_schema_version,
+            JobMatch.extraction_canonicalization_version,
             JobMatch.embedding_provider,
             JobMatch.embedding_model,
             JobMatch.embedding_revision,
