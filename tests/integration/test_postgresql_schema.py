@@ -25,7 +25,7 @@ from devradar.ingestion.models import (
 from devradar.platform.database import DATABASE_URL_ENV
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DOMAIN_TABLES = {"sources", "crawl_runs", "raw_job_snapshots", "jobs"}
+DOMAIN_TABLES = {"sources", "crawl_runs", "raw_job_snapshots", "jobs", "extraction_results"}
 
 
 def _alembic_config() -> Config:
@@ -76,6 +76,10 @@ def test_migration_and_domain_invariants_on_postgresql(
             "ck_raw_job_snapshots_parse_status",
         },
         "jobs": {"ck_jobs_salary_range", "ck_jobs_levels_allowed_values"},
+        "extraction_results": {
+            "ck_extraction_results_input_hash",
+            "ck_extraction_results_status",
+        },
     }
     for table_name, constraint_names in expected_checks.items():
         reflected_names = {
