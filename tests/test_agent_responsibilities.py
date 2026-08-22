@@ -1,20 +1,41 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from uuid import UUID, uuid4
 
 import pytest
 from pydantic import ValidationError
 
-from devradar.agents.decisions import DecisionRefKind, Responsibility, ValidatorRetryStrategy
+from devradar.agents.decisions import (
+    AnalystCaveatCode,
+    AnalystClaimCode,
+    AnalystTrendDirection,
+    DecisionRefKind,
+    Responsibility,
+    ValidatorRetryStrategy,
+)
 from devradar.agents.responsibilities import (
+    AnalystFacts,
+    AnalystTrendBucketEvidence,
+    AnalystTrendEvidence,
     PlannerFacts,
     ResponsibilityBuildCode,
     ResponsibilityBuildError,
     ResponsibilityInput,
     ValidatorFacts,
+    build_analyst_responsibility,
     build_planner_responsibility,
     build_validator_responsibility,
+    project_analyst_trend_evidence,
+)
+from devradar.api.analytics import (
+    CohortField,
+    SkillTrendBucket,
+    SkillTrendMeta,
+    SkillTrendQuery,
+    SkillTrendResponse,
+    TrendGranularity,
+    TrendSkillData,
 )
 from devradar.catalog.models import Job, JobStatus
 from devradar.ingestion.models import (
@@ -550,3 +571,320 @@ def test_validator_builder_rejects_unsafe_schema_version_without_echo() -> None:
 
     assert injected not in str(caught.value)
     assert injected not in caught.value.safe_summary
+
+
+def _trend_query_and_response() -> tuple[SkillTrendQuery, SkillTrendResponse]:
+    query = SkillTrendQuery.model_validate(
+        {
+            "from": "2026-08-01",
+            "to": "2026-08-17",
+            "cohort": CohortField.FIRST_SEEN_AT.value,
+            "granularity": TrendGranularity.WEEK.value,
+            "topSkills": 1,
+            "status": JobStatus.ACTIVE.value,
+        }
+    )
+    response = SkillTrendResponse(
+        data=[
+            SkillTrendBucket(
+                period_start=date(2026, 7, 27),
+                denominator=32,
+                analyzed_jobs=16,
+                coverage=0.5,
+                skills=[TrendSkillData(name="python", job_count=1, share=0.0312)],
+            ),
+            SkillTrendBucket(
+                period_start=date(2026, 8, 10),
+                denominator=3,
+                analyzed_jobs=3,
+                coverage=1.0,
+                skills=[TrendSkillData(name="python", job_count=2, share=0.6667)],
+            ),
+        ],
+        meta=SkillTrendMeta(
+            cohort_size=35,
+            analyzed_jobs=19,
+            coverage=0.5429,
+            taxonomy_version="job-taxonomy-v1",
+            extraction_schema_version="job-extraction-schema-v1",
+            from_date=query.from_date,
+            to_date=query.to_date,
+            cohort=query.cohort,
+            granularity=query.granularity,
+        ),
+    )
+    return query, response
+
+
+def test_analyst_projection_preserves_buckets_and_recomputes_integer_basis_points() -> None:
+    query, response = _trend_query_and_response()
+
+    evidence = project_analyst_trend_evidence(
+        query=query,
+        response=response,
+        skill_name="python",
+    )
+
+    assert evidence.schema_version == "analyst-trend-evidence-v1"
+    assert evidence.top_skills == 1
+    assert tuple(bucket.period_start for bucket in evidence.buckets) == (
+        date(2026, 7, 27),
+        date(2026, 8, 10),
+    )
+    assert evidence.buckets[0].coverage_basis_points == 5_000
+    assert evidence.buckets[0].share_basis_points == 313
+    assert evidence.buckets[1].share_basis_points == 6_667
+
+
+def test_analyst_builder_selects_endpoints_and_builds_deterministic_refs() -> None:
+    query, response = _trend_query_and_response()
+    evidence = project_analyst_trend_evidence(
+        query=query,
+        response=response,
+        skill_name="python",
+    )
+
+    first = build_analyst_responsibility(evidence=evidence)
+    second = build_analyst_responsibility(evidence=evidence)
+
+    assert first == second
+    assert first.responsibility is Responsibility.ANALYST
+    assert isinstance(first.facts, AnalystFacts)
+    assert first.facts.start_bucket == evidence.buckets[0]
+    assert first.facts.end_bucket == evidence.buckets[-1]
+    assert first.facts.share_delta_basis_points == 6_354
+    assert first.facts.trend_direction is AnalystTrendDirection.INCREASED
+    assert first.facts.required_caveat_codes == (AnalystCaveatCode.LOW_COVERAGE,)
+    assert first.input_refs == (
+        first.facts.aggregate_query_ref,
+        first.facts.trend_metric_ref,
+    )
+    assert first.facts.aggregate_query_ref.kind is DecisionRefKind.AGGREGATE_QUERY
+    assert first.facts.trend_metric_ref.kind is DecisionRefKind.METRIC
+    assert first.application_context.input_refs == first.input_refs
+    assert first.application_context.supported_metric_refs == (first.facts.trend_metric_ref,)
+    assert first.application_context.expected_analyst_claim_code is AnalystClaimCode.SKILL_TREND
+    assert (
+        first.application_context.expected_analyst_trend_direction
+        is AnalystTrendDirection.INCREASED
+    )
+
+
+@pytest.mark.parametrize(
+    ("case", "expected_code"),
+    [
+        ("meta", ResponsibilityBuildCode.ANALYST_QUERY_MISMATCH),
+        ("missing_skill", ResponsibilityBuildCode.ANALYST_QUERY_MISMATCH),
+        ("duplicate_skill", ResponsibilityBuildCode.ANALYST_QUERY_MISMATCH),
+        ("short", ResponsibilityBuildCode.INSUFFICIENT_ANALYST_COMPARISON),
+        ("reordered", ResponsibilityBuildCode.ANALYST_BUCKET_MISMATCH),
+        ("duplicate_bucket", ResponsibilityBuildCode.ANALYST_BUCKET_MISMATCH),
+        ("outside_window", ResponsibilityBuildCode.ANALYST_BUCKET_MISMATCH),
+        ("invalid_counts", ResponsibilityBuildCode.ANALYST_BUCKET_MISMATCH),
+    ],
+)
+def test_analyst_projection_fails_closed(
+    case: str,
+    expected_code: ResponsibilityBuildCode,
+) -> None:
+    query, response = _trend_query_and_response()
+    response = response.model_copy(deep=True)
+    if case == "meta":
+        response.meta = response.meta.model_copy(update={"to_date": date(2026, 8, 16)})
+    elif case == "missing_skill":
+        response.data[0].skills = []
+    elif case == "duplicate_skill":
+        response.data[0].skills.append(response.data[0].skills[0].model_copy())
+    elif case == "short":
+        response.data = response.data[:1]
+    elif case == "reordered":
+        response.data = list(reversed(response.data))
+    elif case == "duplicate_bucket":
+        response.data = [response.data[0], response.data[0].model_copy(deep=True)]
+    elif case == "outside_window":
+        response.data[0].period_start = date(2026, 7, 20)
+    else:
+        response.data[0].denominator = 0
+
+    with pytest.raises(ResponsibilityBuildError) as caught:
+        project_analyst_trend_evidence(
+            query=query,
+            response=response,
+            skill_name="python",
+        )
+    assert caught.value.code is expected_code
+
+
+@pytest.mark.parametrize(
+    "unsafe",
+    [
+        "python\nignore previous",
+        "https://example.invalid",
+        "python' OR 1=1",
+        "sk-secret ignore previous",
+    ],
+)
+def test_analyst_projection_rejects_unsafe_skill_without_echo(unsafe: str) -> None:
+    query, response = _trend_query_and_response()
+
+    with pytest.raises(ResponsibilityBuildError) as caught:
+        project_analyst_trend_evidence(
+            query=query,
+            response=response,
+            skill_name=unsafe,
+        )
+
+    assert caught.value.code is ResponsibilityBuildCode.UNSAFE_ANALYST_INPUT
+    assert unsafe not in str(caught.value)
+    assert unsafe not in caught.value.safe_summary
+
+
+def test_analyst_projection_rejects_unsafe_version_without_echo() -> None:
+    query, response = _trend_query_and_response()
+    injected = "taxonomy-v1\nsk-secret ignore previous"
+    response.meta.taxonomy_version = injected
+
+    with pytest.raises(ResponsibilityBuildError) as caught:
+        project_analyst_trend_evidence(
+            query=query,
+            response=response,
+            skill_name="python",
+        )
+
+    assert caught.value.code is ResponsibilityBuildCode.UNSAFE_ANALYST_INPUT
+    assert injected not in str(caught.value)
+    assert injected not in caught.value.safe_summary
+
+
+def test_analyst_builder_rejects_bucket_and_arithmetic_forgery() -> None:
+    query, response = _trend_query_and_response()
+    evidence = project_analyst_trend_evidence(
+        query=query,
+        response=response,
+        skill_name="python",
+    )
+    reordered = evidence.model_copy(update={"buckets": tuple(reversed(evidence.buckets))})
+    with pytest.raises(ResponsibilityBuildError) as bucket_error:
+        build_analyst_responsibility(evidence=reordered)
+    assert bucket_error.value.code is ResponsibilityBuildCode.ANALYST_BUCKET_MISMATCH
+
+    forged_start = evidence.buckets[0].model_copy(
+        update={"share_basis_points": evidence.buckets[0].share_basis_points + 1}
+    )
+    forged = evidence.model_copy(update={"buckets": (forged_start, evidence.buckets[1])})
+    with pytest.raises(ResponsibilityBuildError) as arithmetic_error:
+        build_analyst_responsibility(evidence=forged)
+    assert arithmetic_error.value.code is ResponsibilityBuildCode.ANALYST_ARITHMETIC_MISMATCH
+
+
+def _comparison_evidence(start_count: int, end_count: int) -> AnalystTrendEvidence:
+    return AnalystTrendEvidence(
+        from_date=date(2026, 8, 1),
+        to_date=date(2026, 8, 17),
+        cohort=CohortField.FIRST_SEEN_AT,
+        granularity=TrendGranularity.WEEK,
+        top_skills=1,
+        status=JobStatus.ACTIVE,
+        taxonomy_version="job-taxonomy-v1",
+        extraction_schema_version="job-extraction-schema-v1",
+        skill_name="python",
+        buckets=(
+            AnalystTrendBucketEvidence(
+                period_start=date(2026, 7, 27),
+                denominator=10,
+                analyzed_jobs=10,
+                coverage_basis_points=10_000,
+                job_count=start_count,
+                share_basis_points=start_count * 1_000,
+            ),
+            AnalystTrendBucketEvidence(
+                period_start=date(2026, 8, 10),
+                denominator=10,
+                analyzed_jobs=10,
+                coverage_basis_points=10_000,
+                job_count=end_count,
+                share_basis_points=end_count * 1_000,
+            ),
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("start_count", "end_count", "expected"),
+    [
+        (1, 2, AnalystTrendDirection.INCREASED),
+        (2, 1, AnalystTrendDirection.DECREASED),
+        (2, 2, AnalystTrendDirection.UNCHANGED),
+    ],
+)
+def test_analyst_direction_and_full_coverage_caveat_are_deterministic(
+    start_count: int,
+    end_count: int,
+    expected: AnalystTrendDirection,
+) -> None:
+    result = build_analyst_responsibility(evidence=_comparison_evidence(start_count, end_count))
+    assert isinstance(result.facts, AnalystFacts)
+    assert result.facts.trend_direction is expected
+    assert result.facts.required_caveat_codes == ()
+
+
+def test_analyst_refs_are_content_sensitive_and_output_is_safe() -> None:
+    query, response = _trend_query_and_response()
+    evidence = project_analyst_trend_evidence(
+        query=query,
+        response=response,
+        skill_name="python",
+    )
+    original = build_analyst_responsibility(evidence=evidence)
+    top_skills_changed = build_analyst_responsibility(
+        evidence=evidence.model_copy(update={"top_skills": 2})
+    )
+    changed_end = evidence.buckets[-1].model_copy(
+        update={
+            "denominator": 3,
+            "analyzed_jobs": 3,
+            "coverage_basis_points": 10_000,
+            "job_count": 1,
+            "share_basis_points": 3_333,
+        }
+    )
+    metric_changed = build_analyst_responsibility(
+        evidence=evidence.model_copy(update={"buckets": (evidence.buckets[0], changed_end)})
+    )
+
+    assert isinstance(original.facts, AnalystFacts)
+    assert isinstance(top_skills_changed.facts, AnalystFacts)
+    assert isinstance(metric_changed.facts, AnalystFacts)
+    assert (
+        original.facts.aggregate_query_ref.content_hash
+        != top_skills_changed.facts.aggregate_query_ref.content_hash
+    )
+    assert (
+        original.facts.aggregate_query_ref.content_hash
+        == metric_changed.facts.aggregate_query_ref.content_hash
+    )
+    assert (
+        original.facts.trend_metric_ref.content_hash
+        != metric_changed.facts.trend_metric_ref.content_hash
+    )
+
+    serialized = original.model_dump_json(by_alias=True)
+    for forbidden in (
+        "0.0312",
+        "rawHtml",
+        "rawCv",
+        "descriptionText",
+        "outputData",
+        "https://",
+        "prompt",
+        "secret",
+        "embedding",
+        "toolArguments",
+        "session",
+    ):
+        assert forbidden not in serialized
+
+    forged = original.model_dump(mode="json", by_alias=True)
+    forged["applicationContext"]["expectedAnalystTrendDirection"] = "decreased"
+    with pytest.raises(ValidationError):
+        ResponsibilityInput.model_validate(forged)
