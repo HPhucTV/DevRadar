@@ -161,6 +161,42 @@ class DecisionEnvelope(AgentModel):
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     decision_data: DecisionData
 
+    @model_validator(mode="before")
+    @classmethod
+    def parse_responsibility_contract(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+        data: dict[str, object] = dict(value)
+
+        def required_text(key: str) -> str:
+            raw_value = data.get(key)
+            if not isinstance(raw_value, str):
+                raise ValueError(f"{key} must be a string")
+            return raw_value
+
+        responsibility = Responsibility(required_text("responsibility"))
+        decision_data_key = "decisionData" if "decisionData" in data else "decision_data"
+        reason_key = "reasonCode" if "reasonCode" in data else "reason_code"
+        if responsibility is Responsibility.PLANNER:
+            data["decision"] = PlannerDecision(required_text("decision"))
+            data[reason_key] = PlannerReasonCode(required_text(reason_key))
+            data[decision_data_key] = PlannerDecisionData.model_validate(
+                data.get(decision_data_key)
+            )
+        elif responsibility is Responsibility.VALIDATOR:
+            data["decision"] = ValidatorDecision(required_text("decision"))
+            data[reason_key] = ValidatorReasonCode(required_text(reason_key))
+            data[decision_data_key] = ValidatorDecisionData.model_validate(
+                data.get(decision_data_key)
+            )
+        else:
+            data["decision"] = AnalystDecision(required_text("decision"))
+            data[reason_key] = AnalystReasonCode(required_text(reason_key))
+            data[decision_data_key] = AnalystDecisionData.model_validate(
+                data.get(decision_data_key)
+            )
+        return data
+
     @field_validator("confidence")
     @classmethod
     def validate_confidence(cls, value: float | None) -> float | None:
