@@ -69,6 +69,24 @@ def test_migration_and_domain_invariants_on_postgresql(
 
     command.upgrade(alembic_config, "head")
     command.upgrade(alembic_config, "head")
+
+    head_engine = create_engine(fresh_postgresql_url)
+    head_tables = inspect(head_engine).get_table_names()
+    head_engine.dispose()
+    assert "agent_runs" not in head_tables
+
+    command.downgrade(alembic_config, "f4a6c2d8e901")
+    historical_engine = create_engine(fresh_postgresql_url)
+    historical_tables = inspect(historical_engine).get_table_names()
+    historical_engine.dispose()
+    assert "agent_runs" in historical_tables
+
+    command.upgrade(alembic_config, "head")
+    restored_head_engine = create_engine(fresh_postgresql_url)
+    restored_head_tables = inspect(restored_head_engine).get_table_names()
+    restored_head_engine.dispose()
+    assert "agent_runs" not in restored_head_tables
+
     command.check(alembic_config)
 
     engine = create_engine(fresh_postgresql_url)
