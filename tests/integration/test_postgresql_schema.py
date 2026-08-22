@@ -33,6 +33,7 @@ DOMAIN_TABLES = {
     "extraction_results",
     "job_embeddings",
     "resume_profiles",
+    "job_matches",
 }
 
 
@@ -121,6 +122,13 @@ def test_migration_and_domain_invariants_on_postgresql(
             "ck_resume_profiles_retention_mode",
             "ck_resume_profiles_expires_after_creation",
             "ck_resume_profiles_structured_arrays",
+        },
+        "job_matches": {
+            "ck_job_matches_score_range",
+            "ck_job_matches_evidence_coverage_range",
+            "ck_job_matches_hash_shape",
+            "ck_job_matches_embedding_identity",
+            "ck_job_matches_structured_bounds",
         },
     }
     for table_name, constraint_names in expected_checks.items():
