@@ -1,7 +1,7 @@
 # V3-004 Taxonomy, classification và bounded summary — Design Spec
 
-**Ngày:** 2026-08-22  
-**Trạng thái:** Đã được user duyệt; triển khai tự động theo task board  
+**Ngày:** 2026-08-22
+**Trạng thái:** Đã được user duyệt; triển khai tự động theo task board
 **Phase:** V3 — AI extraction, taxonomy và semantic search
 
 ## Mục tiêu

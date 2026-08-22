@@ -1,6 +1,6 @@
 # V3-004 — Taxonomy, classification và bounded summary
 
-**Ngày kiểm chứng:** 2026-08-22  
+**Ngày kiểm chứng:** 2026-08-22
 **Phase:** V3 (`in_progress`)
 
 ## Scope và non-goals
