@@ -4,7 +4,7 @@
 
 DevRadar cung cấp REST JSON dưới `/api/v1`. OpenAPI tại `/api/v1/openapi.json` là wire contract chính cho endpoint đã triển khai; tài liệu này giữ intent, quyền truy cập và phase availability cho cả phần đã có và phần còn planned.
 
-V5-003 hiện có process health, Job/JobChange/Source/CrawlRun resources, một local-gated CrawlRun mutation, keyword/semantic Job search, skill analytics và local-gated ResumeProfile upload/read/delete. OpenAPI và PostgreSQL contract test là nguồn bằng chứng wire behavior.
+V5-004 hiện có process health, Job/JobChange/Source/CrawlRun resources, một local-gated CrawlRun mutation, keyword/semantic Job search, skill analytics, local-gated ResumeProfile upload/read/delete và owner-scoped JobMatch generation/read. OpenAPI sinh từ FastAPI cùng PostgreSQL contract test là nguồn bằng chứng wire behavior.
 
 ## 2. Quy ước
 
@@ -103,7 +103,8 @@ V1 dùng page-based pagination vì dataset portfolio còn bounded và UI cần t
 | `POST /api/v1/resume-profiles` | Idempotent upload/tạo profile | V5-003 — implemented | owner/write; local-only trước auth |
 | `GET /api/v1/resume-profiles/{profileId}` | Profile đã sanitize, còn hạn | V5-003 — implemented | owner/read; local-only trước auth |
 | `DELETE /api/v1/resume-profiles/{profileId}` | Soft-delete profile theo owner | V5-003 — implemented | owner/write; local-only trước auth |
-| `GET /api/v1/resume-profiles/{profileId}/matches` | List match có component score | V5 | owner/read |
+| `POST /api/v1/resume-profiles/{profileId}/matches` | Generate/reuse top JobMatch bounded | V5-004 — implemented | owner/write; local-only trước auth |
+| `GET /api/v1/resume-profiles/{profileId}/matches` | List current match có component score | V5-004 — implemented | owner/read; local-only trước auth |
 | `GET /api/v1/alert-rules` | List rule của owner | V5 | owner/read |
 | `POST /api/v1/alert-rules` | Tạo rule | V5 | owner/write |
 | `PATCH /api/v1/alert-rules/{ruleId}` | Sửa field được hỗ trợ | V5 | owner/write |
@@ -225,31 +226,40 @@ Write endpoint chỉ hoạt động khi local deployment đặt `DEVRADAR_OPERAT
 - Chấp nhận `.pdf` + `application/pdf` + `%PDF-`, hoặc `.docx` + OOXML MIME + ZIP signature. Max file `5 MiB`, PDF `10` pages và decoded stream/array `10 MiB/page`; DOCX `100` entries và `20 MiB` tổng uncompressed; extracted text tối đa `100,000` ký tự. Pypdf decoder limits được hạ trước decode và library diagnostics bị chặn khỏi application/root log vì có thể chứa raw PDF bytes.
 - DOCX path traversal, symlink, duplicate entry, macro/embedded object, external relationship, DTD/entity và malformed XML bị reject. PDF malformed/encrypted/oversized hoặc empty extraction bị reject; không có OCR/LLM fallback ở V5-003.
 - `ResumeProfile` response gồm `id`, `fileName`, `sourceFormat`, `parserVersion`, `extractionStatus`, `skills`, `roles`, `locations`, `experienceYears`, `retentionMode`, `createdAt`, `expiresAt`. Không trả raw text/file, hash owner/content, `deletedAt`, embedding hoặc provider payload.
-- TTL cố định 24 giờ. GET của row deleted/expired trả `404`; DELETE đúng owner idempotent `204`. V5-003 chưa có embedding/match để cascade; V5-004/V5-005 phải thêm deletion test khi các artifact đó xuất hiện.
+- TTL cố định 24 giờ. GET của row deleted/expired trả `404`; DELETE đúng owner idempotent `204`. Từ V5-004, `JobMatch` có foreign key `ON DELETE CASCADE` và GET/generation luôn ẩn profile đã xóa/hết hạn.
 - Safe error code: `cv_local_disabled`, `resume_owner_invalid`, `resume_multipart_invalid`, `resume_upload_too_large`, các `resume_*` parser code và envelope chung; exception/parser payload không được echo.
 
 ### 6.5. JobMatch
+
+Hai endpoint dưới đây dùng cùng local gate `DEVRADAR_CV_LOCAL_ENABLED=true` và required `X-DevRadar-Owner` như ResumeProfile. Cross-owner/deleted/expired profile trả generic `404`; API không nhận body, URL, raw text, weight hoặc model selection.
+
+`POST /api/v1/resume-profiles/{profileId}/matches` chạy synchronous local MiniLM ngoài transaction, persist tối đa 100 current identities và trả counts `consideredJobs`, `availableJobs`, `unavailableJobs`, `storedMatches`, `createdMatches`, `reusedMatches`, cùng `scoringVersion`/`generatedAt`. Local model thiếu, sai artifact hoặc vector invalid trả `503 embedding_model_unavailable` và không lưu partial rows.
+
+`GET /api/v1/resume-profiles/{profileId}/matches?page=1&pageSize=20&minScore=0.5` side-effect free, chỉ join row current khi profile content/parser và Job content hash khớp, Job còn `active`; sort cố định `overallScore desc, jobId asc`. Unknown query trả `422`, pagination `page=1..`, `pageSize=1..100`, `minScore=0..1`.
 
 ```json
 {
   "jobId": "job-id",
   "overallScore": 0.78,
+  "evidenceCoverage": 1.0,
   "components": {
     "skill": 0.85,
     "semantic": 0.79,
     "experience": 1.0,
     "location": 1.0,
-    "level": 0.8
+    "role": 0.8
   },
   "matchedSkills": ["Python", "FastAPI", "PostgreSQL"],
   "missingSkills": ["Redis", "Kafka"],
-  "explanation": "...",
-  "scoringVersion": "v1",
+  "explanation": ["skill_partial", "semantic_available"],
+  "scoringVersion": "job-match-scoring-v1",
+  "embeddingModel": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+  "embeddingRevision": "<fixed revision>",
   "createdAt": "2026-08-21T08:00:00Z"
 }
 ```
 
-Score là ranking heuristic, không phải xác suất được tuyển. Client phải hiển thị version/explanation phù hợp và không được ngụ ý bảo đảm kết quả tuyển dụng.
+Mỗi item còn có `job` summary bounded (`title`, `companyName`, `location`, `levels`, `status`, `sourceUrl`). Response không trả profile/job hash, owner hash/token, vector, extraction payload hoặc raw CV/JD. Score là ranking heuristic, không phải xác suất được tuyển; client phải hiển thị version/explanation phù hợp và không được ngụ ý bảo đảm kết quả tuyển dụng.
 
 ## 7. Filtering và sorting
 
@@ -257,7 +267,7 @@ Score là ranking heuristic, không phải xác suất được tuyển. Client 
 
 - V1: `page`, `pageSize`, `status`, `sourceId`, `company`, `title`, `location`, `level`, `salaryMin`, `salaryMax`, `seenAfter`, `seenBefore`, `sortBy`, `sortOrder`; `level` match theo membership trong `levels`;
 - V3: `skill`, `query`, `searchMode=keyword|semantic`;
-- V5: `minMatchScore` chỉ trong profile match context, không dùng trên public job list nếu thiếu `profileId`/owner authorization.
+- V5-004: `page`, `pageSize`, `minScore` chỉ trong profile match context; không dùng trên public job list nếu thiếu `profileId`/owner authorization.
 
 Unknown query parameter trả `422` để tránh client tưởng filter đang hoạt động. Sort field dùng allow-list; không chuyển trực tiếp tên field vào SQL.
 

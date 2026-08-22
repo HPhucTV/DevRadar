@@ -61,7 +61,7 @@ Chạy nhanh, deterministic, không network:
 
 Test được gọi “PostgreSQL integration” chỉ khi thực sự chạy PostgreSQL, không phải SQLite/mock. Test AI live không được thay thế evaluation trên fixed dataset.
 
-V5-003 có hai lớp kiểm chứng: parser unit fixture không chạm network/database và PostgreSQL API integration trên database tạm. Integration phải chứng minh migration round-trip/`alembic check`, active replay, expiry tombstone, cross-owner `404`, delete idempotent, default-disabled gate trước multipart parse, chunked total-body cap, decoded-PDF bomb/error mapping, parser-log sentinel, multipart negative cases và không có raw file/text/token trong database/response/event.
+V5-003 có hai lớp kiểm chứng: parser unit fixture không chạm network/database và PostgreSQL API integration trên database tạm. V5-004 bổ sung pure scoring/evaluation, migration/model, generation và API integration trên PostgreSQL thật. Integration phải chứng minh migration round-trip/`alembic check`, active replay, expiry tombstone, cross-owner `404`, delete idempotent, default-disabled gate trước multipart parse, chunked total-body cap, decoded-PDF bomb/error mapping, parser-log sentinel, multipart negative cases, current/stale hash filtering, top-100/replay counts, model/profile invalidation và không có raw file/text/token/vector trong database/response/event.
 
 V3-003 PostgreSQL gate phải chạy migration trên database mới, kiểm tra partial unique index
 `uq_extraction_results_accepted_cache`, read-after-write cho accepted cache, audit rows cho
@@ -110,6 +110,10 @@ PostgreSQL test hiện dùng `DEVRADAR_TEST_DATABASE_URL`, tạo database tên n
 | Upload sai type/magic/size | Reject, cleanup temporary file, không tạo profile dở dang. |
 | Upload parser malformed/bomb | Request/file/page/decode/archive limit, cleanup và safe error; hard CPU timeout/process sandbox chưa có ở V5-003 local. |
 | Owner khác đọc CV/match | Bị authorization chặn, không lộ resource existence theo policy. |
+| JobMatch generation replay/stale | Current hash/version join; cùng identity không duplicate, Job đổi hash tạo row mới và row cũ invisible. |
+| Missing/malformed extraction | Giữ Job trong denominator/available semantic, skill component `null` hoặc coverage giảm; không bịa skill. |
+| Local model unavailable/invalid vector | POST trả `503`, không persist partial match; không download/fallback external. |
+| Profile expire/delete giữa inference và persist | Generation trả generic `404`, không ghi row; cascade hoặc visibility predicate loại artifact. |
 | Log/error/trace | Không chứa raw CV, secret, auth header, raw embedding hoặc full payload. |
 | Alert retry | Không gửi trùng cùng idempotency key. |
 

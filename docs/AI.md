@@ -165,7 +165,7 @@ rejected/needs-review rows vẫn được audit.
 
 ## 8. Match score
 
-Scoring là deterministic, versioned và giải thích được. Công thức từ ý tưởng chỉ là giả thuyết khởi đầu cho V5:
+Scoring V5-004 là deterministic, versioned và giải thích được. Contract đã được khóa bằng synthetic development/held-out evaluation:
 
 ```text
 overall =
@@ -173,18 +173,19 @@ overall =
   + 0.25 * semantic_similarity
   + 0.15 * experience_match
   + 0.10 * location_match
-  + 0.10 * level_match
+  + 0.10 * role_match
 ```
 
-Trước khi nhận là `scoringVersion=v1`, V5 phải:
+`scoringVersion=job-match-scoring-v1` dùng `role` thay cho `level` vì ResumeProfile chưa có level/preference evidence đáng tin cậy. Component vắng mặt đóng góp `0` và không renormalize; `evidenceCoverage` là tổng weight có evidence. Mỗi component/score làm tròn half-up bốn chữ số, score nằm trong `[0,1]`, tie-break là `score desc, candidate id asc`; explanation chỉ là token deterministic bounded. Chi tiết dataset/hash/gate nằm trong [V5-004 evaluation evidence](evidence/V5-004-scoring-evaluation.md).
 
-- định nghĩa cách tính và missing/null behavior của từng component;
-- tạo labeled/ranked examples;
-- kiểm tra score range, monotonicity và edge case;
-- công bố đây là ranking heuristic, không phải xác suất tuyển dụng;
-- version weights và recompute/stale policy khi profile/job đổi.
+Trước khi mở scoring version mới, V5 phải:
 
-LLM có thể diễn đạt explanation từ component/evidence đã tính. LLM không tự sinh overall score hoặc missing skill không có bằng chứng.
+- tạo dataset/schema/hash evaluation mới;
+- kiểm tra score range, monotonicity, missing behavior, evidence closure và edge case;
+- version weights và stale/recompute policy khi profile/job đổi;
+- công bố đây là ranking heuristic, không phải xác suất tuyển dụng.
+
+V5-004 không gọi LLM cho scoring/explanation. LLM không tự sinh overall score hoặc missing skill không có bằng chứng; CV chỉ được biến thành structured profile local và vector tạm trong memory, không lưu resume vector hoặc gửi external provider.
 
 ## 9. V4 agent evaluation outcome
 

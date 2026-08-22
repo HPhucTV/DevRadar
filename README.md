@@ -7,12 +7,12 @@
 | Thuộc tính | Giá trị |
 |---|---|
 | Trạng thái | `implementation` |
-| Phase hiện tại | `v5` — Dashboard, CV matching và alerts (`in_progress`); V5-001–V5-003 đã hoàn tất |
+| Phase hiện tại | `v5` — Dashboard, CV matching và alerts (`in_progress`); V5-001–V5-004 đã hoàn tất |
 | Mô hình sử dụng ban đầu | Portfolio cá nhân, single-operator |
 | Thị trường ưu tiên | Job IT Việt Nam, nội dung Việt/Anh, lương VND |
 | Code chạy được | Có — V1/V2 data pipeline và V3 intelligence; không có agent runtime hiện hành |
 
-V1 đã hoàn tất safe fetch/snapshot pipeline, ba concrete source adapters, PostgreSQL persistence và REST API. V2 đã hoàn tất direct schedule/retry, JobChange lifecycle, source health/quarantine, operator enqueue và one-shot worker. V3 đã đóng với `3339` canonical jobs từ approved complete runs, semantic held-out gate đạt, `1003/3339` accepted deterministic extraction results, `3339/3339` current embeddings và analytics denominator/coverage có evidence. ADR-010 chấp nhận local `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` 384d cùng exact pgvector; RemoteJobs.org là cohort remote thứ cấp, không đại diện cho claim thị trường Việt Nam. V4 đã đánh giá typed planner/validator/analyst proposal paths và LangGraph, nhưng cả ba reasoning path bị loại theo ADR-013 vì safe facts đã xác định outcome và không có measurable usefulness gain. V5 hiện có Next.js dashboard kết nối FastAPI thật và local-gated PDF/DOCX upload tạo `ResumeProfile` 24 giờ mà không lưu file/raw text; JobMatch, UI upload và alert vẫn là các slice kế tiếp. Runtime không có agent/model call cho CV.
+V1 đã hoàn tất safe fetch/snapshot pipeline, ba concrete source adapters, PostgreSQL persistence và REST API. V2 đã hoàn tất direct schedule/retry, JobChange lifecycle, source health/quarantine, operator enqueue và one-shot worker. V3 đã đóng với `3339` canonical jobs từ approved complete runs, semantic held-out gate đạt, `1003/3339` accepted deterministic extraction results, `3339/3339` current embeddings và analytics denominator/coverage có evidence. ADR-010 chấp nhận local `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` 384d cùng exact pgvector; RemoteJobs.org là cohort remote thứ cấp, không đại diện cho claim thị trường Việt Nam. V4 đã đánh giá typed planner/validator/analyst proposal paths và LangGraph, nhưng cả ba reasoning path bị loại theo ADR-013 vì safe facts đã xác định outcome và không có measurable usefulness gain. V5 hiện có Next.js dashboard kết nối FastAPI thật, local-gated PDF/DOCX upload tạo `ResumeProfile` 24 giờ không lưu file/raw text, và owner-scoped JobMatch generation/read với local MiniLM, top 100, stale-hash filtering và cascade delete. Alert và authentication vẫn là các slice kế tiếp; runtime không có agent/model call cho CV.
 
 ## Mục tiêu
 
@@ -83,6 +83,8 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [V5-001 Next.js scaffold evidence](docs/evidence/V5-001-nextjs-ux-slice-scaffold.md): six-route App Router scaffold, exact package pins, TDD and route smoke.
 - [V5-002 dashboard evidence](docs/evidence/V5-002-dashboard-job-analytics.md): direct FastAPI server fetch, job/analytics/source views, safe states and real API smoke.
 - [V5-003 secure CV evidence](docs/evidence/V5-003-secure-cv-upload.md): bounded PDF/DOCX parser, ephemeral ResumeProfile, owner-scoped API và PostgreSQL/security gates.
+- [V5-004 scoring evidence](docs/evidence/V5-004-scoring-evaluation.md): synthetic evaluation, balanced weights, missing-as-zero và held-out release gates.
+- [V5-004 implementation design](docs/superpowers/specs/2026-08-23-v5-004-job-match-scoring-design.md): current/stale identity, local structured embedding và API boundary.
 - [Operations](docs/OPERATIONS.md): test, security, observability, retention, CI/CD và deployment gates.
 - [Source discovery](docs/sources/SHORTLIST.md): evidence và approval outcome; VNG, NAVER Vietnam/Greenhouse và MoMo đã được duyệt cho bounded Vietnam scope, RemoteJobs.org được duyệt riêng cho V3 remote cohort có attribution, GeoComply/Lever vẫn `permission_required`.
 - [Pre-V1 local evidence](docs/evidence/PRE-007-local-prerequisites.md): Docker/PostgreSQL capability và constraint đã xác minh.

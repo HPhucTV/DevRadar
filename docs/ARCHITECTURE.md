@@ -121,7 +121,7 @@ Current data flow vẫn là V1–V3 deterministic orchestration, extraction, sem
 
 ### 5.5. CV matching
 
-V5-003 đặt parser và lifecycle trong module `matching`; API chỉ sở hữu local gate, owner header, multipart validation và sanitized wire response. Endpoint không khai báo FastAPI `File` body để tránh framework spool trước dependency: gate/owner chạy trước, sau đó request stream bị cap trước khi bounded multipart parse. PDF/DOCX được kiểm MIME/extension/magic/resource limit rồi trích deterministic facts bằng taxonomy hiện có. Pypdf decode limits được hạ tại process boundary và library log bị suppress vì diagnostic có thể echo raw PDF bytes. Chỉ hash và structured profile được commit; file/raw text không đi vào model, database, event hoặc response. Replay/expiry/delete được thực thi trong PostgreSQL trước khi V5-004 thêm `JobMatch`.
+V5-003 đặt parser và lifecycle trong module `matching`; API chỉ sở hữu local gate, owner header, multipart validation và sanitized wire response. Endpoint không khai báo FastAPI `File` body để tránh framework spool trước dependency: gate/owner chạy trước, sau đó request stream bị cap trước khi bounded multipart parse. PDF/DOCX được kiểm MIME/extension/magic/resource limit rồi trích deterministic facts bằng taxonomy hiện có. Pypdf decode limits được hạ tại process boundary và library log bị suppress vì diagnostic có thể echo raw PDF bytes. Chỉ hash và structured profile được commit; file/raw text không đi vào model, database, event hoặc response. V5-004 đọc structured profile để embed local ngoài transaction, exact cosine với current compatible `JobEmbedding`, score deterministic và ghi top 100 vào `job_matches`; không persist resume vector hoặc gửi CV ra external provider. Replay/expiry/delete giữ owner scope và cascade/invisibility artifact.
 
 ```mermaid
 flowchart LR
@@ -130,6 +130,9 @@ flowchart LR
     P -->|"ResumeProfileDraft only"| M["Matching lifecycle"]
     M --> DB[("PostgreSQL resume_profiles")]
     DB -->|"sanitized structured profile"| API
+    DB -->|"current Job + compatible JobEmbedding"| X["Bounded local JobMatch service"]
+    X -->|"top 100 derived rows"| JM[("PostgreSQL job_matches")]
+    JM -->|"current score/evidence"| API
 ```
 
 ## 6. Runtime topology theo phase
@@ -140,7 +143,7 @@ flowchart LR
 | V2 | V1 + deterministic scheduler/runner từ cùng codebase, PostgreSQL coordination | Accepted theo ADR-006 |
 | V3 | V2 + extraction/taxonomy; local FastEmbed multilingual MiniLM artifact, pgvector `vector(384)`, exact semantic search và bounded analytics | Complete; ADR-010 Accepted cho local/private |
 | V4 | Không thêm runtime vào V3; đánh giá rồi loại planner/validator/analyst reasoning path; LangGraph deferred | Complete; ADR-013 Accepted |
-| V5 | V3 runtime baseline + Next.js App Router presentation + local-gated ResumeProfile parser/API | In progress; V5-001/V5-002/V5-003 complete |
+| V5 | V3 runtime baseline + Next.js App Router + local-gated ResumeProfile + bounded JobMatch service/API | In progress; V5-001–V5-004 complete |
 | V6 | Public ingress, auth, managed secrets, backup/monitoring; Redis/worker pool nếu metric yêu cầu | Proposed |
 
 Crawler/one-shot worker CLI và API dùng cùng code nhưng là entrypoint/process khác nhau. Điều này giữ network work ngoài HTTP request mà không tách service sớm.
@@ -158,6 +161,7 @@ Crawler/one-shot worker CLI và API dùng cùng code nhưng là entrypoint/proce
 | Model artifact/query → local embedding | supply-chain tampering, unbounded CPU/input, vector mismatch, query disclosure | fixed revision + artifact SHA-256, local-files-only, length/dimension/finite checks, no raw query/vector logging |
 | CV upload → parser | multipart/file exhaustion, malware/polyglot, decompression bomb, PII/log leak | gate trước body read, total stream + type/signature/size/page/decode limits, no macro/external relationship, suppress untrusted parser diagnostics, short retention |
 | Owner header → ResumeProfile | token disclosure, enumeration, cross-owner access | default-disabled local gate, SHA-256 token, owner predicate trên mọi read/delete, generic `404`, safe event allow-list |
+| ResumeProfile structured facts + JobEmbedding → JobMatch | stale hash, vector mismatch, profile/owner leak, unbounded generation | fixed local model identity, inference ngoài transaction, exact current hash/version join, top-100 bound, owner predicate, response không có hash/vector/raw text |
 | API → mutation | unauthorized crawl/data access | local/operator-only trước auth; authenticated role sau V6 |
 | App → database | injection, accidental destructive update | parameterized access, migration review, transaction, least privilege |
 | App → notification | secret leak, duplicate/spam | secret manager, idempotency key, rate limit, delivery audit |
