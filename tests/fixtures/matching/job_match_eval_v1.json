@@ -1,0 +1,487 @@
+{
+  "version": "job-match-eval-v1",
+  "schemaVersion": "job-match-eval-schema-v1",
+  "provenance": "project-authored-synthetic-no-third-party-content",
+  "cases": [
+    {
+      "id": "dev-skill-conflict-001",
+      "split": "development",
+      "riskTags": ["semantic_conflict"],
+      "candidates": [
+        {
+          "id": "balanced-role-fit",
+          "skill": 0.65,
+          "semantic": 0.75,
+          "experience": 1,
+          "location": 1,
+          "role": 1,
+          "matchedSkills": ["synthetic-api"],
+          "missingSkills": ["synthetic-database"],
+          "relevance": 3
+        },
+        {
+          "id": "skill-only-fit",
+          "skill": 1,
+          "semantic": 0.55,
+          "experience": 1,
+          "location": 0,
+          "role": 0.5,
+          "matchedSkills": ["synthetic-api", "synthetic-database"],
+          "missingSkills": [],
+          "relevance": 1
+        },
+        {
+          "id": "weak-fit",
+          "skill": 0.2,
+          "semantic": 0.3,
+          "experience": 0.5,
+          "location": 0,
+          "role": 0,
+          "matchedSkills": ["synthetic-api"],
+          "missingSkills": ["synthetic-database", "synthetic-runtime"],
+          "relevance": 0
+        }
+      ]
+    },
+    {
+      "id": "dev-semantic-conflict-002",
+      "split": "development",
+      "riskTags": ["semantic_conflict"],
+      "candidates": [
+        {
+          "id": "balanced-context-fit",
+          "skill": 0.8,
+          "semantic": 0.4,
+          "experience": 1,
+          "location": 1,
+          "role": 1,
+          "matchedSkills": ["synthetic-python"],
+          "missingSkills": ["synthetic-cloud"],
+          "relevance": 3
+        },
+        {
+          "id": "semantic-only-fit",
+          "skill": 0.65,
+          "semantic": 1,
+          "experience": 1,
+          "location": 0,
+          "role": 0,
+          "matchedSkills": ["synthetic-python"],
+          "missingSkills": ["synthetic-cloud", "synthetic-database"],
+          "relevance": 1
+        },
+        {
+          "id": "unrelated-fit",
+          "skill": 0.1,
+          "semantic": 0.25,
+          "experience": 0.5,
+          "location": 0,
+          "role": 0,
+          "matchedSkills": ["synthetic-python"],
+          "missingSkills": ["synthetic-cloud", "synthetic-database", "synthetic-runtime"],
+          "relevance": 0
+        }
+      ]
+    },
+    {
+      "id": "dev-sparse-evidence-003",
+      "split": "development",
+      "riskTags": ["sparse_evidence"],
+      "candidates": [
+        {
+          "id": "available-balanced-fit",
+          "skill": 0.8,
+          "semantic": 0.8,
+          "experience": null,
+          "location": null,
+          "role": 1,
+          "matchedSkills": ["synthetic-runtime"],
+          "missingSkills": ["synthetic-queue"],
+          "relevance": 3
+        },
+        {
+          "id": "available-partial-fit",
+          "skill": 0.6,
+          "semantic": 0.6,
+          "experience": null,
+          "location": null,
+          "role": 0.5,
+          "matchedSkills": ["synthetic-runtime"],
+          "missingSkills": ["synthetic-queue", "synthetic-storage"],
+          "relevance": 1
+        },
+        {
+          "id": "semantic-fragment",
+          "skill": null,
+          "semantic": 0.65,
+          "experience": null,
+          "location": null,
+          "role": null,
+          "matchedSkills": [],
+          "missingSkills": [],
+          "relevance": 0
+        }
+      ]
+    },
+    {
+      "id": "dev-role-location-004",
+      "split": "development",
+      "riskTags": ["sparse_evidence"],
+      "candidates": [
+        {
+          "id": "role-location-fit",
+          "skill": 0.7,
+          "semantic": 0.7,
+          "experience": 0.8,
+          "location": 1,
+          "role": 1,
+          "matchedSkills": ["synthetic-service"],
+          "missingSkills": ["synthetic-observability"],
+          "relevance": 3
+        },
+        {
+          "id": "role-mismatch",
+          "skill": 0.75,
+          "semantic": 0.7,
+          "experience": 0.8,
+          "location": 0,
+          "role": 0,
+          "matchedSkills": ["synthetic-service"],
+          "missingSkills": ["synthetic-observability"],
+          "relevance": 1
+        },
+        {
+          "id": "location-only-fit",
+          "skill": 0.3,
+          "semantic": 0.4,
+          "experience": 0.5,
+          "location": 1,
+          "role": 0,
+          "matchedSkills": ["synthetic-service"],
+          "missingSkills": ["synthetic-observability", "synthetic-storage"],
+          "relevance": 0
+        }
+      ]
+    },
+    {
+      "id": "held-missing-skill-001",
+      "split": "held_out",
+      "riskTags": ["missing_skill"],
+      "candidates": [
+        {
+          "id": "context-fit-no-skills",
+          "skill": null,
+          "semantic": 0.9,
+          "experience": 1,
+          "location": 1,
+          "role": 1,
+          "matchedSkills": [],
+          "missingSkills": [],
+          "relevance": 3
+        },
+        {
+          "id": "context-partial-no-skills",
+          "skill": null,
+          "semantic": 0.55,
+          "experience": 0.5,
+          "location": 1,
+          "role": 0.5,
+          "matchedSkills": [],
+          "missingSkills": [],
+          "relevance": 1
+        },
+        {
+          "id": "context-mismatch-no-skills",
+          "skill": null,
+          "semantic": 0.2,
+          "experience": 0,
+          "location": 0,
+          "role": 0,
+          "matchedSkills": [],
+          "missingSkills": [],
+          "relevance": 0
+        }
+      ]
+    },
+    {
+      "id": "held-missing-extraction-002",
+      "split": "held_out",
+      "riskTags": ["missing_extraction", "missing_skill"],
+      "candidates": [
+        {
+          "id": "structured-fit",
+          "skill": null,
+          "semantic": 0.85,
+          "experience": 1,
+          "location": 1,
+          "role": 1,
+          "matchedSkills": [],
+          "missingSkills": [],
+          "relevance": 3
+        },
+        {
+          "id": "semantic-fit-only",
+          "skill": null,
+          "semantic": 0.8,
+          "experience": 0,
+          "location": 0,
+          "role": 0,
+          "matchedSkills": [],
+          "missingSkills": [],
+          "relevance": 1
+        },
+        {
+          "id": "weak-structured-fit",
+          "skill": null,
+          "semantic": 0.3,
+          "experience": 0.5,
+          "location": 0,
+          "role": 0,
+          "matchedSkills": [],
+          "missingSkills": [],
+          "relevance": 0
+        }
+      ]
+    },
+    {
+      "id": "held-missing-location-003",
+      "split": "held_out",
+      "riskTags": ["missing_location"],
+      "candidates": [
+        {
+          "id": "role-skill-fit",
+          "skill": 0.9,
+          "semantic": 0.85,
+          "experience": 1,
+          "location": null,
+          "role": 1,
+          "matchedSkills": ["synthetic-api", "synthetic-runtime"],
+          "missingSkills": [],
+          "relevance": 3
+        },
+        {
+          "id": "skill-only-location-unknown",
+          "skill": 0.8,
+          "semantic": 0.6,
+          "experience": 0.5,
+          "location": null,
+          "role": 0,
+          "matchedSkills": ["synthetic-api"],
+          "missingSkills": ["synthetic-runtime"],
+          "relevance": 1
+        },
+        {
+          "id": "weak-location-unknown",
+          "skill": 0.2,
+          "semantic": 0.3,
+          "experience": 0,
+          "location": null,
+          "role": 0,
+          "matchedSkills": ["synthetic-api"],
+          "missingSkills": ["synthetic-runtime", "synthetic-storage"],
+          "relevance": 0
+        }
+      ]
+    },
+    {
+      "id": "held-missing-experience-004",
+      "split": "held_out",
+      "riskTags": ["missing_experience"],
+      "candidates": [
+        {
+          "id": "skill-role-fit",
+          "skill": 0.9,
+          "semantic": 0.8,
+          "experience": null,
+          "location": 1,
+          "role": 1,
+          "matchedSkills": ["synthetic-database", "synthetic-runtime"],
+          "missingSkills": [],
+          "relevance": 3
+        },
+        {
+          "id": "skill-fit-role-mismatch",
+          "skill": 0.8,
+          "semantic": 0.65,
+          "experience": null,
+          "location": 0,
+          "role": 0,
+          "matchedSkills": ["synthetic-runtime"],
+          "missingSkills": ["synthetic-database"],
+          "relevance": 1
+        },
+        {
+          "id": "weak-experience-unknown",
+          "skill": 0.25,
+          "semantic": 0.2,
+          "experience": null,
+          "location": 0,
+          "role": 0,
+          "matchedSkills": ["synthetic-runtime"],
+          "missingSkills": ["synthetic-database", "synthetic-queue"],
+          "relevance": 0
+        }
+      ]
+    },
+    {
+      "id": "held-missing-role-005",
+      "split": "held_out",
+      "riskTags": ["missing_role"],
+      "candidates": [
+        {
+          "id": "skill-location-fit",
+          "skill": 0.95,
+          "semantic": 0.85,
+          "experience": 1,
+          "location": 1,
+          "role": null,
+          "matchedSkills": ["synthetic-api", "synthetic-cloud"],
+          "missingSkills": [],
+          "relevance": 3
+        },
+        {
+          "id": "skill-fit-location-mismatch",
+          "skill": 0.8,
+          "semantic": 0.7,
+          "experience": 0.5,
+          "location": 0,
+          "role": null,
+          "matchedSkills": ["synthetic-api"],
+          "missingSkills": ["synthetic-cloud"],
+          "relevance": 1
+        },
+        {
+          "id": "weak-role-unknown",
+          "skill": 0.2,
+          "semantic": 0.3,
+          "experience": 0,
+          "location": 0,
+          "role": null,
+          "matchedSkills": ["synthetic-api"],
+          "missingSkills": ["synthetic-cloud", "synthetic-storage"],
+          "relevance": 0
+        }
+      ]
+    },
+    {
+      "id": "held-overqualified-006",
+      "split": "held_out",
+      "riskTags": ["overqualified"],
+      "candidates": [
+        {
+          "id": "experienced-fit",
+          "skill": 0.9,
+          "semantic": 0.8,
+          "experience": 1,
+          "location": 1,
+          "role": 1,
+          "matchedSkills": ["synthetic-platform", "synthetic-runtime"],
+          "missingSkills": [],
+          "relevance": 3
+        },
+        {
+          "id": "below-minimum-fit",
+          "skill": 0.9,
+          "semantic": 0.8,
+          "experience": 0.25,
+          "location": 1,
+          "role": 1,
+          "matchedSkills": ["synthetic-platform", "synthetic-runtime"],
+          "missingSkills": [],
+          "relevance": 1
+        },
+        {
+          "id": "unrelated-experienced",
+          "skill": 0.2,
+          "semantic": 0.25,
+          "experience": 1,
+          "location": 0,
+          "role": 0,
+          "matchedSkills": ["synthetic-runtime"],
+          "missingSkills": ["synthetic-platform", "synthetic-storage"],
+          "relevance": 0
+        }
+      ]
+    },
+    {
+      "id": "held-bilingual-007",
+      "split": "held_out",
+      "riskTags": ["bilingual"],
+      "candidates": [
+        {
+          "id": "cross-language-fit",
+          "skill": 0.85,
+          "semantic": 0.9,
+          "experience": 1,
+          "location": 1,
+          "role": 1,
+          "matchedSkills": ["synthetic-multilingual", "synthetic-runtime"],
+          "missingSkills": [],
+          "relevance": 3
+        },
+        {
+          "id": "same-language-partial",
+          "skill": 0.7,
+          "semantic": 0.65,
+          "experience": 0.5,
+          "location": 1,
+          "role": 0.5,
+          "matchedSkills": ["synthetic-runtime"],
+          "missingSkills": ["synthetic-multilingual"],
+          "relevance": 1
+        },
+        {
+          "id": "translation-noise",
+          "skill": 0.2,
+          "semantic": 0.4,
+          "experience": 0,
+          "location": 0,
+          "role": 0,
+          "matchedSkills": ["synthetic-runtime"],
+          "missingSkills": ["synthetic-multilingual", "synthetic-storage"],
+          "relevance": 0
+        }
+      ]
+    },
+    {
+      "id": "held-deterministic-tie-008",
+      "split": "held_out",
+      "riskTags": ["deterministic_tie"],
+      "candidates": [
+        {
+          "id": "alpha-equal-fit",
+          "skill": 0.8,
+          "semantic": 0.8,
+          "experience": 1,
+          "location": 1,
+          "role": 1,
+          "matchedSkills": ["synthetic-api"],
+          "missingSkills": ["synthetic-storage"],
+          "relevance": 3
+        },
+        {
+          "id": "beta-equal-fit",
+          "skill": 0.8,
+          "semantic": 0.8,
+          "experience": 1,
+          "location": 1,
+          "role": 1,
+          "matchedSkills": ["synthetic-api"],
+          "missingSkills": ["synthetic-storage"],
+          "relevance": 2
+        },
+        {
+          "id": "gamma-lower-fit",
+          "skill": 0.4,
+          "semantic": 0.5,
+          "experience": 0.5,
+          "location": 0,
+          "role": 0,
+          "matchedSkills": ["synthetic-api"],
+          "missingSkills": ["synthetic-queue", "synthetic-storage"],
+          "relevance": 0
+        }
+      ]
+    }
+  ]
+}
