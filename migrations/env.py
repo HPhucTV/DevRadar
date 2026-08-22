@@ -3,12 +3,13 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import create_engine, pool
 
+from devradar.agents import models as _agent_models
 from devradar.catalog import models as _catalog_models
 from devradar.ingestion import models as _ingestion_models
 from devradar.intelligence import models as _intelligence_models
 from devradar.platform.database import Base, get_database_url
 
-_MODEL_MODULES = (_catalog_models, _ingestion_models, _intelligence_models)
+_MODEL_MODULES = (_agent_models, _catalog_models, _ingestion_models, _intelligence_models)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
