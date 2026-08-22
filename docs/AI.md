@@ -20,7 +20,7 @@ AI là lớp bổ sung có giới hạn, không phải nguồn sự thật hoặ
 | Job classification và bounded summary | V3 | V3-004 deterministic boundary implemented; evidence-validated |
 | Skill taxonomy assisted mapping | V3 | V3-004 versioned deterministic map; unknown cần review |
 | Embedding và pgvector | V3 | V3-005 local multilingual MiniLM 384d + exact pgvector implemented theo ADR-010; private/local |
-| Planner/validator/analyst workflow | V4 | Planner/validator direct workflow implemented provider-neutral; analyst còn V4-005; LangGraph deferred theo ADR-012 |
+| Planner/validator/analyst workflow | V4 | Evaluated rồi removed theo ADR-013 vì không có measurable usefulness gain; không có current agent runtime |
 | Resume extraction/matching | V5 | Proposed |
 | LLM-written alert/explanation | V5 | Optional; deterministic evidence required |
 
@@ -85,9 +85,7 @@ Validation theo thứ tự:
 6. confidence/policy gate;
 7. accept, reject hoặc `needs_review`.
 
-Retry chỉ dành cho lỗi transient hoặc malformed structured output có khả năng sửa. Không retry vô hạn hoặc retry hallucination bằng cùng input/prompt mà không đổi chiến lược. V3-003 giới hạn đúng hai transient attempts; malformed shape/extra field/enum/evidence invalid bị `rejected` an toàn, provider thiếu hoặc transient exhausted là `needs_review`. Persistence re-check accepted cache sau provider call để xử lý concurrent writer; provider không chạy trong transaction giữ row lock. V4 direct workflow có đúng hai proposal attempts và bốn logical stages; policy/application rejection hoặc valid review không retry.
-
-Validator agent không thể override source policy, invent evidence hoặc tự commit kết quả. Nó trả decision schema để deterministic application layer áp dụng.
+Retry chỉ dành cho lỗi transient hoặc malformed structured output có khả năng sửa. Không retry vô hạn hoặc retry hallucination bằng cùng input/prompt mà không đổi chiến lược. V3-003 giới hạn đúng hai transient attempts; malformed shape/extra field/enum/evidence invalid bị `rejected` an toàn, provider thiếu hoặc transient exhausted là `needs_review`. Persistence re-check accepted cache sau provider call để xử lý concurrent writer; provider không chạy trong transaction giữ row lock. Không có V4 agent proposal retry hiện hành.
 
 ## 5. Evaluation
 
@@ -188,101 +186,33 @@ Trước khi nhận là `scoringVersion=v1`, V5 phải:
 
 LLM có thể diễn đạt explanation từ component/evidence đã tính. LLM không tự sinh overall score hoặc missing skill không có bằng chứng.
 
-## 9. Agent responsibilities
+## 9. V4 agent evaluation outcome
 
-V4 bắt đầu với ba responsibility có reasoning rõ ràng, không mặc định tạo sáu service/agent riêng.
+V4 đã đánh giá ba responsibility `planner`, `validator` và `analyst` bằng typed, provider-neutral proposal boundary. Scripted callable chứng minh schema/policy/failure safety, nhưng comparison V4-006 cho thấy không responsibility nào có measurable usefulness gain:
 
-### 9.1. Planner
+| Responsibility | Deterministic outcome đã có | Vì sao reasoning không được giữ |
+|---|---|---|
+| `planner` | V2 schedule, retry cap, health và quarantine permission | Không có labeled priority/delay outcome; proposal chỉ chọn từ permission đã tính |
+| `validator` | V3 schema/evidence/canonicalization và retry eligibility | Proposal không nhận evidence mới; accept/reject/retry đã được xác định |
+| `analyst` | V3 aggregate cùng exact direction/caveat projection | Claim/query/metric/direction/caveat hợp lệ đều đã deterministic |
 
-Input: source health, last success, failure/change/new-job rates, schedule policy và budget.
+[ADR-013](decisions/0013-remove-unretained-v4-agent-runtime.md) loại cả ba reasoning path, package `agents` và `AgentRun` schema. Không có current agent runtime, tool registry, proposal loop, provider adapter hoặc model call. LangGraph vẫn bị defer theo [ADR-012](decisions/0012-accept-direct-v4-agent-workflow-defer-langgraph.md).
 
-Allowed output:
+V4-001–V4-005 được giữ làm historical safety/evaluation evidence, không phải claim capability đang chạy. V5 matching, trend calculation và alert eligibility trước hết là deterministic modules; text generation không tự biến module thành agent.
 
-- priority trong enum/range đã định;
-- đề xuất delay/retry/quarantine review;
-- reason và metric references.
+## 10. Gate nếu đánh giá agent lại
 
-Không được thêm source/URL, đổi allow-list, vượt rate limit, override pause/quarantine hoặc tự chạy tool ngoài danh sách.
+Future reasoning path chỉ được mở khi có:
 
-### 9.2. Validator
+- responsibility không thể suy ra output trực tiếp từ deterministic input facts;
+- frozen labeled dataset và metric usefulness/accuracy có baseline trước model run;
+- no-regression gate cho schema, evidence, policy, privacy, latency và cost;
+- default-deny tool policy; không shell, arbitrary SQL/HTTP, secret access hoặc destructive database operation;
+- schema validation/authorization trong code, hard step/token/timeout/cost limits và deterministic fallback;
+- external-provider/privacy ADR trước khi gửi bất kỳ content nào;
+- audit redaction không giữ raw JD/CV/HTML, full prompt, chain-of-thought, secret, vector hoặc provider body.
 
-Input: raw reference, extraction result, validation errors và retry count.
-
-Allowed output: `accept`, `reject`, `retry_with_strategy`, `needs_review`, kèm reason/evidence. Deterministic layer kiểm tra decision và giới hạn retry.
-
-### 9.3. Analyst
-
-Input V4-005 là `analyst-trend-evidence-v1` cho đúng một canonical skill: exact query window/filter/granularity/top-skill/version metadata và toàn bộ response bucket đã validate. Projection không copy float `coverage`/`share`; nó recompute integer basis points bằng half-up từ `denominator`, `analyzed_jobs` và `job_count`. Builder chỉ đưa first/last bucket, exact query/metric refs, deterministic `increased | decreased | unchanged` và exact `low_coverage` caveat vào `analyst-facts-v1`.
-
-Output chỉ là typed `publish_insight | reject_claim | needs_review`. Publish phải khớp exact `skill_trend` claim, aggregate-query evidence, một supported metric, deterministic direction và expected caveat tuple. Analyst không tự query SQL, không nhận Session/query handle/tool, không viết prose và không dùng raw Job/JD/CV/HTML hoặc `ExtractionResult.output_data`.
-
-### 9.4. Matcher, Trend và Alert
-
-Ở V5, matching, trend calculation và alert eligibility trước hết là deterministic modules. Chỉ tạo agent riêng nếu evaluation chứng minh reasoning cải thiện kết quả có thể đo được. Text generation không tự biến module thành agent.
-
-## 10. Agent/tool security
-
-- Tool allow-list theo agent; default deny.
-- Argument được schema-validate và authorization kiểm tra trong code, không dựa vào system prompt.
-- Không tool shell, arbitrary SQL, arbitrary HTTP, secret access hoặc destructive database operation.
-- Source/JD/CV text có thể chứa prompt injection; không đưa vào instruction channel.
-- Model output không được render bằng raw HTML, dùng làm filename/path, SQL hoặc command.
-- Step count, token, timeout, concurrency và cost có hard limit.
-- Decision quan trọng có correlation ID và audit record nhưng redact PII/prompt content.
-- Human/operator approval bắt buộc cho source policy change, external provider mới, retention mới hoặc alert channel mới chứa user data.
-
-V4-001 đã cài internal `agent-decision-v1` và deterministic validation boundary trong module `agents`. Envelope dùng responsibility-specific enum/data, bounded opaque reference, finite confidence và reject extra field/reference ngoài input. Tool policy hiện chỉ authorize read-only `read_source_health`/`read_run_health`, `read_extraction_result`/`read_evidence_reference` hoặc `read_aggregate` theo đúng responsibility; không có executor cho shell, SQL, HTTP hoặc mutation.
-
-Application context deterministic phải cấp explicit schedule permission, retry eligibility/cap/quarantine, validator accept gate và analyst denominator/query/metric support. Thiếu fact luôn fail closed. Boundary chỉ trả normalized action token; không có dynamic tool executor hoặc public API. Test/evidence nền tảng nằm tại [V4-001 deterministic agent policy](evidence/V4-001-deterministic-agent-policy.md).
-
-[ADR-012](decisions/0012-accept-direct-v4-agent-workflow-defer-langgraph.md) chấp nhận direct bounded workflow sau isolated LangGraph `1.2.10` spike. Graph đạt same-process checkpoint recovery nhưng current responsibility chưa cần durable multi-step pause/resume/replay; V4 không thêm LangGraph/checkpointer/LangSmith dependency. V4-003 dùng typed run state + `AgentRun`; chỉ đánh giá lại graph runtime khi có measured durable-workflow need. [V4-002 evidence](evidence/V4-002-langgraph-direct-workflow-spike.md) ghi exact footprint, scenario, recovery và timing boundary.
-
-### 10.1. V4 AgentRun safety boundary
-
-Mỗi direct run dùng frozen `agent-run-limits-v1`; request, model output và environment variable không được override:
-
-| Limit | Giá trị |
-|---|---:|
-| step | `4` |
-| model attempt | `2` |
-| tool call | `4` |
-| latency | `180000 ms` |
-| prompt + completion token | `8000` |
-| estimated cost | `0.05000000 USD` |
-
-Pure `agent-run-state-v1` kiểm usage delta trước khi nhận. Exact boundary được chấp nhận; increment vượt một đơn vị raise typed `limit_exceeded` và không truncate counter. Caller chuyển outcome đó thành `needs_review` bằng last accepted usage. Terminal state không nhận thêm usage/decision transition.
-
-`AgentRun` chỉ audit opaque refs/hash/version, strict decision envelope, safe failure code (`timeout`, `provider_unavailable`, `invalid_output`, `limit_exceeded`, `ambiguous_input`, `internal_error`), bounded usage, correlation ID, model identity và timestamp. Database/log/error không giữ raw JD/CV/HTML, prompt/system message/chain-of-thought, free-form provider body, secret/header, vector hoặc arbitrary tool arguments. Persistence error cũng chỉ có allow-listed code/summary và không echo rejected input.
-
-PostgreSQL khóa one-global-running slot, exact hard ceilings, terminal decision/failure invariants và one-direct-retry. Start/finalize chạy trong hai caller-owned transaction ngắn; proposal work nằm giữa hai transaction và ngoài row lock. V4-004 không mở AgentRun API, không auto-reset row `running` khi finalize fail và không thêm outer AgentRun retry.
-
-### 10.2. V4-004 planner/validator proposal boundary
-
-Deterministic builders tạo hai contract strict:
-
-- `planner-facts-v1` chỉ chứa opaque Source/CrawlRun refs, approval/health status, safe reason code, bounded counters và schedule/retry permission đã tính từ persisted state;
-- `validator-facts-v1` chỉ chứa opaque ExtractionResult/RawJobSnapshot refs, extractor/status, current hash/schema booleans, local schema/evidence booleans, safe `code/path/type` issues và bounded reparse permission.
-
-Builder validator có thể đọc `ExtractionResult.output_data`, canonical Job text và RawJobSnapshot metadata nội bộ để kiểm schema/evidence/provenance, nhưng `agent-proposal-request-v1` không chứa `output_data`, raw JD/CV/HTML, URL, rejected value, prompt/provider body, secret, vector hoặc Session. Raw content được coi là untrusted data và không thể đổi policy/tool quyền.
-
-Direct flow là `build → propose → validate → apply/fallback`. Proposal callable chỉ nhận request strict và trả candidate mapping cùng safe model/usage wrapper; nó không nhận database, URL, credential, logger hay mutation handle. Mỗi run tối đa hai proposal attempts, bốn logical stages và luôn `0` tool call. Candidate chỉ được persist sau `DecisionEnvelope` validation, responsibility/ref closure và `apply_decision()`:
-
-- accepted non-review action → `succeeded`;
-- deterministic application reject → `rejected` với validated decision;
-- valid review → `needs_review` với validated decision;
-- malformed/ref mismatch hoặc transient exhausted → `needs_review` với safe failure/fallback;
-- unexpected execution error → `failed/internal_error`;
-- usage overflow → `needs_review/limit_exceeded` bằng last accepted usage.
-
-Transaction 1 commit row `running` trước proposal; proposal/validation/application chạy không Session; transaction 2 finalize terminal row. Finalize failure rollback transaction 2 và giữ row `running`/active slot để operator điều tra. Scripted callable chỉ chứng minh workflow correctness; V4-004 không có live model/provider, không gửi JD/CV ra ngoài và không tuyên bố usefulness cao hơn deterministic baseline. Test và boundary evidence nằm tại [V4-004 planner/validator workflow](evidence/V4-004-planner-validator-direct-workflow.md).
-
-### 10.3. V4-005 analyst trend boundary
-
-Current PostgreSQL analytics tiếp tục sở hữu query, cohort, denominator, coverage, bucket và top-skill ordering. Caller truyền cùng validated `SkillTrendQuery`/`SkillTrendResponse` vào deterministic projection; query/response meta mismatch, dưới hai bucket, bucket reorder/duplicate/outside window, missing/duplicate selected skill, unsafe version/skill hoặc arithmetic mismatch đều fail trước khi tạo `AgentRun`.
-
-`aggregate_query_ref` hash exact window/filter/granularity/top-skills/version JSON. `trend_metric_ref` hash full query hash, canonical skill, two endpoint buckets, delta, direction và required caveat. `ApplicationContext` reconstruct exact expected claim/direction/caveat và chỉ support đúng metric ref; model không thể invent hoặc thay query, metric hay coverage caveat mà vẫn publish.
-
-Analyst dùng nguyên direct flow `build → propose → validate → apply/fallback`, tối đa hai proposal attempts, bốn logical stages, `0` tools và hai transaction ngắn. Valid publish/reject/review, malformed/injection, timeout, limit, internal error, application reject và finalize failure đều giữ terminal/redaction semantics V4-004. Scripted proposal và PostgreSQL integration chỉ chứng minh contract/workflow correctness; V4-006 chịu trách nhiệm đo usefulness so với deterministic baseline và loại reasoning path nếu không cải thiện. [Evidence](evidence/V4-005-analyst-skill-trend.md).
+Source/JD/CV text luôn là untrusted data và không được đổi instruction, allow-list hoặc action. Human/operator approval vẫn bắt buộc cho source policy, provider, retention hoặc alert channel mới chứa user data.
 
 ## 11. Privacy và retention
 
@@ -290,7 +220,7 @@ Analyst dùng nguyên direct flow `build → propose → validate → apply/fall
 - Không đưa API key, cookie, auth header, raw log hoặc dữ liệu user khác vào prompt.
 - CV file gốc mặc định bị xóa sau parsing; raw text không nằm trong telemetry.
 - External provider processing phải có config opt-in cho dữ liệu nhạy cảm và được nêu trong UI/docs trước public deployment.
-- ResumeProfile, embedding, match và agent output phải hỗ trợ delete/expiry theo cùng owner scope.
+- ResumeProfile, embedding, match và AI-derived output phải hỗ trợ delete/expiry theo cùng owner scope.
 - Dataset evaluation không dùng CV/JD chứa PII chưa được loại bỏ hoặc có quyền sử dụng không rõ.
 
 ## 12. Cost và failure handling
@@ -317,6 +247,6 @@ needs-review, cache hit và estimated cost. Khi provider unavailable, rate-limit
 - Model artifact thiếu/sai hash hoặc query vector sai dimension/non-finite: semantic request trả safe unavailable; không external fallback.
 - Semantic query với status/source/skill filter: chỉ rank compatible current JobEmbedding trong cohort đã lọc.
 - Skill frequency/trend khi extraction coverage thiếu: denominator vẫn là toàn Job cohort và response công bố `analyzedJobs`/coverage.
-- CV raw text/embedding không xuất hiện trong log, error hoặc AgentRun response.
-- Analyst claim không có denominator/query evidence: validation reject.
-- Planner đề xuất host ngoài allow-list hoặc vượt policy: deterministic layer reject.
+- CV raw text/embedding không xuất hiện trong log, error, tracing hoặc API response.
+- Skill trend thiếu denominator/query evidence: deterministic analytics validation reject.
+- Crawl request chứa host ngoài allow-list hoặc vượt policy: deterministic source boundary reject.

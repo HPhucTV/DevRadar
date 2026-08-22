@@ -2,7 +2,7 @@
 
 ## 1. Trạng thái và phạm vi
 
-Kiến trúc nền tảng là **modular monolith, phase-gated stack** theo [ADR-001](decisions/0001-modular-monolith-and-phase-gated-stack.md). V1 khóa Python, FastAPI, PostgreSQL và Docker Compose; [ADR-005](decisions/0005-sqlalchemy-alembic-and-psycopg.md) khóa SQLAlchemy/Alembic/Psycopg cho persistence V1. V2 đã hoàn tất PostgreSQL-backed direct orchestration theo [ADR-006](decisions/0006-defer-prefect-use-direct-v2-orchestration.md). V3 đã chấp nhận DeepSeek cho synthetic generation boundary theo ADR-008 và fixed-revision local multilingual MiniLM + exact pgvector cho private deployment theo [ADR-010](decisions/0010-accept-fastembed-minilm-semantic-remediation.md). [ADR-012](decisions/0012-accept-direct-v4-agent-workflow-defer-langgraph.md) chấp nhận direct bounded workflow và hoãn LangGraph tới khi có measured durable-workflow need; V4-004 đã implement provider-neutral planner/validator facts và direct executor. Production model adapter, analyst workflow, HNSW, Next.js và Redis vẫn bị phase/evidence gate.
+Kiến trúc nền tảng là **modular monolith, phase-gated stack** theo [ADR-001](decisions/0001-modular-monolith-and-phase-gated-stack.md). V1 khóa Python, FastAPI, PostgreSQL và Docker Compose; [ADR-005](decisions/0005-sqlalchemy-alembic-and-psycopg.md) khóa SQLAlchemy/Alembic/Psycopg cho persistence V1. V2 đã hoàn tất PostgreSQL-backed direct orchestration theo [ADR-006](decisions/0006-defer-prefect-use-direct-v2-orchestration.md). V3 đã chấp nhận DeepSeek cho synthetic generation boundary theo ADR-008 và fixed-revision local multilingual MiniLM + exact pgvector cho private deployment theo [ADR-010](decisions/0010-accept-fastembed-minilm-semantic-remediation.md). V4 đã đánh giá direct bounded workflow và LangGraph; [ADR-013](decisions/0013-remove-unretained-v4-agent-runtime.md) loại planner/validator/analyst runtime vì không có measurable usefulness gain, còn quyết định defer LangGraph của ADR-012 vẫn hiệu lực. Production model adapter, HNSW, Next.js và Redis vẫn bị phase/evidence gate.
 
 Tài liệu này mô tả boundary và data flow. Nó không quy định folder/class chi tiết trước khi scaffold và không biến module logic thành microservice.
 
@@ -18,7 +18,7 @@ flowchart LR
     ING --> DB[("PostgreSQL")]
     API --> DB
     LLM["Approved external LLM boundary - synthetic V3"] <--> INT["Intelligence modules"]
-    EMB["Fixed local E5 model - V3"] --> INT
+    EMB["Fixed local multilingual MiniLM - V3"] --> INT
     INT <--> DB
     API --> INT
     ALT["Telegram / Discord - V5+"] <-- ALERT["Alert module"]
@@ -41,7 +41,6 @@ External actors và trust level:
 | `api` | `/api/v1`, validation, pagination, auth boundary | V1 | crawler parsing, scoring logic |
 | `automation` | schedule, retry policy, run orchestration, health | V2 | source-specific extraction |
 | `intelligence` | LLM extraction, embeddings, trend queries/evaluation | V3 | authoritative raw data |
-| `agents` | safe responsibility facts, typed proposal/run state, direct planner/validator/analyst workflow, read-only tool authorization, deterministic application validation và caller-owned AgentRun persistence operations | V4 | domain mutation, production provider, authoritative aggregate query, graph runtime |
 | `matching` | resume profile, score components, explanation evidence | V5 | file transport/security policy |
 | `presentation` | Next.js UI, charts, upload experience | V5 | domain rules hoặc data correction |
 | `alerts` | rule evaluation, idempotent delivery, delivery history | V5 | source crawling |
@@ -55,7 +54,7 @@ External actors và trust level:
 - `api`, CLI và scheduler gọi cùng application use case thay vì copy workflow.
 - Source-specific parser chuyển dữ liệu về raw/normalized contract chung; không ghi trực tiếp schema tùy ý vào database.
 - Module AI đọc canonical/raw reference qua application boundary và trả typed result; nó không tự commit trạng thái job.
-- Agent đề xuất decision có schema; deterministic workflow validate và áp dụng decision trong transaction.
+- Future reasoning path phải có frozen labeled evaluation và ADR trước khi nhận model/provider/runtime boundary; current workflow hoàn toàn deterministic.
 - Chỉ tạo interface/wrapper khi có ít nhất một external boundary, nhiều implementation thật hoặc testing seam cần thiết.
 
 ## 5. Luồng dữ liệu chính
@@ -97,10 +96,10 @@ flowchart TD
 ```mermaid
 flowchart LR
     J["Current canonical Job"] --> C["Bounded canonical text + input hash"]
-    C --> E["Fixed-revision local E5"]
+    C --> E["Fixed-revision local multilingual MiniLM"]
     E --> V["Validate finite vector(384)"]
     V --> P[("PostgreSQL job_embeddings")]
-    Q["Bounded API query"] --> QE["Same local E5 query space"]
+    Q["Bounded API query"] --> QE["Same local MiniLM query space"]
     QE --> S["Exact cosine search"]
     P --> S
     J --> S
@@ -112,28 +111,13 @@ flowchart LR
 
 Embedding model call chạy ngoài database transaction; persistence re-check Job hash trước insert. Row cũ được giữ làm audit derived data nhưng semantic query chỉ join đúng current hash/input schema/provider/model/revision/dimension. V3 dùng exact cosine và application aggregation vì target chỉ 500–1.000 Job; chưa có HNSW, materialized `JobSkill`, cache hoặc distributed worker.
 
-### 5.4. Agent decision boundary
+### 5.4. V4 agent evaluation closeout
 
-V4-001 thêm internal decision boundary; V4-002 khóa direct runtime direction; V4-003 thêm bounded run/audit; V4-004 implement planner/validator và V4-005 thêm one-skill analyst trend responsibility. Chưa có live model/provider:
+V4-001–V4-005 đã thử typed decision, default-deny policy, bounded run/audit, direct planner/validator và one-skill analyst trend workflow bằng scripted proposal callable. Những artifact đó chứng minh safety/correctness của boundary thử nghiệm, không chứng minh model usefulness.
 
-```mermaid
-flowchart LR
-    I["Persisted rows / validated analytics"] --> B["Deterministic safe facts + opaque refs"]
-    B --> S["Short caller tx: AgentRun running"]
-    S --> D["Injected proposal outside DB tx"]
-    D --> V["Deterministic schema, policy and evidence validation"]
-    V --> A["Normalized action token"]
-    V --> F["Baseline or needs_review fallback"]
-    A --> T["Short caller tx: finalize AgentRun"]
-    F --> T
-    A --> W["Existing application use case owns mutation"]
-```
+V4-006 xác nhận cả ba proposal input đã chứa outcome authoritative: planner nhận schedule/retry/quarantine permission đã tính; validator nhận schema/evidence validity và retry eligibility đã tính; analyst nhận exact query/metric refs, direction và required caveat đã tính. Không có frozen label cho phần lựa chọn còn lại và mọi divergence khỏi facts đều bị deterministic gate reject. [ADR-013](decisions/0013-remove-unretained-v4-agent-runtime.md) vì vậy loại package `agents`, current `AgentRun` schema và proposal tests.
 
-Tool authorization là default deny và responsibility-specific. Proposal/application boundary không nhận database session, raw JD/CV/HTML/ExtractionResult output, arbitrary argument/URL/SQL/shell hoặc mutation handle. Schedule/retry eligibility, quarantine/cap và validator accept/reparse gate đều do deterministic builder/context cấp. V4-004/V4-005 direct workflows không gọi tool; `tool_call_count` luôn `0`.
-
-V4-005 giữ `api.analytics` authoritative: current use case tính cohort/denominator/coverage/bucket, sau đó explicit caller projection recompute integer basis points và tạo `analyst-facts-v1` cho first/last bucket. Query/metric refs, direction và `low_coverage` caveat do deterministic code tạo; exact application gate reject claim/ref/direction/caveat mismatch. Analyst proposal không nhận full series, REST float, Session/query handle hoặc aggregate persistence mới và cũng luôn `0` tools.
-
-`agents.persistence` chỉ add/lock/flush trong caller-owned transaction. Direct executor dùng transaction 1 insert/commit `running`, chạy proposal/validation/application không giữ Session, rồi transaction 2 lock đúng row, revalidate typed outcome/usage và finalize terminal. Functions persistence không commit/rollback và AgentRun không phải graph checkpoint. Finalize rollback giữ row `running` cùng global `active_slot`; workflow không bypass/reset trạng thái audit. Retry parent lock + unique child tiếp tục khóa đúng một direct attempt 2, khác với hai proposal attempts nội bộ cùng run. Xem [V4-001 evidence](evidence/V4-001-deterministic-agent-policy.md), [V4-002 decision evidence](evidence/V4-002-langgraph-direct-workflow-spike.md), [V4-003 evidence](evidence/V4-003-agent-run-state-safety.md), [V4-004 evidence](evidence/V4-004-planner-validator-direct-workflow.md) và [V4-005 evidence](evidence/V4-005-analyst-skill-trend.md).
+Current data flow vẫn là V1–V3 deterministic orchestration, extraction, semantic search và analytics. Các V4 artifact cũ được giữ làm historical evidence: [policy](evidence/V4-001-deterministic-agent-policy.md), [LangGraph/direct spike](evidence/V4-002-langgraph-direct-workflow-spike.md), [run safety](evidence/V4-003-agent-run-state-safety.md), [planner/validator](evidence/V4-004-planner-validator-direct-workflow.md) và [analyst](evidence/V4-005-analyst-skill-trend.md). Không có agent process, provider adapter, model call, tool executor hoặc audit table hiện hành. Future reasoning path cần frozen labeled dataset, measurable improvement gate, privacy boundary và ADR mới.
 
 ### 5.5. CV matching
 
@@ -146,8 +130,8 @@ Upload validation và text extraction chạy trước. File gốc được xóa 
 | V1 | PostgreSQL, FastAPI process, on-demand crawler/CLI từ cùng codebase | Accepted |
 | V2 | V1 + deterministic scheduler/runner từ cùng codebase, PostgreSQL coordination | Accepted theo ADR-006 |
 | V3 | V2 + extraction/taxonomy; local FastEmbed multilingual MiniLM artifact, pgvector `vector(384)`, exact semantic search và bounded analytics | Complete; ADR-010 Accepted cho local/private |
-| V4 | V3 + direct typed decision/application/run-state; planner/validator/analyst provider-neutral workflow; LangGraph deferred | In progress; V4-005 implemented, usefulness evaluation V4-006 pending |
-| V5 | V4 + Next.js và optional alert connector | Proposed |
+| V4 | Không thêm runtime vào V3; đánh giá rồi loại planner/validator/analyst reasoning path; LangGraph deferred | Complete; ADR-013 Accepted |
+| V5 | V3 runtime baseline + Next.js và optional alert connector | Proposed |
 | V6 | Public ingress, auth, managed secrets, backup/monitoring; Redis/worker pool nếu metric yêu cầu | Proposed |
 
 Crawler/one-shot worker CLI và API dùng cùng code nhưng là entrypoint/process khác nhau. Điều này giữ network work ngoài HTTP request mà không tách service sớm.
@@ -159,7 +143,7 @@ Crawler/one-shot worker CLI và API dùng cùng code nhưng là entrypoint/proce
 | Source URL/browser subrequest → fetcher | SSRF, redirect escape, oversized/slow response | source allow-list trên mọi request, DNS/IP/redirect re-validation, egress control, timeout, byte limit |
 | HTML/JSON-LD → parser | malformed content, injection, parser bomb | content type/size limit, safe parser, no script execution ở HTTP path, fixtures |
 | Raw content → LLM | prompt injection, PII leak, cost abuse | treat as data, minimal fields, tool deny-by-default, budget, redaction |
-| Model output → AgentRun/application | schema bypass, excessive agency, secret/raw disclosure | strict DecisionEnvelope, deterministic policy/application, hard usage caps, typed redacted audit only |
+| External model output → extraction validator | schema bypass, hallucinated evidence, secret/raw disclosure | strict extraction schema, deterministic canonicalization/evidence gate, bounded retry và redacted audit |
 | Model artifact/query → local embedding | supply-chain tampering, unbounded CPU/input, vector mismatch, query disclosure | fixed revision + artifact SHA-256, local-files-only, length/dimension/finite checks, no raw query/vector logging |
 | CV upload → parser | malware/polyglot, decompression bomb, PII | type/signature/size/page limits, isolated parse, no macro execution, short retention |
 | API → mutation | unauthorized crawl/data access | local/operator-only trước auth; authenticated role sau V6 |
@@ -176,7 +160,6 @@ Chi tiết vận hành nằm trong [OPERATIONS.md](OPERATIONS.md).
 - Reprocessing tạo kết quả extraction/version mới và giữ reference tới input cũ.
 - Job embedding là derived row có logical model/hash identity; canonical Job/PostgreSQL vẫn authoritative và stale vector không được rank như current.
 - Analytics đọc current Job cohort cùng latest compatible accepted extraction, luôn công bố denominator/coverage; partial run không được làm sai Job lifecycle hoặc cohort.
-- AgentRun start/finalize là hai transaction ngắn; external work không giữ row lock, terminal row bất biến và one-running-slot fail closed khi race.
 - Delivery alert dùng idempotency key để retry an toàn.
 
 ## 9. Quy tắc thay đổi kiến trúc

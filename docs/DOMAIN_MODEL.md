@@ -29,11 +29,12 @@ Tài liệu này là ubiquitous language của DevRadar. Tên entity, enum và s
 | JobEmbedding | Derived local vector của canonical Job, có input/model/schema identity đầy đủ; không phải nguồn dữ liệu authoritative. |
 | ResumeProfile | Hồ sơ có cấu trúc được trích từ CV; không đồng nghĩa file CV gốc. |
 | JobMatch | Kết quả match có tổng điểm, component score, evidence và scoring version. |
-| AgentRun | Một lần thực thi bounded của đúng một responsibility, lưu opaque input identity, validated decision hoặc safe terminal failure cùng usage audit; không phải trace raw từng step. |
 | AlertRule | Tiêu chí người dùng muốn theo dõi. |
 | AlertDelivery | Một lần gửi thông báo có idempotency và trạng thái delivery. |
 
 Implementation hiện map `Source`, `CrawlRun`, `RawJobSnapshot` vào module `ingestion`; `Job`, `JobChange` và lifecycle vào `catalog`; dùng UUID/PostgreSQL constraint để giữ provenance, source-scoped identity và idempotent history. Xem [ADR-005](decisions/0005-sqlalchemy-alembic-and-psycopg.md), [V1 upsert evidence](evidence/V1-009-job-upsert.md) và [V2 lifecycle evidence](evidence/V2-003-job-change-and-absence-lifecycle.md).
+
+V4 từng thử entity `AgentRun`, nhưng [ADR-013](decisions/0013-remove-unretained-v4-agent-runtime.md) đã loại runtime/schema này vì không có measurable usefulness gain. `AgentRun` chỉ còn trong migration/evidence lịch sử và không phải entity hiện hành.
 
 ## 4. Entity chính
 
@@ -187,7 +188,7 @@ Logical uniqueness là `job_id + input_hash + input_schema_version + provider + 
 | `embedding`/reference | Chỉ từ V5 cho ResumeProfile và luôn có model version; JobEmbedding V3 là entity derived riêng. |
 | `retention_mode`, `expires_at` | Mặc định ephemeral/short-lived. |
 
-File CV gốc không phải entity lưu trữ lâu dài mặc định. Raw text không được ghi vào log hoặc AgentRun.
+File CV gốc không phải entity lưu trữ lâu dài mặc định. Raw text không được ghi vào log, tracing hoặc audit output.
 
 ### 4.9. JobMatch
 
@@ -202,24 +203,7 @@ File CV gốc không phải entity lưu trữ lâu dài mặc định. Raw text 
 
 Trọng số cụ thể là `Proposed` cho tới khi V5 có labeled examples. Không ghi “82% match” như xác suất tuyển dụng.
 
-### 4.10. AgentRun
-
-| Nhóm field | Field logic |
-|---|---|
-| Identity | `id`, `responsibility`, `agent_name`, `agent_version`, `correlation_id` |
-| Input | bounded `input_refs`, canonical `input_hash`, fixed `limits_snapshot` |
-| Output | nullable `decision_schema_version`, validated `decision_data`, nullable safe model identity |
-| Lifecycle | `status`, nullable `failure_code`, `retry_of_run_id`, `attempt_number`, `active_slot` |
-| Usage | step/model/tool count, prompt/completion token, latency và estimated cost |
-| Time | `started_at`, nullable `finished_at`, `created_at` |
-
-`responsibility` là `planner`, `validator` hoặc `analyst`. `status` là `running`, `succeeded`, `rejected`, `needs_review` hoặc `failed`. `succeeded|rejected` bắt buộc có full validated `agent-decision-v1`; `failed` bắt buộc safe failure code. `needs_review` có thể giữ validated decision để operator xem hoặc không có decision khi provider/limit/input ambiguity chặn outcome an toàn.
-
-`input_refs`, `limits_snapshot` và `decision_data` chỉ được dump từ strict typed model. Bảng không có raw JD/CV/HTML, prompt, chain-of-thought, provider body, secret/header, embedding/vector hoặc arbitrary tool arguments. Một row là aggregate audit cho cả direct run; V4 không có `AgentStep` child entity.
-
-First attempt có `attempt_number=1`, không có parent. Chỉ `failed|needs_review` attempt 1 được tạo đúng một direct retry attempt 2; `succeeded|rejected`, retry-of-retry và child thứ hai đều bị reject. Model retry bên trong một run vẫn tính bằng `model_attempt_count`, không tạo row mới.
-
-### 4.11. AlertRule và AlertDelivery
+### 4.10. AlertRule và AlertDelivery
 
 `AlertRule` lưu filter/match threshold, channel, enabled state và owner. `AlertDelivery` lưu rule/job/job-version, idempotency key, attempt, result và provider message reference đã sanitize.
 
@@ -272,16 +256,6 @@ ngoài transaction ngắn, tối đa hai transient attempts. Provider thiếu ho
 `needs_review` với deterministic payload; malformed shape, extra field, enum lạ hoặc evidence không
 tồn tại tạo `rejected`. Các outcome này không làm Job đổi lifecycle `active → missing → removed`.
 
-### 5.4. AgentRun lifecycle
-
-```text
-start → running → succeeded | rejected | needs_review | failed
-```
-
-Terminal row bất biến và finalize lại bị reject. `active_slot=1` chỉ tồn tại khi `running`; unique nullable slot giới hạn một AgentRun running toàn hệ thống cho portfolio single-operator. Stuck run không tự reset hoặc bị bypass; recovery policy cần requirement/evidence mới.
-
-Caller commit transaction ngắn tạo `running` trước external model/tool work. External work chạy ngoài database transaction. Caller mở transaction ngắn thứ hai, lock đúng row đang running rồi finalize terminal; persistence function chỉ add/flush và không commit/rollback transaction của caller.
-
 ## 6. Identity, deduplication và hashing
 
 Thứ tự identity trong cùng source:
@@ -308,6 +282,3 @@ V1 dùng hash schema `job-content-v1`: canonical URL; title/company/description;
 - Từ V2, không tạo JobChange khi `job_content_hash` không đổi.
 - Một JobSkill phải có evidence/extraction provenance.
 - Match score phải nằm trong `[0, 1]`, có scoring version và component evidence.
-- Agent decision không tự trở thành domain state trước deterministic validation/application step.
-- Một thời điểm chỉ có tối đa một `AgentRun.status=running`; attempt 2 phải trỏ một direct eligible attempt 1 và mỗi parent chỉ có một child.
-- AgentRun usage không vượt `4` step, `2` model attempt, `4` tool call, `180000 ms`, `8000` total token hoặc `0.05000000 USD` estimated cost.

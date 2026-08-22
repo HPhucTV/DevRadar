@@ -5,10 +5,10 @@
 | Thuộc tính | Giá trị |
 |---|---|
 | Project status | `implementation` |
-| Active phase | `v4` (`in_progress`) |
+| Active phase | `v5` (`proposed`) |
 | Code scaffold | Có — FastAPI health + read-only domain API, PostgreSQL schema/migration, test/static gates và Compose local |
 | Source approved | `3` Vietnam V1 sources + `1` V3 secondary remote API source; mỗi source có scope riêng |
-| Runtime/test evidence | V1 [complete](evidence/V1-closeout.md); V2 [complete](evidence/V2-006-v2-closeout.md); V3 [complete](evidence/V3-006-v3-closeout.md); V4-001 [complete](evidence/V4-001-deterministic-agent-policy.md); V4-002 [complete](evidence/V4-002-langgraph-direct-workflow-spike.md) và ADR-012 chọn direct workflow; V4-003 [complete](evidence/V4-003-agent-run-state-safety.md); V4-004 [complete](evidence/V4-004-planner-validator-direct-workflow.md); V4-005 [complete](evidence/V4-005-analyst-skill-trend.md); V4-006 Ready |
+| Runtime/test evidence | V1 [complete](evidence/V1-closeout.md); V2 [complete](evidence/V2-006-v2-closeout.md); V3 [complete](evidence/V3-006-v3-closeout.md); V4 historical safety evidence nằm ở [V4-001](evidence/V4-001-deterministic-agent-policy.md)–[V4-005](evidence/V4-005-analyst-skill-trend.md); [ADR-013](decisions/0013-remove-unretained-v4-agent-runtime.md) loại cả ba reasoning path và đóng keep/delete decision |
 
 Task-level status có thể được theo dõi bằng `TASK_BOARD.md` cục bộ. File này bị Git ignore và không thay đổi phase gate hoặc exit criteria của roadmap.
 
@@ -191,11 +191,11 @@ Agent tự điều phối, arbitrary tools, auto-generated claim không có quer
 
 ## 6. V4 — Agentic decision layer
 
-**Status:** `in_progress`
+**Status:** `complete`
 
 ### Mục tiêu
 
-Dùng direct bounded workflow tại ba điểm có reasoning thật: planner, validator và analyst; mọi policy/action vẫn được deterministic code kiểm soát. LangGraph bị defer theo ADR-012 tới khi có measured durable-workflow need.
+Đánh giá xem planner, validator và analyst có tạo measurable usefulness ngoài deterministic baseline hay không; chỉ giữ responsibility vượt improvement và safety gate. LangGraph bị defer theo ADR-012 tới khi có measured durable-workflow need.
 
 ### Prerequisite
 
@@ -205,15 +205,15 @@ Dùng direct bounded workflow tại ba điểm có reasoning thật: planner, va
 
 ### Deliverables
 
-- typed run state và bounded planner/validator/analyst steps;
-- allow-listed read/decision tools, không arbitrary HTTP/SQL/shell;
-- decision validation/application boundary;
-- AgentRun audit, metrics, retry relation và regression suite;
-- deterministic fallback khi model/graph unavailable.
+- frozen deterministic baseline và keep/delete metric;
+- typed safety/policy/run-state spikes cho ba responsibility;
+- LangGraph/direct-workflow comparison;
+- usefulness comparison và explicit retention/removal decision;
+- migration/docs cleanup cho feature bị loại.
 
-V4-004 đã hoàn tất provider-neutral planner/validator slice: safe facts/opaque refs, deterministic schedule/retry/accept gates, direct `build → propose → validate → apply/fallback`, hai proposal attempts, zero tools và two-transaction AgentRun lifecycle. [Evidence](evidence/V4-004-planner-validator-direct-workflow.md) chỉ chứng minh workflow correctness bằng scripted callable; usefulness comparison vẫn thuộc V4-006.
+V4-001–V4-005 đã chứng minh typed schema, default-deny policy, limit/failure behavior và PostgreSQL integration của provider-neutral scripted workflow. Đây là historical evaluation evidence, không phải current runtime capability.
 
-V4-005 đã hoàn tất provider-neutral analyst `skill_trend` slice: strict one-skill series, integer half-up basis points, deterministic two-endpoint facts/query/metric refs/direction/coverage caveat, exact publication gate và cùng direct zero-tool/two-transaction workflow. [Evidence](evidence/V4-005-analyst-skill-trend.md) gồm real PostgreSQL analytics-to-AgentRun integration nhưng chưa chứng minh model usefulness; V4-006 phải so sánh deterministic baseline và giữ hoặc loại reasoning path trước khi đóng V4.
+V4-006 áp rule giữ/loại đã đặt trước: cả ba proposal path bị loại vì safe facts đã xác định outcome và không có labeled usefulness gain. Planner chỉ nhận schedule/retry/quarantine permission đã tính; validator nhận schema/evidence validity đã tính; analyst nhận exact query/metric/direction/caveat đã tính. [ADR-013](decisions/0013-remove-unretained-v4-agent-runtime.md) loại package, proposal tests và `AgentRun` schema; V5 tiếp tục dùng deterministic API/analytics hiện hành.
 
 ### Non-goals
 
@@ -221,18 +221,17 @@ Sáu microservice agent, autonomous source onboarding, autonomous data mutation,
 
 ### Exit criteria
 
-- agent cải thiện metric đã chọn so với baseline hoặc feature bị loại;
-- step/tool/policy/timeout/cost limits được negative-test;
-- prompt injection không thể đổi allow-list/action;
-- quyết định không có evidence bị reject;
-- workflow/model failure fallback rõ và không làm hỏng run/domain state;
-- agent audit response không lộ raw CV/JD/secret.
+- Improvement gate: đạt bằng nhánh `feature bị loại`; không claim model usefulness.
+- Step/tool/policy/timeout/cost và prompt-injection boundaries: historical V4-001–V4-005 tests pass trước removal.
+- Unsupported evidence và workflow/model failure: deterministic gate/fallback đã được negative-test; không có current model runtime.
+- Privacy: historical audit tests không lộ raw CV/JD/secret; schema/audit runtime sau đó bị drop.
+- Current head không còn package `agents` hoặc `AgentRun`; deterministic V1–V3 regression, PostgreSQL migration và static gates pass.
 
 ### Demo evidence
 
-- planner đề xuất priority trong policy;
-- validator phát hiện salary/extraction anomaly và bounded retry/review;
-- analyst tạo claim từ aggregate evidence và reject claim thiếu denominator.
+- historical planner/validator/analyst safety scenarios trong V4-004/V4-005;
+- responsibility comparison và explicit removed outcome trong ADR-013;
+- migration round-trip chứng minh historical schema tồn tại ở revision cũ và bị loại ở current head.
 
 ## 7. V5 — Dashboard, CV matching và alerts
 
@@ -244,7 +243,7 @@ Biến dataset/capability thành trải nghiệm portfolio trực quan, giải t
 
 ### Prerequisite
 
-- V4 complete hoặc quyết định rõ phần agent không mang lại giá trị;
+- V4 complete;
 - API/schema/query performance đủ cho UI;
 - upload parser threat model và scoring evaluation plan;
 - demo exposure model quyết định: local/protected/read-only.

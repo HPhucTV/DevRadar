@@ -61,9 +61,7 @@ Include context, responsibility comparison, alternatives, consequences and migra
 
 Change ADR-012 to `Superseded in part` and add:
 
-```markdown
-| [ADR-013](0013-remove-unretained-v4-agent-runtime.md) | Accepted | Loại V4 agent runtime không có measurable usefulness; giữ deterministic paths |
-```
+Add an ADR-013 index row pointing to `0013-remove-unretained-v4-agent-runtime.md`, with status `Accepted` and decision “Loại V4 agent runtime không có measurable usefulness; giữ deterministic paths”.
 
 State in the candidate-technology paragraph that LangGraph remains deferred and no current agent runtime is accepted.
 
@@ -405,4 +403,3 @@ git status --short --branch
 ```
 
 Expected: teardown does not use `--volumes`; push succeeds; local and remote hashes match; branch is clean and no longer ahead.
-
