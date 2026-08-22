@@ -250,7 +250,7 @@ Raw evidence/candidate/exception text không được log, persist hoặc trả 
 ### Unit/TDD
 
 - strict evidence rejects extra/raw/prompt/tool fields, unsafe skill/version, invalid window/granularity/top-skills và malformed UUID;
-- projection rejects query/meta mismatch, missing/duplicate selected skill, dropped/reordered bucket và dưới hai response bucket; basis points được tính từ integer counts thay vì REST float;
+- projection giữ nguyên mọi response bucket, reject query/meta mismatch, missing/duplicate selected skill, reordered/duplicate response bucket và dưới hai response bucket; không yêu cầu calendar-contiguous bucket vì analytics hợp lệ có thể không có job ở một kỳ; basis points được tính từ integer counts thay vì REST float;
 - bucket ordering/uniqueness/window overlap, denominator/count constraints và exact half-up basis-point arithmetic;
 - first/last selection, query/metric hash determinism và content sensitivity;
 - deterministic increased/decreased/unchanged direction;
