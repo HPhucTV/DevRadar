@@ -1,0 +1,5 @@
+import { proxyBackend } from "@/lib/backend-proxy";
+type Context = { params: Promise<{ ruleId: string }> };
+async function id(context: Context): Promise<string> { const { ruleId } = await context.params; return encodeURIComponent(ruleId); }
+export async function PATCH(request: Request, context: Context): Promise<Response> { let body: unknown; try { body = await request.json(); } catch { return Response.json({ error: { code: "alert_rule_invalid", message: "Alert patch body is invalid." } }, { status: 422 }); } if (typeof body !== "object" || body === null || Array.isArray(body)) return Response.json({ error: { code: "alert_rule_invalid", message: "Alert patch body is invalid." } }, { status: 422 }); return proxyBackend(request, `/alert-rules/${await id(context)}`, { method: "PATCH", body: JSON.stringify(body) }); }
+export async function DELETE(request: Request, context: Context): Promise<Response> { return proxyBackend(request, `/alert-rules/${await id(context)}`, { method: "DELETE" }); }

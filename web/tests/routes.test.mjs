@@ -12,9 +12,10 @@ const expected = [
   ["analytics", "/analytics", "scaffolded", true],
   ["crawler-health", "/crawler-health", "scaffolded", true],
   ["cv-match", "/cv-match", "implemented", true],
+  ["alerts", "/alerts", "implemented", true],
 ];
 
-test("route manifest owns the exact V5-001 surface", async () => {
+test("route manifest owns the current V5 surface", async () => {
   const routes = JSON.parse(await readFile(manifestUrl, "utf8"));
   assert.deepEqual(
     routes.map(({ id, path, availability, showInNav }) => [
@@ -31,13 +32,13 @@ test("route manifest owns the exact V5-001 surface", async () => {
   for (const route of routes) {
     await access(new URL(route.pageFile, webRoot));
   }
-  assert.deepEqual(routes.at(-1).apiResources, [
+  assert.deepEqual(routes.find(({ id }) => id === "cv-match").apiResources, [
     "POST /api/v1/resume-profiles",
     "POST /api/v1/resume-profiles/{profileId}/matches",
     "GET /api/v1/resume-profiles/{profileId}/matches",
     "DELETE /api/v1/resume-profiles/{profileId}",
   ]);
-  assert.equal(routes.filter(({ showInNav }) => showInNav).length, 5);
+  assert.equal(routes.filter(({ showInNav }) => showInNav).length, 6);
 });
 
 test("cv match route exposes only protected local matching resources", async () => {
@@ -76,4 +77,21 @@ test("cv match proxy preserves no-content delete responses", async () => {
 
   assert.match(source, /response\.status === 204/);
   assert.match(source, /\? null/);
+});
+
+test("alert route exposes only protected rule and dispatch resources", async () => {
+  const routes = JSON.parse(await readFile(new URL("src/contracts/routes.json", webRoot), "utf8"));
+  const route = routes.find(({ id }) => id === "alerts");
+  assert.deepEqual(route.apiResources, [
+    "GET /api/v1/alert-rules",
+    "POST /api/v1/alert-rules",
+    "PATCH /api/v1/alert-rules/{ruleId}",
+    "DELETE /api/v1/alert-rules/{ruleId}",
+    "POST /api/v1/alert-rules/{ruleId}/dispatch",
+  ]);
+  const source = await readFile(new URL("src/components/alert-rules-panel.tsx", webRoot), "utf8");
+  const clientApi = await readFile(new URL("src/lib/alert-rules.ts", webRoot), "utf8");
+  assert.match(source, /type="password"/);
+  assert.match(clientApi, /X-DevRadar-Owner/);
+  assert.doesNotMatch(source + clientApi, /localStorage\.|webhookUrl|DISCORD_WEBHOOK_URL/);
 });

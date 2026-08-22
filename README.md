@@ -7,7 +7,7 @@
 | Thuộc tính | Giá trị |
 |---|---|
 | Trạng thái | `implementation` |
-| Phase hiện tại | `v5` — Dashboard, CV matching và alerts (`in_progress`); V5-001–V5-006 đã hoàn tất, V5-007 sẵn sàng |
+| Phase hiện tại | `v6` — Production-like hardening (`in_progress`); V1–V5 đã hoàn tất, V6-001 sẵn sàng |
 | Mô hình sử dụng ban đầu | Portfolio cá nhân, single-operator |
 | Thị trường ưu tiên | Job IT Việt Nam, nội dung Việt/Anh, lương VND |
 | Code chạy được | Có — V1/V2 data pipeline và V3 intelligence; không có agent runtime hiện hành |
@@ -87,6 +87,7 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [V5-004 implementation design](docs/superpowers/specs/2026-08-23-v5-004-job-match-scoring-design.md): current/stale identity, local structured embedding và API boundary.
 - [V5-005 CV matching UI evidence](docs/evidence/V5-005-cv-matching-ui.md): same-origin proxy, protected upload/match/delete UI và browser smoke.
 - [V5-006 alert evidence](docs/evidence/V5-006-alert-connector.md): Discord webhook allow-list, AlertRule/AlertDelivery, retry/idempotency và PostgreSQL integration.
+- [V5-007 closeout evidence](docs/evidence/V5-007-v5-closeout.md): browser E2E, accessibility baseline, `3339` jobs và privacy/delete boundaries.
 - [Operations](docs/OPERATIONS.md): test, security, observability, retention, CI/CD và deployment gates.
 - [Source discovery](docs/sources/SHORTLIST.md): evidence và approval outcome; VNG, NAVER Vietnam/Greenhouse và MoMo đã được duyệt cho bounded Vietnam scope, RemoteJobs.org được duyệt riêng cho V3 remote cohort có attribution, GeoComply/Lever vẫn `permission_required`.
 - [Pre-V1 local evidence](docs/evidence/PRE-007-local-prerequisites.md): Docker/PostgreSQL capability và constraint đã xác minh.

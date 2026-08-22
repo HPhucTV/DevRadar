@@ -52,5 +52,6 @@ returned `{"data":{"status":"ok"}}`.
 ## Non-goals and next step
 
 V5-005 does not add authentication, persistent browser sessions, public CV sharing,
-alert delivery or browser automation for arbitrary sources. V5-006 is the next
-ready slice: one idempotent alert connector with explicit local/protected policy.
+alert delivery or browser automation for arbitrary sources. V5-006 subsequently
+delivered one idempotent alert connector; V5-007 closes the protected V5 demo
+surface.

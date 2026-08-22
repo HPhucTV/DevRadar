@@ -5,7 +5,7 @@
 | Thuộc tính | Giá trị |
 |---|---|
 | Project status | `implementation` |
-| Active phase | `v5` (`in_progress`) |
+| Active phase | `v6` (`in_progress`) |
 | Code scaffold | Có — FastAPI health + read-only domain API, PostgreSQL schema/migration, test/static gates và Compose local |
 | Source approved | `3` Vietnam V1 sources + `1` V3 secondary remote API source; mỗi source có scope riêng |
 | Runtime/test evidence | V1 [complete](evidence/V1-closeout.md); V2 [complete](evidence/V2-006-v2-closeout.md); V3 [complete](evidence/V3-006-v3-closeout.md); V4 historical safety evidence nằm ở [V4-001](evidence/V4-001-deterministic-agent-policy.md)–[V4-005](evidence/V4-005-analyst-skill-trend.md); [V4-006 closeout](evidence/V4-006-agent-usefulness-closeout.md) loại cả ba reasoning path theo ADR-013 |
@@ -235,7 +235,7 @@ Sáu microservice agent, autonomous source onboarding, autonomous data mutation,
 
 ## 7. V5 — Dashboard, CV matching và alerts
 
-**Status:** `in_progress`
+**Status:** `complete`
 
 ### Mục tiêu
 
@@ -284,10 +284,11 @@ V5-004 evidence: [scoring evaluation](evidence/V5-004-scoring-evaluation.md) và
 
 V5-005 evidence: [CV matching UI và deletion](evidence/V5-005-cv-matching-ui.md).
 V5-006 evidence: [Discord alert connector và idempotent delivery](evidence/V5-006-alert-connector.md).
+V5-007 evidence: [browser E2E, accessibility baseline và V5 closeout](evidence/V5-007-v5-closeout.md).
 
 ## 8. V6 — Production-like hardening
 
-**Status:** `proposed`
+**Status:** `in_progress`
 
 ### Mục tiêu
 
