@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -20,6 +21,7 @@ from devradar.intelligence.evaluation import (
     LocationExpectation,
     SalaryExpectation,
     SkillExpectation,
+    canonicalize_skill_name,
     extract_skill_expectations,
 )
 from devradar.intelligence.models import (
@@ -157,6 +159,231 @@ def persist_extraction_result(
             raise
         return winner, True
     return result, False
+
+
+MAX_PROVIDER_ATTEMPTS = 2
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderMetadata:
+    extractor_version: str
+    schema_version: str
+    prompt_version: str
+    model: str
+    canonicalization_version: str
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderRequest:
+    input_ref: UUID
+    input_hash: str
+    title: str
+    description_text: str
+    deterministic_payload: ExtractionPayload
+
+
+ProviderCallable = Callable[[ProviderRequest], Mapping[str, object]]
+
+
+class ProviderTransientError(RuntimeError):
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
+class ProviderValidationError(RuntimeError):
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
+@dataclass(frozen=True, slots=True)
+class ExtractionResolution:
+    payload: ExtractionPayload
+    status: ExtractionValidationStatus
+    errors: list[dict[str, str]] | None
+    attempts: int
+
+
+@dataclass(frozen=True, slots=True)
+class ExtractionOutcome:
+    result: ExtractionResult
+    deterministic: DeterministicExtraction
+    cache_hit: bool
+    attempts: int
+
+
+def validate_provider_candidate(
+    candidate: Mapping[str, object],
+    *,
+    deterministic: DeterministicExtraction,
+    source_text: str,
+) -> ExtractionPayload:
+    candidate_data = dict(candidate)
+    raw_skills = candidate_data.get("skills")
+    if isinstance(raw_skills, (list, tuple)):
+        normalized_skills: list[object] = []
+        for item in raw_skills:
+            if isinstance(item, Mapping):
+                normalized_item = dict(item)
+                raw_name = normalized_item.get("name")
+                if isinstance(raw_name, str):
+                    normalized_item["name"] = canonicalize_skill_name(raw_name)
+                normalized_skills.append(normalized_item)
+            else:
+                normalized_skills.append(item)
+        candidate_data["skills"] = normalized_skills
+    try:
+        payload = ExtractionPayload.model_validate(candidate_data)
+    except ValidationError:
+        raise ProviderValidationError("provider_schema_invalid") from None
+
+    merged = payload.model_copy(
+        update={
+            "levels": deterministic.payload.levels,
+            "experience": deterministic.payload.experience,
+            "salary": deterministic.payload.salary,
+            "location": deterministic.payload.location,
+        }
+    )
+    skill_keys = [(skill.name, skill.requirement_type) for skill in merged.skills]
+    if len(skill_keys) != len(set(skill_keys)):
+        raise ProviderValidationError("provider_evidence_invalid")
+    if any(skill.evidence not in source_text for skill in merged.skills):
+        raise ProviderValidationError("provider_evidence_invalid")
+    return merged
+
+
+def resolve_provider_fallback(
+    *,
+    deterministic: DeterministicExtraction,
+    source_text: str,
+    request: ProviderRequest,
+    provider: ProviderCallable | None,
+    metadata: ProviderMetadata,
+) -> ExtractionResolution:
+    del metadata
+    if provider is None:
+        return ExtractionResolution(
+            payload=deterministic.payload,
+            status=ExtractionValidationStatus.NEEDS_REVIEW,
+            errors=[{"code": "provider_not_configured", "path": "provider", "type": "missing"}],
+            attempts=0,
+        )
+
+    for attempt in range(1, MAX_PROVIDER_ATTEMPTS + 1):
+        try:
+            candidate = provider(request)
+            payload = validate_provider_candidate(
+                candidate,
+                deterministic=deterministic,
+                source_text=source_text,
+            )
+            return ExtractionResolution(
+                payload=payload,
+                status=ExtractionValidationStatus.ACCEPTED,
+                errors=None,
+                attempts=attempt,
+            )
+        except ProviderValidationError as error:
+            return ExtractionResolution(
+                payload=deterministic.payload,
+                status=ExtractionValidationStatus.REJECTED,
+                errors=[{"code": error.code, "path": "provider", "type": "validation"}],
+                attempts=attempt,
+            )
+        except ProviderTransientError as error:
+            if attempt == MAX_PROVIDER_ATTEMPTS:
+                return ExtractionResolution(
+                    payload=deterministic.payload,
+                    status=ExtractionValidationStatus.NEEDS_REVIEW,
+                    errors=[{"code": error.code, "path": "provider", "type": "transient"}],
+                    attempts=attempt,
+                )
+    raise AssertionError("provider resolver must return within the bounded attempt loop")
+
+
+def extract_job(
+    session: Session,
+    *,
+    job: Job,
+    provider: ProviderCallable | None,
+    provider_metadata: ProviderMetadata | None,
+) -> ExtractionOutcome:
+    """Persist one deterministic-first extraction with short transaction windows."""
+
+    deterministic = deterministic_extract(job)
+    rule_key = ExtractionCacheKey(
+        input_type=ExtractionInputType.JOB,
+        input_ref=job.id,
+        input_hash=job.job_content_hash,
+        extractor_type=ExtractionType.RULE,
+        extractor_version=DETERMINISTIC_EXTRACTOR_VERSION,
+        schema_version=EXTRACTION_SCHEMA_VERSION,
+        prompt_version=None,
+        model=None,
+        canonicalization_version=CANONICALIZATION_VERSION,
+    )
+    if deterministic.complete:
+        session.rollback()
+        with session.begin():
+            result, cache_hit = persist_extraction_result(
+                session,
+                key=rule_key,
+                output_data=deterministic.payload.model_dump(mode="json", by_alias=True),
+                status=ExtractionValidationStatus.ACCEPTED,
+                validation_errors=None,
+            )
+        return ExtractionOutcome(result, deterministic, cache_hit, 0)
+
+    metadata = provider_metadata or ProviderMetadata(
+        extractor_version="provider-boundary-v1",
+        schema_version=EXTRACTION_SCHEMA_VERSION,
+        prompt_version="unconfigured",
+        model="unconfigured",
+        canonicalization_version=CANONICALIZATION_VERSION,
+    )
+    llm_key = ExtractionCacheKey(
+        input_type=ExtractionInputType.JOB,
+        input_ref=job.id,
+        input_hash=job.job_content_hash,
+        extractor_type=ExtractionType.LLM,
+        extractor_version=metadata.extractor_version,
+        schema_version=metadata.schema_version,
+        prompt_version=metadata.prompt_version,
+        model=metadata.model,
+        canonicalization_version=metadata.canonicalization_version,
+    )
+    session.rollback()
+    with session.begin():
+        cached = load_accepted_cache(session, llm_key)
+    if cached is not None:
+        return ExtractionOutcome(cached, deterministic, True, 0)
+
+    session.rollback()
+    request = ProviderRequest(
+        input_ref=job.id,
+        input_hash=job.job_content_hash,
+        title=job.title,
+        description_text=job.description_text or "",
+        deterministic_payload=deterministic.payload,
+    )
+    resolution = resolve_provider_fallback(
+        deterministic=deterministic,
+        source_text=f"{job.title}\n{job.description_text or ''}",
+        request=request,
+        provider=provider,
+        metadata=metadata,
+    )
+    with session.begin():
+        result, cache_hit = persist_extraction_result(
+            session,
+            key=llm_key,
+            output_data=resolution.payload.model_dump(mode="json", by_alias=True),
+            status=resolution.status,
+            validation_errors=resolution.errors,
+        )
+    return ExtractionOutcome(result, deterministic, cache_hit, resolution.attempts)
 
 
 def _as_decimal(value: Decimal | None) -> Decimal | None:

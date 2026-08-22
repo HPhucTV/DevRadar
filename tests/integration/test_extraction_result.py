@@ -27,6 +27,9 @@ from devradar.intelligence.extraction import (
     CANONICALIZATION_VERSION,
     EXTRACTION_SCHEMA_VERSION,
     ExtractionCacheKey,
+    ProviderMetadata,
+    ProviderRequest,
+    extract_job,
     load_accepted_cache,
     persist_extraction_result,
 )
@@ -240,3 +243,78 @@ def test_accepted_cache_read_after_write_returns_same_result(
     assert first_hit is False
     assert second_hit is True
     assert second.id == first.id
+
+
+@pytest.mark.postgresql
+def test_complete_deterministic_job_never_calls_provider(
+    extraction_session: Session, seeded_job: UUID
+) -> None:
+    job = extraction_session.get(Job, seeded_job)
+    assert job is not None
+    job.description_text = "Build APIs with Python and PostgreSQL; Docker is a plus."
+    extraction_session.commit()
+    calls = 0
+
+    def provider(_request: ProviderRequest) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        return _payload()
+
+    outcome = extract_job(
+        extraction_session,
+        job=job,
+        provider=provider,
+        provider_metadata=ProviderMetadata(
+            extractor_version="provider-boundary-v1",
+            schema_version=EXTRACTION_SCHEMA_VERSION,
+            prompt_version="test-prompt-v1",
+            model="test-model",
+            canonicalization_version=CANONICALIZATION_VERSION,
+        ),
+    )
+
+    assert outcome.result.extractor_type == ExtractionType.RULE.value
+    assert outcome.result.validation_status == ExtractionValidationStatus.ACCEPTED.value
+    assert calls == 0
+
+
+@pytest.mark.postgresql
+def test_accepted_cache_hit_never_calls_provider(
+    extraction_session: Session, seeded_job: UUID
+) -> None:
+    job = extraction_session.get(Job, seeded_job)
+    assert job is not None
+    extraction_session.commit()
+    metadata = ProviderMetadata(
+        extractor_version="provider-boundary-v1",
+        schema_version=EXTRACTION_SCHEMA_VERSION,
+        prompt_version="test-prompt-v1",
+        model="test-model",
+        canonicalization_version=CANONICALIZATION_VERSION,
+    )
+    key = _cache_key(job)
+    seed, _ = persist_extraction_result(
+        extraction_session,
+        key=key,
+        output_data=_payload(),
+        status=ExtractionValidationStatus.ACCEPTED,
+        validation_errors=None,
+    )
+    extraction_session.commit()
+    calls = 0
+
+    def provider(_request: ProviderRequest) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        return _payload()
+
+    outcome = extract_job(
+        extraction_session,
+        job=job,
+        provider=provider,
+        provider_metadata=metadata,
+    )
+
+    assert outcome.result.id == seed.id
+    assert outcome.cache_hit is True
+    assert calls == 0
