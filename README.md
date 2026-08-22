@@ -7,12 +7,12 @@
 | Thuộc tính | Giá trị |
 |---|---|
 | Trạng thái | `implementation` |
-| Phase hiện tại | `v4` — Agentic decision layer (`planned`); V3 đã `complete` |
+| Phase hiện tại | `v4` — Agentic decision layer (`in_progress`); V3 đã `complete` |
 | Mô hình sử dụng ban đầu | Portfolio cá nhân, single-operator |
 | Thị trường ưu tiên | Job IT Việt Nam, nội dung Việt/Anh, lương VND |
 | Code chạy được | Có — V1/V2 data pipeline, PostgreSQL one-shot worker, REST contract và V3 extraction/taxonomy/local semantic capabilities |
 
-V1 đã hoàn tất safe fetch/snapshot pipeline, ba concrete source adapters, PostgreSQL persistence và REST API. V2 đã hoàn tất direct schedule/retry, JobChange lifecycle, source health/quarantine, operator enqueue và one-shot worker. V3 đã đóng với `3339` canonical jobs từ approved complete runs, semantic held-out gate đạt, `1003/3339` accepted deterministic extraction results, `3339/3339` current embeddings và analytics denominator/coverage có evidence. ADR-010 chấp nhận local `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` 384d cùng exact pgvector; RemoteJobs.org là cohort remote thứ cấp, không đại diện cho claim thị trường Việt Nam. V4-001 là task Ready; LangGraph và dependency V4 chưa được thêm.
+V1 đã hoàn tất safe fetch/snapshot pipeline, ba concrete source adapters, PostgreSQL persistence và REST API. V2 đã hoàn tất direct schedule/retry, JobChange lifecycle, source health/quarantine, operator enqueue và one-shot worker. V3 đã đóng với `3339` canonical jobs từ approved complete runs, semantic held-out gate đạt, `1003/3339` accepted deterministic extraction results, `3339/3339` current embeddings và analytics denominator/coverage có evidence. ADR-010 chấp nhận local `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` 384d cùng exact pgvector; RemoteJobs.org là cohort remote thứ cấp, không đại diện cho claim thị trường Việt Nam. V4-001 đang khóa deterministic baseline, typed decision và default-deny tool policy; LangGraph và dependency V4 chưa được thêm.
 
 ## Mục tiêu
 
@@ -75,6 +75,7 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [Ingestion](docs/INGESTION.md): source approval, crawler contract, normalization, deduplication và change detection.
 - [API](docs/API.md): REST contract dưới `/api/v1` và phase availability.
 - [AI](docs/AI.md): deterministic-first, evaluation, agent boundary, chi phí và quyền riêng tư.
+- [V4-001 design spec](docs/superpowers/specs/2026-08-22-v4-001-deterministic-baseline-tool-policy-design.md): typed decision, baseline metric và default-deny tool policy trước khi chọn graph.
 - [Operations](docs/OPERATIONS.md): test, security, observability, retention, CI/CD và deployment gates.
 - [Source discovery](docs/sources/SHORTLIST.md): evidence và approval outcome; VNG, NAVER Vietnam/Greenhouse và MoMo đã được duyệt cho bounded Vietnam scope, RemoteJobs.org được duyệt riêng cho V3 remote cohort có attribution, GeoComply/Lever vẫn `permission_required`.
 - [Pre-V1 local evidence](docs/evidence/PRE-007-local-prerequisites.md): Docker/PostgreSQL capability và constraint đã xác minh.
