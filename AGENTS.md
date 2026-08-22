@@ -101,6 +101,13 @@ python -m venv .venv
 .venv\Scripts\python -m pip check
 ```
 
+Tạo bootstrap operator password hash an toàn từ prompt (không truyền password qua argument và không
+ghi password/hash vào log):
+
+```powershell
+.venv\Scripts\python -m devradar.cli auth-hash-password
+```
+
 Khi task thực sự chạy MoMo browser adapter local, cài browser binary đúng version lock bằng command đã kiểm chứng:
 
 ```powershell

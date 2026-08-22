@@ -3,18 +3,15 @@
 from __future__ import annotations
 
 import os
-import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
-from hashlib import sha256
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import (
     APIRouter,
     Depends,
-    Header,
     HTTPException,
     Path,
     Request,
@@ -29,6 +26,7 @@ from starlette.types import Message
 
 from devradar.api.common import ERROR_RESPONSES, ApiModel, DataResponse, ErrorResponse
 from devradar.api.errors import ApiContractError
+from devradar.auth.dependencies import require_owner_hash
 from devradar.matching.models import ResumeProfile
 from devradar.matching.resume_profile_parser import (
     MAX_UPLOAD_BYTES,
@@ -47,7 +45,6 @@ router = APIRouter(prefix="/resume-profiles", tags=["resume-profiles"])
 DatabaseSession = Annotated[Session, Depends(get_database_session)]
 CV_LOCAL_ENABLED_ENV = "DEVRADAR_CV_LOCAL_ENABLED"
 OWNER_HEADER = "X-DevRadar-Owner"
-_OWNER_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{31,127}$")
 MAX_MULTIPART_OVERHEAD_BYTES = 64 * 1024
 MAX_RESUME_REQUEST_BYTES = MAX_UPLOAD_BYTES + MAX_MULTIPART_OVERHEAD_BYTES
 OWNER_HEADER_OPENAPI = {
@@ -119,21 +116,6 @@ def require_cv_local_enabled() -> None:
             "cv_local_disabled",
             "CV upload is disabled for this deployment.",
         )
-
-
-def require_owner_hash(
-    owner_token: Annotated[
-        str | None,
-        Header(alias=OWNER_HEADER, include_in_schema=False),
-    ] = None,
-) -> str:
-    if owner_token is None or _OWNER_PATTERN.fullmatch(owner_token) is None:
-        raise ApiContractError(
-            status.HTTP_403_FORBIDDEN,
-            "resume_owner_invalid",
-            "A valid local owner token is required.",
-        )
-    return sha256(owner_token.encode()).hexdigest()
 
 
 async def _resume_upload_from_form(form: FormData) -> ResumeUpload:

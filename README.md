@@ -7,12 +7,12 @@
 | Thuộc tính | Giá trị |
 |---|---|
 | Trạng thái | `implementation` |
-| Phase hiện tại | `v6` — Production-like hardening (`in_progress`); V1–V5 đã hoàn tất, V6-001 đã đóng, V6-002 kế tiếp |
+| Phase hiện tại | `v6` — Production-like hardening (`in_progress`); V1–V5 đã hoàn tất, V6-001 và V6-002 đã đóng, V6-003 kế tiếp |
 | Mô hình sử dụng ban đầu | Portfolio cá nhân, single-operator |
 | Thị trường ưu tiên | Job IT Việt Nam, nội dung Việt/Anh, lương VND |
 | Code chạy được | Có — V1/V2 data pipeline và V3 intelligence; không có agent runtime hiện hành |
 
-V1 đã hoàn tất safe fetch/snapshot pipeline, ba concrete source adapters, PostgreSQL persistence và REST API. V2 đã hoàn tất direct schedule/retry, JobChange lifecycle, source health/quarantine, operator enqueue và one-shot worker. V3 đã đóng với `3339` canonical jobs từ approved complete runs, semantic held-out gate đạt, `1003/3339` accepted deterministic extraction results, `3339/3339` current embeddings và analytics denominator/coverage có evidence. ADR-010 chấp nhận local `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` 384d cùng exact pgvector; RemoteJobs.org là cohort remote thứ cấp, không đại diện cho claim thị trường Việt Nam. V4 đã đánh giá typed planner/validator/analyst proposal paths và LangGraph, nhưng cả ba reasoning path bị loại theo ADR-013 vì safe facts đã xác định outcome và không có measurable usefulness gain. V5 hiện có Next.js dashboard kết nối FastAPI thật, local-gated PDF/DOCX upload tạo `ResumeProfile` 24 giờ không lưu file/raw text, owner-scoped JobMatch generation/read với local MiniLM, top 100, stale-hash filtering và cascade delete, cùng một Discord alert connector local/protected với AlertRule/AlertDelivery idempotent. V6-001 đã hoàn tất threat model public exposure và chấp nhận session-based auth strategy; runtime auth chưa được triển khai và không có agent/model call cho CV.
+V1 đã hoàn tất safe fetch/snapshot pipeline, ba concrete source adapters, PostgreSQL persistence và REST API. V2 đã hoàn tất direct schedule/retry, JobChange lifecycle, source health/quarantine, operator enqueue và one-shot worker. V3 đã đóng với `3339` canonical jobs từ approved complete runs, semantic held-out gate đạt, `1003/3339` accepted deterministic extraction results, `3339/3339` current embeddings và analytics denominator/coverage có evidence. ADR-010 chấp nhận local `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` 384d cùng exact pgvector; RemoteJobs.org là cohort remote thứ cấp, không đại diện cho claim thị trường Việt Nam. V4 đã đánh giá typed planner/validator/analyst proposal paths và LangGraph, nhưng cả ba reasoning path bị loại theo ADR-013 vì safe facts đã xác định outcome và không có measurable usefulness gain. V5 hiện có Next.js dashboard kết nối FastAPI thật, local-gated PDF/DOCX upload tạo `ResumeProfile` 24 giờ không lưu file/raw text, owner-scoped JobMatch generation/read với local MiniLM, top 100, stale-hash filtering và cascade delete, cùng một Discord alert connector local/protected với AlertRule/AlertDelivery idempotent. V6-001 đã hoàn tất threat model public exposure; V6-002 đã triển khai PostgreSQL-backed session authentication, CSRF, owner/operator authorization và Next.js login/BFF flow. Rate limit, security headers, managed secrets và public deployment vẫn chưa được claim.
 
 ## Mục tiêu
 
@@ -89,6 +89,7 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [V5-006 alert evidence](docs/evidence/V5-006-alert-connector.md): Discord webhook allow-list, AlertRule/AlertDelivery, retry/idempotency và PostgreSQL integration.
 - [V5-007 closeout evidence](docs/evidence/V5-007-v5-closeout.md): browser E2E, accessibility baseline, `3339` jobs và privacy/delete boundaries.
 - [V6-001 threat model](docs/threat-model-20260822-202257/0-assessment.md): LOCALHOST_SERVICE exposure, 35 STRIDE-A threats, 18 findings và coverage inventory.
+- [V6-002 authentication evidence](docs/evidence/V6-002-authentication.md): PostgreSQL session auth, CSRF/origin, owner/operator checks, legacy-header rejection và web flow.
 - [Operations](docs/OPERATIONS.md): test, security, observability, retention, CI/CD và deployment gates.
 - [Source discovery](docs/sources/SHORTLIST.md): evidence và approval outcome; VNG, NAVER Vietnam/Greenhouse và MoMo đã được duyệt cho bounded Vietnam scope, RemoteJobs.org được duyệt riêng cho V3 remote cohort có attribution, GeoComply/Lever vẫn `permission_required`.
 - [Pre-V1 local evidence](docs/evidence/PRE-007-local-prerequisites.md): Docker/PostgreSQL capability và constraint đã xác minh.
@@ -153,6 +154,37 @@ Chỉ khi chạy MoMo adapter local, cài Chromium đúng version Playwright đ�
 .venv\Scripts\python -m mypy
 .venv\Scripts\python -m pip check
 ```
+
+### V6 local session authentication (opt-in)
+
+Auth mặc định tắt để giữ compatibility cho local V5. Khi cần kiểm thử flow V6, tạo một file
+`.env.local` bị Git ignore (hoặc dùng process environment) và đặt:
+
+```dotenv
+DEVRADAR_AUTH_ENABLED=true
+DEVRADAR_OPERATOR_USERNAME=operator
+DEVRADAR_OPERATOR_PASSWORD_HASH=<hash tạo bởi auth-hash-password>
+DEVRADAR_AUTH_SESSION_TTL_SECONDS=86400
+DEVRADAR_AUTH_COOKIE_SECURE=false
+DEVRADAR_ALLOWED_ORIGINS=http://127.0.0.1:3000,http://localhost:3000
+```
+
+Tạo hash mà không đưa password vào shell history:
+
+```powershell
+$env:PYTHONPATH = (Join-Path (Get-Location) 'src')
+try {
+    .venv\Scripts\python -m devradar.cli auth-hash-password
+} finally {
+    Remove-Item Env:\PYTHONPATH -ErrorAction SilentlyContinue
+}
+```
+
+Lệnh đọc password bằng prompt và chỉ in PBKDF2 hash có chủ đích. Không đặt password hoặc session
+token vào argument, log, URL, `localStorage` hay Git. Khi chạy HTTPS ngoài loopback, đặt
+`DEVRADAR_AUTH_COOKIE_SECURE=true`; mọi mutation phải gửi CSRF cookie/header và Origin thuộc allow-list.
+`X-DevRadar-Owner` bị từ chối khi auth bật. V6-002 chưa bao gồm rate limit, security headers hoặc public
+deployment; các gate đó thuộc V6-003 trở đi.
 
 ### V3 DeepSeek synthetic spike (opt-in)
 

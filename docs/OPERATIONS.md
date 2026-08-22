@@ -2,7 +2,7 @@
 
 ## 1. Mục tiêu
 
-Tài liệu này định nghĩa bằng chứng cần có để nói DevRadar chạy đúng, an toàn và có thể chẩn đoán. V1 data pipeline và V2 schedule/retry/lifecycle/health/operator queue đã có verified PostgreSQL, static và bounded live evidence. V3 extraction/taxonomy cùng local E5/pgvector semantic boundary đã có task-level evidence; toàn phase vẫn `in_progress` cho tới khi V3-006 đạt dataset/evaluation/scale gates.
+Tài liệu này định nghĩa bằng chứng cần có để nói DevRadar chạy đúng, an toàn và có thể chẩn đoán. V1 data pipeline, V2 schedule/retry/lifecycle/health/operator queue và V3 extraction/taxonomy/local MiniLM/pgvector semantic boundary đã có verified evidence. V6-002 bổ sung session authentication/authorization; rate limit, security headers, managed secrets, deploy và backup vẫn là các gate V6 tiếp theo.
 
 ## 2. Environment
 
@@ -15,7 +15,7 @@ Tài liệu này định nghĩa bằng chứng cần có để nói DevRadar ch�
 
 Kết quả kiểm tra capability máy phát triển trước V1 được ghi riêng tại [PRE-007 local prerequisites evidence](evidence/PRE-007-local-prerequisites.md); đây không phải Quick Start hoặc runtime proof của ứng dụng.
 
-Kết quả scaffold nằm tại [V1-001 evidence](evidence/V1-001-scaffold.md); fresh PostgreSQL migration/schema integration nằm tại [V1-002 evidence](evidence/V1-002-postgresql-schema.md); safe fetch/raw snapshot boundary nằm tại [V1-004 evidence](evidence/V1-004-safe-fetch-and-snapshot.md); NAVER/VNG/MoMo adapters nằm tại [V1-006](evidence/V1-006-naver-greenhouse-adapter.md), [V1-007](evidence/V1-007-vng-adapter.md) và [V1-008](evidence/V1-008-momo-adapter.md); current-state persistence nằm tại [V1-009 evidence](evidence/V1-009-job-upsert.md); PostgreSQL-backed read contract nằm tại [V1-010 evidence](evidence/V1-010-read-api.md); safe structured events nằm tại [V1-011 evidence](evidence/V1-011-observability.md); on-demand runner cùng Compose browser sandbox nằm tại [V1-012 evidence](evidence/V1-012-compose-and-runner.md); full source/replay inventory nằm tại [V1-013 evidence](evidence/V1-013-live-inventory.md); phase decision và gate mapping nằm tại [V1 closeout](evidence/V1-closeout.md). V3 model/vector/search/trend gates nằm tại [V3-005 evidence](evidence/V3-005-embeddings-search-trends.md). Health endpoint chỉ chứng minh API process sống; API/database/model behavior và browser sandbox được kiểm tra bằng smoke riêng.
+Kết quả scaffold nằm tại [V1-001 evidence](evidence/V1-001-scaffold.md); fresh PostgreSQL migration/schema integration nằm tại [V1-002 evidence](evidence/V1-002-postgresql-schema.md); safe fetch/raw snapshot boundary nằm tại [V1-004 evidence](evidence/V1-004-safe-fetch-and-snapshot.md); NAVER/VNG/MoMo adapters nằm tại [V1-006](evidence/V1-006-naver-greenhouse-adapter.md), [V1-007](evidence/V1-007-vng-adapter.md) và [V1-008](evidence/V1-008-momo-adapter.md); current-state persistence nằm tại [V1-009 evidence](evidence/V1-009-job-upsert.md); PostgreSQL-backed read contract nằm tại [V1-010 evidence](evidence/V1-010-read-api.md); safe structured events nằm tại [V1-011 evidence](evidence/V1-011-observability.md); on-demand runner cùng Compose browser sandbox nằm tại [V1-012 evidence](evidence/V1-012-compose-and-runner.md); full source/replay inventory nằm tại [V1-013 evidence](evidence/V1-013-live-inventory.md); phase decision và gate mapping nằm tại [V1 closeout](evidence/V1-closeout.md). V3 model/vector/search/trend gates nằm tại [V3-005 evidence](evidence/V3-005-embeddings-search-trends.md). V6 auth runtime nằm tại [V6-002 evidence](evidence/V6-002-authentication.md). Health endpoint chỉ chứng minh API process sống; API/database/model behavior và browser sandbox được kiểm tra bằng smoke riêng.
 
 Không dùng production secret/data trong CI. Không gọi source/LLM thật từ default unit test; live integration phải opt-in, có budget và được gắn nhãn rõ.
 
@@ -26,6 +26,14 @@ Không dùng production secret/data trong CI. Không gọi source/LLM thật t�
 - `.env`, local override, key/certificate và exported data phải bị ignore khi scaffold Git.
 - API key, database password, session secret, webhook token và source credential không được hardcode hoặc log.
 - `DEVRADAR_OPERATOR_WRITE_ENABLED` mặc định `false`; đây chỉ là local deployment gate, không phải auth. Không bật write API trên public ingress trước V6 auth/authorization.
+- `DEVRADAR_AUTH_ENABLED` mặc định `false` để giữ compatibility local. Khi bật, bắt buộc có
+  `DEVRADAR_OPERATOR_PASSWORD_HASH` hợp lệ; tạo hash bằng `devradar.cli auth-hash-password` từ prompt,
+  không truyền password qua command-line hoặc ghi hash vào log.
+- `DEVRADAR_AUTH_SESSION_TTL_SECONDS` phải nằm trong khoảng policy; `DEVRADAR_AUTH_COOKIE_SECURE=false`
+  chỉ phù hợp loopback HTTP. Deployment HTTPS phải đặt `true`. `DEVRADAR_ALLOWED_ORIGINS` là allow-list
+  cụ thể, không dùng wildcard với credential.
+- Session cookie là HttpOnly và chỉ PostgreSQL hash được lưu. CSRF cookie có thể đọc ở browser để gửi
+  `X-DevRadar-CSRF`; raw session/CSRF/password không được log, tracing, URL hoặc browser storage.
 - `DEVRADAR_ALERTS_LOCAL_ENABLED` mặc định `false`; `DEVRADAR_DISCORD_WEBHOOK_URL`
   chỉ được đọc từ environment của local/protected deployment, phải là HTTPS
   Discord webhook allow-list và không được ghi vào DB/log.
@@ -42,6 +50,7 @@ Chạy nhanh, deterministic, không network:
 - parser/normalizer cho text, URL, location, salary, level, experience và skill;
 - identity, hash, idempotency, dedup và Job lifecycle;
 - API schema/error/pagination helpers;
+- PBKDF2 password/session hash, expiry/revocation, CSRF/origin và owner/operator authorization;
 - match component/scoring version;
 - AI output validator, evidence check, cost/step limit;
 - V3 taxonomy/category, role ambiguity và bounded summary evidence/length validator;
@@ -273,6 +282,9 @@ Command cụ thể trong README/AGENTS phải từng chạy thành công và đ�
 
 ### Public V6
 
+- login/logout/me, missing/expired/revoked session, wrong credentials/role, cross-owner và legacy owner
+  header rejection;
+- CSRF missing/mismatch/origin, cookie attributes và same-origin BFF forwarding;
 - auth/authz, rate limit, privacy/retention và incident contact;
 - backup + restore evidence, migration rollback/forward plan;
 - vulnerability/reachability review và no unresolved reachable critical/high issue;

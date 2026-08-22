@@ -56,10 +56,10 @@ browser tự gửi.
 
 ### Phase gate
 
-ADR này chỉ khóa lựa chọn; V6-002 mới triển khai schema/session middleware và
-negative tests. V6-003 phải bổ sung rate limit, CORS/security headers và managed
-secret evidence. CV upload, matching, alert mutation và các endpoint ghi dữ liệu
-khác vẫn local/protected cho tới khi các gate đó pass.
+ADR này khóa lựa chọn; V6-002 đã triển khai schema/session middleware và negative
+tests theo decision. V6-003 phải bổ sung rate limit, CORS/security headers và
+managed-secret evidence. CV upload, matching, alert mutation và các endpoint ghi
+dữ liệu khác vẫn local/protected cho tới khi các gate đó pass.
 
 ## Alternatives considered
 

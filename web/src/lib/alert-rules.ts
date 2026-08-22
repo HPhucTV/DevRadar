@@ -1,4 +1,5 @@
 import type { ApiFailure, ApiResult, ListEnvelope } from "@/lib/api";
+import { sessionFetch } from "@/lib/session-request";
 
 export type AlertRule = {
   id: string;
@@ -31,9 +32,9 @@ function isAlertList(value: unknown): value is AlertList { return isRecord(value
 function isDispatch(value: unknown): value is AlertDispatch { return isRecord(value) && typeof value.ruleId === "string" && typeof value.sentDeliveries === "number"; }
 function failure(status: number, body: unknown): ApiFailure { const error = isRecord(body) && isRecord(body.error) ? body.error : {}; return { kind: "error", status, code: typeof error.code === "string" ? error.code : "http_error", message: typeof error.message === "string" ? error.message : "Alert request failed." }; }
 
-async function request<T>(path: string, token: string, init: RequestInit, validator: (value: unknown) => value is T): Promise<ApiResult<T>> {
+async function request<T>(path: string, init: RequestInit, validator: (value: unknown) => value is T): Promise<ApiResult<T>> {
   try {
-    const response = await fetch(path, { ...init, cache: "no-store", headers: { accept: "application/json", "content-type": "application/json", "X-DevRadar-Owner": token, ...(init.headers ?? {}) } });
+    const response = await sessionFetch(path, { ...init, headers: { "content-type": "application/json", ...(init.headers ?? {}) } });
     if (response.status === 204) return { kind: "success", value: undefined as T };
     const body: unknown = await response.json().catch(() => null);
     if (!response.ok) return failure(response.status, body);
@@ -41,8 +42,8 @@ async function request<T>(path: string, token: string, init: RequestInit, valida
   } catch { return failure(503, { error: { code: "backend_unavailable", message: "DevRadar API is not reachable." } }); }
 }
 
-export function listAlertRules(token: string): Promise<ApiResult<AlertList>> { return request("/api/devradar/alert-rules?page=1&pageSize=20", token, { method: "GET" }, isAlertList); }
-export function createAlertRule(token: string, input: { name: string; companyQuery?: string; skillQuery?: string; enabled: boolean }): Promise<ApiResult<DataEnvelope<AlertRule>>> { return request("/api/devradar/alert-rules", token, { method: "POST", body: JSON.stringify({ ...input, channel: "discord" }) }, (value): value is DataEnvelope<AlertRule> => isRecord(value) && isAlertRule(value.data)); }
-export function setAlertRuleEnabled(token: string, ruleId: string, enabled: boolean): Promise<ApiResult<DataEnvelope<AlertRule>>> { return request(`/api/devradar/alert-rules/${encodeURIComponent(ruleId)}`, token, { method: "PATCH", body: JSON.stringify({ enabled }) }, (value): value is DataEnvelope<AlertRule> => isRecord(value) && isAlertRule(value.data)); }
-export function deleteAlertRule(token: string, ruleId: string): Promise<ApiResult<undefined>> { return request(`/api/devradar/alert-rules/${encodeURIComponent(ruleId)}`, token, { method: "DELETE" }, (value): value is undefined => value === undefined); }
-export function dispatchAlertRule(token: string, ruleId: string): Promise<ApiResult<DataEnvelope<AlertDispatch>>> { return request(`/api/devradar/alert-rules/${encodeURIComponent(ruleId)}/dispatch?maxItems=5`, token, { method: "POST" }, (value): value is DataEnvelope<AlertDispatch> => isRecord(value) && isDispatch(value.data)); }
+export function listAlertRules(): Promise<ApiResult<AlertList>> { return request("/api/devradar/alert-rules?page=1&pageSize=20", { method: "GET" }, isAlertList); }
+export function createAlertRule(input: { name: string; companyQuery?: string; skillQuery?: string; enabled: boolean }): Promise<ApiResult<DataEnvelope<AlertRule>>> { return request("/api/devradar/alert-rules", { method: "POST", body: JSON.stringify({ ...input, channel: "discord" }) }, (value): value is DataEnvelope<AlertRule> => isRecord(value) && isAlertRule(value.data)); }
+export function setAlertRuleEnabled(ruleId: string, enabled: boolean): Promise<ApiResult<DataEnvelope<AlertRule>>> { return request(`/api/devradar/alert-rules/${encodeURIComponent(ruleId)}`, { method: "PATCH", body: JSON.stringify({ enabled }) }, (value): value is DataEnvelope<AlertRule> => isRecord(value) && isAlertRule(value.data)); }
+export function deleteAlertRule(ruleId: string): Promise<ApiResult<undefined>> { return request(`/api/devradar/alert-rules/${encodeURIComponent(ruleId)}`, { method: "DELETE" }, (value): value is undefined => value === undefined); }
+export function dispatchAlertRule(ruleId: string): Promise<ApiResult<DataEnvelope<AlertDispatch>>> { return request(`/api/devradar/alert-rules/${encodeURIComponent(ruleId)}/dispatch?maxItems=5`, { method: "POST" }, (value): value is DataEnvelope<AlertDispatch> => isRecord(value) && isDispatch(value.data)); }

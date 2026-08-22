@@ -22,6 +22,7 @@ from devradar.api.common import (
     pagination_data,
 )
 from devradar.api.errors import ApiContractError
+from devradar.auth.dependencies import require_operator
 from devradar.automation.run_requests import RunRequestError, request_crawl_run
 from devradar.ingestion.models import (
     CoverageStatus,
@@ -154,7 +155,12 @@ def _conditions(filters: CrawlRunQuery) -> list[ColumnElement[bool]]:
     return conditions
 
 
-@router.get("", response_model=CrawlRunListResponse, responses=ERROR_RESPONSES)
+@router.get(
+    "",
+    response_model=CrawlRunListResponse,
+    responses=ERROR_RESPONSES,
+    dependencies=[Depends(require_operator)],
+)
 def list_crawl_runs(
     filters: Annotated[CrawlRunQuery, Query()],
     session: DatabaseSession,
@@ -178,7 +184,7 @@ def list_crawl_runs(
     "",
     status_code=status.HTTP_202_ACCEPTED,
     response_model=CrawlRunDetailResponse,
-    dependencies=[Depends(require_operator_write_enabled)],
+    dependencies=[Depends(require_operator_write_enabled), Depends(require_operator)],
     responses={
         **ERROR_RESPONSES,
         403: {"model": ErrorResponse, "description": "Operator write or source is blocked."},
@@ -223,6 +229,7 @@ def create_crawl_run(
 @router.get(
     "/{runId}",
     response_model=CrawlRunDetailResponse,
+    dependencies=[Depends(require_operator)],
     responses={
         **ERROR_RESPONSES,
         404: {"model": ErrorResponse, "description": "Crawl run was not found."},

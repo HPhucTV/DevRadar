@@ -2,7 +2,7 @@
 
 ## 1. Trạng thái và phạm vi
 
-Kiến trúc nền tảng là **modular monolith, phase-gated stack** theo [ADR-001](decisions/0001-modular-monolith-and-phase-gated-stack.md). V1 khóa Python, FastAPI, PostgreSQL và Docker Compose; [ADR-005](decisions/0005-sqlalchemy-alembic-and-psycopg.md) khóa SQLAlchemy/Alembic/Psycopg cho persistence V1. V2 đã hoàn tất PostgreSQL-backed direct orchestration theo [ADR-006](decisions/0006-defer-prefect-use-direct-v2-orchestration.md). V3 đã chấp nhận DeepSeek cho synthetic generation boundary theo ADR-008 và fixed-revision local multilingual MiniLM + exact pgvector cho private deployment theo [ADR-010](decisions/0010-accept-fastembed-minilm-semantic-remediation.md). V4 đã đánh giá direct bounded workflow và LangGraph; [ADR-013](decisions/0013-remove-unretained-v4-agent-runtime.md) loại planner/validator/analyst runtime vì không có measurable usefulness gain, còn quyết định defer LangGraph của ADR-012 vẫn hiệu lực. Production model adapter, HNSW, Next.js và Redis vẫn bị phase/evidence gate.
+Kiến trúc nền tảng là **modular monolith, phase-gated stack** theo [ADR-001](decisions/0001-modular-monolith-and-phase-gated-stack.md). V1 khóa Python, FastAPI, PostgreSQL và Docker Compose; [ADR-005](decisions/0005-sqlalchemy-alembic-and-psycopg.md) khóa SQLAlchemy/Alembic/Psycopg cho persistence V1. V2 đã hoàn tất PostgreSQL-backed direct orchestration theo [ADR-006](decisions/0006-defer-prefect-use-direct-v2-orchestration.md). V3 đã chấp nhận DeepSeek cho synthetic generation boundary theo ADR-008 và fixed-revision local multilingual MiniLM + exact pgvector cho private deployment theo [ADR-010](decisions/0010-accept-fastembed-minilm-semantic-remediation.md). V4 đã đánh giá direct bounded workflow và LangGraph; [ADR-013](decisions/0013-remove-unretained-v4-agent-runtime.md) loại planner/validator/analyst runtime vì không có measurable usefulness gain, còn quyết định defer LangGraph của ADR-012 vẫn hiệu lực. V5 thêm Next.js/BFF. V6-002 thêm `auth` module với PostgreSQL user/session, opaque cookie và CSRF; rate limit, security headers và managed secrets vẫn là V6-003.
 
 Tài liệu này mô tả boundary và data flow. Nó không quy định folder/class chi tiết trước khi scaffold và không biến module logic thành microservice.
 
@@ -33,7 +33,8 @@ External actors và trust level:
 - Discord webhook là external notification boundary; URL chỉ từ environment
   allow-list, request payload bounded và delivery key không được xem là provider
   idempotency guarantee;
-- người dùng public là anonymous/untrusted cho tới khi V6 có auth.
+- người dùng public là anonymous/untrusted trước auth; khi V6 auth bật, session vẫn là untrusted input và
+  FastAPI là policy enforcement point.
 
 ## 3. Module ownership
 
@@ -42,6 +43,7 @@ External actors và trust level:
 | `ingestion` | source config, fetch, snapshot, parse, normalization, run result | V1 | public query, AI planning |
 | `catalog` | canonical job, skill và dedup từ V1; lifecycle/change history từ V2 | V1 | network fetch, presentation |
 | `api` | `/api/v1`, validation, pagination, auth boundary | V1 | crawler parsing, scoring logic |
+| `auth` | User/session persistence, password verification, CSRF và owner/operator context | V6-002 | UI identity, resource-specific policy |
 | `automation` | schedule, retry policy, run orchestration, health | V2 | source-specific extraction |
 | `intelligence` | LLM extraction, embeddings, trend queries/evaluation | V3 | authoritative raw data |
 | `matching` | resume profile, score components, explanation evidence | V5 | file transport/security policy |
@@ -147,15 +149,15 @@ flowchart LR
 | V3 | V2 + extraction/taxonomy; local FastEmbed multilingual MiniLM artifact, pgvector `vector(384)`, exact semantic search và bounded analytics | Complete; ADR-010 Accepted cho local/private |
 | V4 | Không thêm runtime vào V3; đánh giá rồi loại planner/validator/analyst reasoning path; LangGraph deferred | Complete; ADR-013 Accepted |
 | V5 | V3 runtime baseline + Next.js App Router/BFF + local-gated ResumeProfile/JobMatch + bounded Discord alert connector | Complete; V5-001–V5-007 evidence |
-| V6 | Public ingress, auth, managed secrets, backup/monitoring; Redis/worker pool nếu metric yêu cầu | In progress; V6-001 complete, V6-002 next |
+| V6 | Public ingress, PostgreSQL-backed auth/session, managed secrets, backup/monitoring; Redis/worker pool nếu metric yêu cầu | In progress; V6-001 và V6-002 complete |
 
 Crawler/one-shot worker CLI và API dùng cùng code nhưng là entrypoint/process khác nhau. Điều này giữ network work ngoài HTTP request mà không tách service sớm.
 
 `web/` là presentation boundary của V5. App Router dùng Server Components mặc định
 và gọi FastAPI trực tiếp khi view cần data; CV matching có same-origin Route
-Handler proxy. Trong V5 proxy chỉ chuyển owner header tạm thời; sau ADR-015 nó phải
-chuyển tiếp session subject do server đã xác thực và strip identity header do
-browser tự gửi. Alert CRUD chưa có UI, chỉ dùng protected FastAPI contract.
+Handler proxy. V6-002 proxy chỉ chuyển tiếp cookie session, CSRF và Origin; nó không
+chuyển `X-DevRadar-Owner` do browser gửi. FastAPI tự suy ra owner từ session subject.
+Alert CRUD chưa có UI, chỉ dùng protected FastAPI contract.
 `DEVRADAR_API_BASE_URL` là server-only configuration. Client interactivity chỉ
 được thêm ở leaf component khi filter/upload/auth thật sự cần.
 
@@ -169,7 +171,7 @@ browser tự gửi. Alert CRUD chưa có UI, chỉ dùng protected FastAPI contr
 | External model output → extraction validator | schema bypass, hallucinated evidence, secret/raw disclosure | strict extraction schema, deterministic canonicalization/evidence gate, bounded retry và redacted audit |
 | Model artifact/query → local embedding | supply-chain tampering, unbounded CPU/input, vector mismatch, query disclosure | fixed revision + artifact SHA-256, local-files-only, length/dimension/finite checks, no raw query/vector logging |
 | CV upload → parser | multipart/file exhaustion, malware/polyglot, decompression bomb, PII/log leak | gate trước body read, total stream + type/signature/size/page/decode limits, no macro/external relationship, suppress untrusted parser diagnostics, short retention |
-| Owner header → ResumeProfile | token disclosure, enumeration, cross-owner access | default-disabled local gate, SHA-256 token, owner predicate trên mọi read/delete, generic `404`, safe event allow-list |
+| Session cookie/CSRF → protected resource | token disclosure, CSRF, enumeration, cross-owner access | HttpOnly opaque session, SHA-256 token/session record, Origin + double-submit CSRF, owner predicate, generic `404`, safe event allow-list; legacy owner header bị reject khi auth bật |
 | ResumeProfile structured facts + JobEmbedding → JobMatch | stale hash/extraction/model identity, vector mismatch, profile/owner leak, unbounded generation | fixed local model identity + extraction identity, inference ngoài transaction, exact current hash/version join, top-100 bound, owner predicate, response không có hash/vector/raw text |
 | API → mutation | unauthorized crawl/data access | local/operator-only trước auth; authenticated role sau V6 |
 | App → database | injection, accidental destructive update | parameterized access, migration review, transaction, least privilege |

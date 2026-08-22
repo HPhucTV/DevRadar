@@ -26,7 +26,6 @@ function date(value: string): string {
 
 export function CvMatchPanel() {
   const formRef = useRef<HTMLFormElement>(null);
-  const [ownerToken, setOwnerToken] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [profile, setProfile] = useState<ResumeProfile | null>(null);
   const [generation, setGeneration] = useState<GenerateMatches | null>(null);
@@ -39,10 +38,6 @@ export function CvMatchPanel() {
     event.preventDefault();
     setError(null);
     setNotice(null);
-    if (!ownerToken.trim()) {
-      setError({ kind: "error", status: 403, code: "resume_owner_invalid", message: "Enter the local owner token to continue." });
-      return;
-    }
     if (!file) {
       setError({ kind: "error", status: 422, code: "resume_file_required", message: "Choose a PDF or DOCX resume." });
       return;
@@ -52,7 +47,7 @@ export function CvMatchPanel() {
       return;
     }
     setBusy(true);
-    const uploaded = await uploadResume(file, ownerToken.trim());
+    const uploaded = await uploadResume(file);
     if (uploaded.kind === "error") {
       setError(uploaded);
       setBusy(false);
@@ -61,14 +56,14 @@ export function CvMatchPanel() {
     setProfile(uploaded.value.data);
     setFile(null);
     formRef.current?.reset();
-    const generated = await generateMatches(uploaded.value.data.id, ownerToken.trim());
+    const generated = await generateMatches(uploaded.value.data.id);
     if (generated.kind === "error") {
       setError(generated);
       setBusy(false);
       return;
     }
     setGeneration(generated.value.data);
-    const listed = await listMatches(uploaded.value.data.id, ownerToken.trim());
+    const listed = await listMatches(uploaded.value.data.id);
     if (listed.kind === "error") setError(listed);
     else setMatches(listed.value.data);
     setNotice("Profile created and current matches loaded. The original file is no longer used by this page.");
@@ -76,18 +71,18 @@ export function CvMatchPanel() {
   }
 
   async function refreshMatches() {
-    if (!profile || !ownerToken.trim()) return;
+    if (!profile) return;
     setBusy(true);
     setError(null);
     setNotice(null);
-    const generated = await generateMatches(profile.id, ownerToken.trim());
+    const generated = await generateMatches(profile.id);
     if (generated.kind === "error") {
       setError(generated);
       setBusy(false);
       return;
     }
     setGeneration(generated.value.data);
-    const listed = await listMatches(profile.id, ownerToken.trim());
+    const listed = await listMatches(profile.id);
     if (listed.kind === "error") setError(listed);
     else setMatches(listed.value.data);
     setNotice("Matches refreshed using the current scoring and extraction identities.");
@@ -95,10 +90,10 @@ export function CvMatchPanel() {
   }
 
   async function removeProfile() {
-    if (!profile || !ownerToken.trim() || !window.confirm("Delete this local resume profile and its matches?")) return;
+    if (!profile || !window.confirm("Delete this local resume profile and its matches?")) return;
     setBusy(true);
     setError(null);
-    const removed = await deleteResume(profile.id, ownerToken.trim());
+    const removed = await deleteResume(profile.id);
     if (removed.kind === "error") {
       setError(removed);
       setBusy(false);
@@ -115,8 +110,7 @@ export function CvMatchPanel() {
     <>
       <section className="cv-layout" aria-label="Local resume matching">
         <form className="content-section cv-form" onSubmit={submitUpload} ref={formRef}>
-          <div className="section-heading"><div><p className="eyebrow">Protected session</p><h2>Start with a local token</h2></div><span>Nothing is saved in the browser.</span></div>
-          <label>Owner token<input type="password" autoComplete="off" value={ownerToken} onChange={(event) => setOwnerToken(event.target.value)} minLength={32} maxLength={128} /></label>
+          <div className="section-heading"><div><p className="eyebrow">Protected session</p><h2>Start with your account</h2></div><span>Nothing is saved in the browser.</span></div>
           <label>Resume file<input type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /><small className="field-help">PDF or DOCX, maximum 5 MiB. Raw text and the original file are not shown here.</small></label>
           <button type="submit" disabled={busy}>{busy ? "Processing locally..." : "Upload and find matches"}</button>
         </form>

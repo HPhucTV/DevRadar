@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
 import sys
 from collections.abc import Sequence
@@ -15,6 +16,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
+from devradar.auth.service import hash_password
 from devradar.automation.orchestrator import orchestrate_source
 from devradar.automation.worker import work_one_pending_run
 from devradar.ingestion.models import CrawlRunStatus
@@ -84,6 +86,10 @@ def _parser() -> argparse.ArgumentParser:
         "download-embedding-model",
         help="download the fixed local embedding model revision",
     )
+    subparsers.add_parser(
+        "auth-hash-password",
+        help="read an operator password securely and print its password hash",
+    )
     embeddings = subparsers.add_parser(
         "embed-jobs",
         help="embed a bounded batch of canonical jobs with the fixed local model",
@@ -110,6 +116,26 @@ def _json_value(value: Any) -> Any:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     configure_structured_logging()
+    if args.command == "auth-hash-password":
+        try:
+            password = getpass.getpass("Password: ")
+            print(hash_password(password))
+        except (EOFError, KeyboardInterrupt):
+            return 130
+        except ValueError:
+            print(
+                json.dumps(
+                    {
+                        "error": {
+                            "code": "auth_password_invalid",
+                            "message": "Password could not be hashed safely.",
+                        }
+                    }
+                ),
+                file=sys.stderr,
+            )
+            return 1
+        return 0
     if args.command == "download-embedding-model":
         try:
             download_embedding_model(get_embedding_model_path())

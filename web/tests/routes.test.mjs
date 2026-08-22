@@ -61,14 +61,17 @@ test("cv match route exposes only protected local matching resources", async () 
   assert.doesNotMatch(source, /RoutePlaceholder/);
 });
 
-test("cv match client does not persist owner token or resume content", async () => {
+test("cv match client uses the authenticated session without browser token storage", async () => {
   const source = await readFile(new URL("src/components/cv-match-panel.tsx", webRoot), "utf8");
   const clientApi = await readFile(new URL("src/lib/cv-match.ts", webRoot), "utf8");
+  const sessionRequest = await readFile(new URL("src/lib/session-request.ts", webRoot), "utf8");
 
-  assert.match(clientApi, /X-DevRadar-Owner/);
+  assert.doesNotMatch(clientApi, /X-DevRadar-Owner/);
+  assert.match(sessionRequest, /credentials:\s*["']include["']/);
+  assert.match(sessionRequest, /X-DevRadar-CSRF/);
   assert.match(clientApi, /FormData/);
-  assert.doesNotMatch(source + clientApi, /localStorage/);
-  assert.match(source, /type=\"password\"/);
+  assert.doesNotMatch(source + clientApi + sessionRequest, /localStorage/);
+  assert.doesNotMatch(source, /Owner token/);
   assert.match(source, /MAX_RESUME_BYTES/);
 });
 
@@ -77,6 +80,8 @@ test("cv match proxy preserves no-content delete responses", async () => {
 
   assert.match(source, /response\.status === 204/);
   assert.match(source, /\? null/);
+  assert.match(source, /cookie/);
+  assert.match(source, /x-devradar-csrf/i);
 });
 
 test("alert route exposes only protected rule and dispatch resources", async () => {
@@ -91,7 +96,20 @@ test("alert route exposes only protected rule and dispatch resources", async () 
   ]);
   const source = await readFile(new URL("src/components/alert-rules-panel.tsx", webRoot), "utf8");
   const clientApi = await readFile(new URL("src/lib/alert-rules.ts", webRoot), "utf8");
-  assert.match(source, /type="password"/);
-  assert.match(clientApi, /X-DevRadar-Owner/);
-  assert.doesNotMatch(source + clientApi, /localStorage\.|webhookUrl|DISCORD_WEBHOOK_URL/);
+  const sessionRequest = await readFile(new URL("src/lib/session-request.ts", webRoot), "utf8");
+  assert.doesNotMatch(source, /Owner token/);
+  assert.doesNotMatch(clientApi, /X-DevRadar-Owner/);
+  assert.match(sessionRequest, /X-DevRadar-CSRF/);
+  assert.doesNotMatch(source + clientApi + sessionRequest, /localStorage\.|webhookUrl|DISCORD_WEBHOOK_URL/);
+});
+
+test("auth routes and login page are present", async () => {
+  await access(new URL("src/app/api/devradar/auth/login/route.ts", webRoot));
+  await access(new URL("src/app/api/devradar/auth/logout/route.ts", webRoot));
+  await access(new URL("src/app/api/devradar/auth/me/route.ts", webRoot));
+  await access(new URL("src/app/login/page.tsx", webRoot));
+  const proxy = await readFile(new URL("src/lib/backend-proxy.ts", webRoot), "utf8");
+  assert.match(proxy, /set-cookie/);
+  assert.match(proxy, /headers\.append\(["']set-cookie["']/);
+  assert.doesNotMatch(proxy, /x-devradar-owner/i);
 });

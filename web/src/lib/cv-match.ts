@@ -1,4 +1,5 @@
 import type { ApiFailure, ApiResult } from "@/lib/api";
+import { sessionFetch } from "@/lib/session-request";
 
 export const MAX_RESUME_BYTES = 5 * 1024 * 1024;
 
@@ -168,14 +169,9 @@ async function request<T>(
   path: string,
   options: RequestInit,
   validator: (value: unknown) => value is T,
-  ownerToken: string,
 ): Promise<ApiResult<T>> {
   try {
-    const response = await fetch(path, {
-      ...options,
-      cache: "no-store",
-      headers: { ...(options.headers ?? {}), "X-DevRadar-Owner": ownerToken, accept: "application/json" },
-    });
+    const response = await sessionFetch(path, options);
     let body: unknown;
     try {
       body = await response.json();
@@ -190,27 +186,23 @@ async function request<T>(
   }
 }
 
-export function uploadResume(file: File, ownerToken: string): Promise<ApiResult<DataEnvelope<ResumeProfile>>> {
+export function uploadResume(file: File): Promise<ApiResult<DataEnvelope<ResumeProfile>>> {
   const form = new FormData();
   form.append("file", file, file.name);
-  return request("/api/devradar/resume-profiles", { method: "POST", body: form }, isProfileResponse, ownerToken);
+  return request("/api/devradar/resume-profiles", { method: "POST", body: form }, isProfileResponse);
 }
 
-export function generateMatches(profileId: string, ownerToken: string): Promise<ApiResult<DataEnvelope<GenerateMatches>>> {
-  return request(`/api/devradar/resume-profiles/${encodeURIComponent(profileId)}/matches`, { method: "POST" }, isGenerateResponse, ownerToken);
+export function generateMatches(profileId: string): Promise<ApiResult<DataEnvelope<GenerateMatches>>> {
+  return request(`/api/devradar/resume-profiles/${encodeURIComponent(profileId)}/matches`, { method: "POST" }, isGenerateResponse);
 }
 
-export function listMatches(profileId: string, ownerToken: string): Promise<ApiResult<ListEnvelope<JobMatch>>> {
-  return request(`/api/devradar/resume-profiles/${encodeURIComponent(profileId)}/matches?page=1&pageSize=20`, {}, isMatchesResponse, ownerToken);
+export function listMatches(profileId: string): Promise<ApiResult<ListEnvelope<JobMatch>>> {
+  return request(`/api/devradar/resume-profiles/${encodeURIComponent(profileId)}/matches?page=1&pageSize=20`, {}, isMatchesResponse);
 }
 
-export async function deleteResume(profileId: string, ownerToken: string): Promise<ApiResult<null>> {
+export async function deleteResume(profileId: string): Promise<ApiResult<null>> {
   try {
-    const response = await fetch(`/api/devradar/resume-profiles/${encodeURIComponent(profileId)}`, {
-      method: "DELETE",
-      cache: "no-store",
-      headers: { "X-DevRadar-Owner": ownerToken, accept: "application/json" },
-    });
+    const response = await sessionFetch(`/api/devradar/resume-profiles/${encodeURIComponent(profileId)}`, { method: "DELETE" });
     if (!response.ok) {
       let body: unknown = {};
       try { body = await response.json(); } catch { /* safe generic error below */ }

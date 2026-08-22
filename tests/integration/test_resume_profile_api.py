@@ -163,6 +163,17 @@ def test_invalid_owner_runs_before_request_stream_read(
     assert response.json()["error"]["code"] == "resume_owner_invalid"
 
 
+def test_owner_token_rejects_characters_outside_legacy_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(CV_LOCAL_ENABLED_ENV, "true")
+    with TestClient(app) as client:
+        response = _upload(client, owner=("a" * 31) + "!")
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "resume_owner_invalid"
+
+
 def test_resume_profile_routes_are_in_openapi_as_multipart() -> None:
     with TestClient(app) as client:
         document = client.get("/api/v1/openapi.json").json()

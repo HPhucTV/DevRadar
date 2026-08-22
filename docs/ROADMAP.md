@@ -331,7 +331,16 @@ Kubernetes, Kafka, microservice hoặc multi-region nếu không có measured re
 
 ### V6-001 evidence
 
-V6-001 đã hoàn tất ở mức documentation gate: [threat model và assessment](threat-model-20260822-202257/0-assessment.md) khóa deployment classification `LOCALHOST_SERVICE`, 10 elements, 3 boundaries, 35 threats, 18 findings và threat coverage inventory. [ADR-015](decisions/0015-accept-v6-authentication-strategy.md) chấp nhận server-side session-based authentication với PostgreSQL session record, CSRF và owner-header migration boundary. Chưa có claim rằng auth runtime hoặc public deployment đã sẵn sàng; V6-002 là task kế tiếp.
+V6-001 đã hoàn tất ở mức documentation gate: [threat model và assessment](threat-model-20260822-202257/0-assessment.md) khóa deployment classification `LOCALHOST_SERVICE`, 10 elements, 3 boundaries, 35 threats, 18 findings và threat coverage inventory. [ADR-015](decisions/0015-accept-v6-authentication-strategy.md) chấp nhận server-side session-based authentication với PostgreSQL session record, CSRF và owner-header migration boundary.
+
+### V6-002 evidence
+
+V6-002 đã triển khai runtime auth theo ADR-015: `auth_users`/`auth_sessions`, PBKDF2 bootstrap password hash,
+opaque HttpOnly session cookie, CSRF double-submit + Origin allow-list, owner scope theo user UUID,
+operator-only crawl mutation và Next.js login/BFF proxy. Legacy `X-DevRadar-Owner` bị reject khi auth bật;
+header compatibility chỉ còn khi auth tắt trên local/protected deployment. [Evidence](evidence/V6-002-authentication.md)
+ghi kết quả migration, API/web tests và các boundary chưa thuộc task như rate limit, security headers,
+managed secrets và public deploy.
 
 ## 9. Quy tắc cập nhật roadmap
 

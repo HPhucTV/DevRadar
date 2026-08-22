@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import getpass
 import json
 from pathlib import Path
 
 import pytest
 
 import devradar.cli as cli
+from devradar.auth.service import verify_password
 from devradar.cli import main
 from devradar.platform.database import DATABASE_URL_ENV
 
@@ -112,3 +114,27 @@ def test_embed_jobs_reports_safe_embedding_error(
         }
     }
     assert "sensitive-model-path" not in captured.err
+
+
+def test_auth_hash_password_reads_secret_from_prompt_and_prints_only_hash(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    password = "local operator password"
+    monkeypatch.setattr(getpass, "getpass", lambda _prompt: password)
+
+    exit_code = main(["auth-hash-password"])
+
+    captured = capsys.readouterr()
+    encoded = captured.out.strip()
+    assert exit_code == 0
+    assert verify_password(password, encoded)
+    assert password not in captured.out
+    assert password not in captured.err
+
+
+def test_auth_hash_password_does_not_accept_password_argument() -> None:
+    with pytest.raises(SystemExit) as captured:
+        main(["auth-hash-password", "not-a-secret"])
+
+    assert captured.value.code == 2

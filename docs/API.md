@@ -90,6 +90,9 @@ V1 dùng page-based pagination vì dataset portfolio còn bounded và UI cần t
 | Method và path | Mục đích | Phase | Quyền tối thiểu |
 |---|---|---|---|
 | `GET /api/v1/health` | Process liveness; không tuyên bố database/source readiness | V1 scaffold | local/read |
+| `POST /api/v1/auth/login` | Xác thực operator/owner và tạo session | V6-002 — implemented | public login; rate limit ở V6-003 |
+| `GET /api/v1/auth/me` | Đọc user của session hiện tại | V6-002 — implemented | authenticated |
+| `POST /api/v1/auth/logout` | Revoke session hiện tại và xóa cookie | V6-002 — implemented | authenticated + CSRF |
 | `GET /api/v1/jobs` | List/filter canonical jobs | V1 — implemented | local/read; public read policy ở V6 |
 | `GET /api/v1/jobs/{jobId}` | Job detail và provenance tóm tắt | V1 — implemented | local/read |
 | `GET /api/v1/sources` | Source và health summary | V1 — implemented | local/read; không lộ policy secret |
@@ -100,18 +103,20 @@ V1 dùng page-based pagination vì dataset portfolio còn bounded và UI cần t
 | `POST /api/v1/crawl-runs` | Tạo pending run cho source approved | V2 — implemented | local/operator write gate |
 | `GET /api/v1/skills` | Taxonomy và frequency có denominator/coverage | V3 — implemented | local/read |
 | `GET /api/v1/skill-trends` | Bounded cohort/time-window trend | V3 — implemented | local/read |
-| `POST /api/v1/resume-profiles` | Idempotent upload/tạo profile | V5-003 — implemented | owner/write; local-only trước auth |
-| `GET /api/v1/resume-profiles/{profileId}` | Profile đã sanitize, còn hạn | V5-003 — implemented | owner/read; local-only trước auth |
-| `DELETE /api/v1/resume-profiles/{profileId}` | Soft-delete profile theo owner | V5-003 — implemented | owner/write; local-only trước auth |
-| `POST /api/v1/resume-profiles/{profileId}/matches` | Generate/reuse top JobMatch bounded | V5-004 — implemented | owner/write; local-only trước auth |
-| `GET /api/v1/resume-profiles/{profileId}/matches` | List current match có component score | V5-004 — implemented | owner/read; local-only trước auth |
-| `GET /api/v1/alert-rules` | List rule của owner | V5-006 — implemented | owner/read; local-only trước auth |
-| `POST /api/v1/alert-rules` | Tạo rule company/skill/match | V5-006 — implemented | owner/write; local-only trước auth |
-| `PATCH /api/v1/alert-rules/{ruleId}` | Sửa predicate, channel hoặc enabled | V5-006 — implemented | owner/write; local-only trước auth |
-| `DELETE /api/v1/alert-rules/{ruleId}` | Xóa rule và delivery cascade | V5-006 — implemented | owner/write; local-only trước auth |
-| `POST /api/v1/alert-rules/{ruleId}/dispatch` | Dispatch tối đa 20 job qua Discord, replay-safe | V5-006 — implemented | owner/write; local-only trước auth |
+| `POST /api/v1/resume-profiles` | Idempotent upload/tạo profile | V5-003 — implemented | owner/write; session khi auth bật |
+| `GET /api/v1/resume-profiles/{profileId}` | Profile đã sanitize, còn hạn | V5-003 — implemented | owner/read; session khi auth bật |
+| `DELETE /api/v1/resume-profiles/{profileId}` | Soft-delete profile theo owner | V5-003 — implemented | owner/write; session + CSRF khi auth bật |
+| `POST /api/v1/resume-profiles/{profileId}/matches` | Generate/reuse top JobMatch bounded | V5-004 — implemented | owner/write; session + CSRF khi auth bật |
+| `GET /api/v1/resume-profiles/{profileId}/matches` | List current match có component score | V5-004 — implemented | owner/read; session khi auth bật |
+| `GET /api/v1/alert-rules` | List rule của owner | V5-006 — implemented | owner/read; session khi auth bật |
+| `POST /api/v1/alert-rules` | Tạo rule company/skill/match | V5-006 — implemented | owner/write; session + CSRF khi auth bật |
+| `PATCH /api/v1/alert-rules/{ruleId}` | Sửa predicate, channel hoặc enabled | V5-006 — implemented | owner/write; session + CSRF khi auth bật |
+| `DELETE /api/v1/alert-rules/{ruleId}` | Xóa rule và delivery cascade | V5-006 — implemented | owner/write; session + CSRF khi auth bật |
+| `POST /api/v1/alert-rules/{ruleId}/dispatch` | Dispatch tối đa 20 job qua Discord, replay-safe | V5-006 — implemented | owner/write; session + CSRF khi auth bật |
 
-Endpoint V5 chứa CV/owner data phải bị disable trên public deployment cho tới khi V6 có authentication và authorization. Không coi UUID khó đoán là access control.
+Endpoint V5 chứa CV/owner data chỉ được mở trên deployment có authentication/authorization. Khi
+`DEVRADAR_AUTH_ENABLED=false`, chúng vẫn là compatibility path cho local/protected owner token;
+không coi UUID khó đoán là access control.
 
 Hai endpoint `agent-runs` từng được đề xuất cho V4 nhưng chưa implement và đã bị loại cùng runtime/schema theo [ADR-013](decisions/0013-remove-unretained-v4-agent-runtime.md). Không giữ route placeholder hoặc reserved contract cho feature đã reject.
 
@@ -319,7 +324,23 @@ hay provider body. Thiếu/sai connector trả `503` safe.
 - CORS dùng explicit origin allow-list; không dùng wildcard với credential.
 - Error `404` có thể được dùng thay `403` cho owner resource để tránh resource enumeration.
 
-Auth mechanism được khóa tại [ADR-015](decisions/0015-accept-v6-authentication-strategy.md): server-side session với PostgreSQL record, HttpOnly/SameSite/Secure cookie và CSRF. V6-002 mới triển khai runtime; trước đó V5 owner header chỉ là local/protected compatibility gate và không phải public authentication.
+Auth mechanism được khóa tại [ADR-015](decisions/0015-accept-v6-authentication-strategy.md) và đã có runtime ở V6-002:
+
+- `DEVRADAR_AUTH_ENABLED=true` bật bootstrap operator từ `DEVRADAR_OPERATOR_USERNAME` và
+  `DEVRADAR_OPERATOR_PASSWORD_HASH`; password hash tạo bằng CLI `auth-hash-password`, không truyền
+  password qua argument.
+- Login đặt cookie opaque `devradar_session` với `HttpOnly`, `SameSite=Lax`, `Secure` theo cấu hình
+  và cookie đọc được `devradar_csrf`. Raw session token chỉ tồn tại trong cookie; PostgreSQL chỉ lưu
+  SHA-256 hash.
+- Mọi mutation khi auth bật yêu cầu `X-DevRadar-CSRF` khớp cookie và `Origin` thuộc
+  `DEVRADAR_ALLOWED_ORIGINS` nếu request gửi Origin. Thiếu/sai token trả `403 csrf_invalid`; Origin
+  ngoài allow-list trả `403 csrf_origin_invalid`.
+- User `owner` chỉ thao tác resource có owner scope của session; `operator` mới được enqueue crawl.
+  Cross-owner resource trả generic `404` theo resource policy.
+- `X-DevRadar-Owner` bị từ chối với `403 legacy_owner_header_rejected` khi auth bật, kể cả khi session
+  hợp lệ. Compatibility header chỉ còn khi auth tắt trên local/protected deployment.
+- Login sai, session thiếu/hết hạn/revoked trả generic `401 auth_required` hoặc
+  `401 auth_invalid_credentials`; logout revoke session và xóa cả hai cookie.
 
 ## 9. Compatibility và versioning
 
@@ -339,7 +360,8 @@ Auth mechanism được khóa tại [ADR-015](decisions/0015-accept-v6-authentic
 - Skill/trend response giữ cohort denominator, analyzed coverage, bounded window và stable ordering.
 - Source chưa approved và arbitrary URL không thể tạo crawl run.
 - Idempotency key retry không tạo hai run.
-- ResumeProfile/Match của owner khác trả `404/403` theo policy.
+- ResumeProfile/Match của owner khác trả `404/403` theo policy; auth mode suy ra owner từ session, không
+  từ header hoặc profile ID.
 - AlertRule/dispatch của owner khác trả `404`; delete rule đã xóa lặp lại trả `204`.
 - Upload sai magic bytes, vượt request/file/decode/archive limit hoặc malformed bị reject/cleanup. V5-003 chưa có hard CPU timeout/process sandbox nên endpoint vẫn local/protected.
 - Field addition giữ backward compatibility; breaking fixture phải fail contract test.
