@@ -19,6 +19,7 @@ from devradar.platform.observability import (
     LOGGER_NAME,
     JsonLogFormatter,
     configure_structured_logging,
+    record_alert_delivery_processed,
     record_crawl_run_summary,
     record_job_observation,
 )
@@ -160,3 +161,20 @@ def test_structured_logger_configuration_is_idempotent() -> None:
 
     assert sum(handler.name == HANDLER_NAME for handler in logger.handlers) == 1
     assert logger.propagate is False
+
+
+def test_alert_delivery_event_exposes_only_bounded_delivery_metadata() -> None:
+    with _captured_events() as stream:
+        record_alert_delivery_processed(
+            rule_id=UUID(int=10),
+            job_id=UUID(int=11),
+            channel="discord",
+            outcome="duplicate_prevented",
+            attempt_count=0,
+        )
+
+    event = _events(stream)[0]
+    assert event["event"] == "alert_delivery_processed"
+    assert event["outcome"] == "duplicate_prevented"
+    assert "webhook" not in stream.getvalue().casefold()
+    assert "description" not in stream.getvalue().casefold()

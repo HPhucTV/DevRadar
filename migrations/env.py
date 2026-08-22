@@ -3,6 +3,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import create_engine, pool
 
+from devradar.alerts import models as _alert_models
 from devradar.catalog import models as _catalog_models
 from devradar.ingestion import models as _ingestion_models
 from devradar.intelligence import models as _intelligence_models
@@ -10,6 +11,7 @@ from devradar.matching import models as _matching_models
 from devradar.platform.database import Base, get_database_url
 
 _MODEL_MODULES = (
+    _alert_models,
     _catalog_models,
     _ingestion_models,
     _intelligence_models,

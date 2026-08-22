@@ -71,6 +71,16 @@ _EVENT_FIELDS: Final[dict[str, frozenset[str]]] = {
             "outcome",
         }
     ),
+    "alert_delivery_processed": frozenset(
+        {
+            "rule_id",
+            "job_id",
+            "channel",
+            "outcome",
+            "attempt_count",
+            "error_code",
+        }
+    ),
 }
 
 
@@ -201,6 +211,27 @@ def record_resume_profile_processed(
         source_format=source_format,
         extraction_status=extraction_status,
         outcome=outcome,
+    )
+
+
+def record_alert_delivery_processed(
+    *,
+    rule_id: UUID,
+    job_id: UUID,
+    channel: str,
+    outcome: str,
+    attempt_count: int,
+    error_code: str | None = None,
+) -> None:
+    _emit(
+        "alert_delivery_processed",
+        level=logging.WARNING if error_code is not None else logging.INFO,
+        rule_id=str(rule_id),
+        job_id=str(job_id),
+        channel=channel,
+        outcome=outcome,
+        attempt_count=attempt_count,
+        error_code=error_code,
     )
 
 

@@ -4,7 +4,7 @@
 
 DevRadar cung cấp REST JSON dưới `/api/v1`. OpenAPI tại `/api/v1/openapi.json` là wire contract chính cho endpoint đã triển khai; tài liệu này giữ intent, quyền truy cập và phase availability cho cả phần đã có và phần còn planned.
 
-V5-004 hiện có process health, Job/JobChange/Source/CrawlRun resources, một local-gated CrawlRun mutation, keyword/semantic Job search, skill analytics, local-gated ResumeProfile upload/read/delete và owner-scoped JobMatch generation/read. OpenAPI sinh từ FastAPI cùng PostgreSQL contract test là nguồn bằng chứng wire behavior.
+V5-006 hiện có process health, Job/JobChange/Source/CrawlRun resources, một local-gated CrawlRun mutation, keyword/semantic Job search, skill analytics, local-gated ResumeProfile upload/read/delete, owner-scoped JobMatch generation/read và local-gated AlertRule/Discord dispatch. OpenAPI sinh từ FastAPI cùng PostgreSQL contract test là nguồn bằng chứng wire behavior.
 
 ## 2. Quy ước
 
@@ -105,10 +105,11 @@ V1 dùng page-based pagination vì dataset portfolio còn bounded và UI cần t
 | `DELETE /api/v1/resume-profiles/{profileId}` | Soft-delete profile theo owner | V5-003 — implemented | owner/write; local-only trước auth |
 | `POST /api/v1/resume-profiles/{profileId}/matches` | Generate/reuse top JobMatch bounded | V5-004 — implemented | owner/write; local-only trước auth |
 | `GET /api/v1/resume-profiles/{profileId}/matches` | List current match có component score | V5-004 — implemented | owner/read; local-only trước auth |
-| `GET /api/v1/alert-rules` | List rule của owner | V5 | owner/read |
-| `POST /api/v1/alert-rules` | Tạo rule | V5 | owner/write |
-| `PATCH /api/v1/alert-rules/{ruleId}` | Sửa field được hỗ trợ | V5 | owner/write |
-| `DELETE /api/v1/alert-rules/{ruleId}` | Xóa rule idempotent | V5 | owner/write |
+| `GET /api/v1/alert-rules` | List rule của owner | V5-006 — implemented | owner/read; local-only trước auth |
+| `POST /api/v1/alert-rules` | Tạo rule company/skill/match | V5-006 — implemented | owner/write; local-only trước auth |
+| `PATCH /api/v1/alert-rules/{ruleId}` | Sửa predicate, channel hoặc enabled | V5-006 — implemented | owner/write; local-only trước auth |
+| `DELETE /api/v1/alert-rules/{ruleId}` | Xóa rule và delivery cascade | V5-006 — implemented | owner/write; local-only trước auth |
+| `POST /api/v1/alert-rules/{ruleId}/dispatch` | Dispatch tối đa 20 job qua Discord, replay-safe | V5-006 — implemented | owner/write; local-only trước auth |
 
 Endpoint V5 chứa CV/owner data phải bị disable trên public deployment cho tới khi V6 có authentication và authorization. Không coi UUID khó đoán là access control.
 
@@ -290,6 +291,25 @@ Trong V1:
 
 `GET /skill-trends` bắt buộc `from`/`to`, còn `cohort` và `granularity` có default được OpenAPI công bố; response luôn trả denominator/sample size để tránh insight gây hiểu nhầm.
 
+### 6.6. AlertRule và dispatch
+
+Alert endpoint chỉ mở khi `DEVRADAR_ALERTS_LOCAL_ENABLED=true` và nhận
+`X-DevRadar-Owner` theo cùng local token contract của ResumeProfile. Request JSON
+dùng `name`, `companyQuery`, `skillQuery`, optional `resumeProfileId` +
+`minMatchScore`, `channel=discord` và `enabled`. Rule phải có ít nhất một
+predicate; `minMatchScore` bắt buộc profile còn hạn của cùng owner. Company/skill
+là literal case-insensitive filter trên title/company/description, không phải SQL
+wildcard.
+
+`POST /alert-rules/{ruleId}/dispatch?maxItems=1..20` chỉ đọc job `active`, tạo
+`AlertDelivery` với key SHA-256 của `ruleId + jobId + jobContentHash`, rồi gửi
+message bounded tới Discord webhook lấy từ `DEVRADAR_DISCORD_WEBHOOK_URL`. URL
+webhook không nhận từ API, không lưu trong DB/log. Delivery `sent` được bỏ qua ở
+replay; `failed` retry bounded, `pending` gần đây được coi là in-flight. Response
+chỉ trả counts `consideredJobs`, `createdDeliveries`, `sentDeliveries`,
+`skippedDeliveries`, `failedDeliveries`; không trả webhook, owner hash, raw JD/CV
+hay provider body. Thiếu/sai connector trả `503` safe.
+
 ## 8. Authentication, authorization và exposure
 
 - V1–V4 mặc định bind local/private network; mutation chỉ dành cho operator được cấu hình ngoài request.
@@ -320,5 +340,6 @@ Auth mechanism cụ thể cần ADR khi V6 bắt đầu; tài liệu này không
 - Source chưa approved và arbitrary URL không thể tạo crawl run.
 - Idempotency key retry không tạo hai run.
 - ResumeProfile/Match của owner khác trả `404/403` theo policy.
+- AlertRule/dispatch của owner khác trả `404`; delete rule đã xóa lặp lại trả `204`.
 - Upload sai magic bytes, vượt request/file/decode/archive limit hoặc malformed bị reject/cleanup. V5-003 chưa có hard CPU timeout/process sandbox nên endpoint vẫn local/protected.
 - Field addition giữ backward compatibility; breaking fixture phải fail contract test.

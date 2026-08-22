@@ -256,7 +256,7 @@ Biến dataset/capability thành trải nghiệm portfolio trực quan, giải t
 - AlertRule/Delivery với Telegram hoặc Discord connector đầu tiên;
 - accessibility, browser E2E, retention/delete và idempotency.
 
-V5-001 đã chốt `web/` App Router với sáu route truthful, exact package pins và build/HTTP evidence. V5-002 đã nối Server Component views tới FastAPI thật cho jobs, detail/change history, skill analytics và crawler health; API failure/empty/loading states được render fail-closed. V5-003 đã triển khai local-gated PDF/DOCX parser, ephemeral `ResumeProfile`, owner-scoped POST/GET/DELETE, TTL 24 giờ và safe metrics với PostgreSQL/security evidence. V5-004 đã khóa synthetic scoring evaluation, `JobMatch` migration/model, local structured MiniLM generation top 100, stale/current identity và owner-scoped POST/GET API với PostgreSQL/static evidence. CV UI, alert và auth vẫn chưa mở.
+V5-001 đã chốt `web/` App Router với sáu route truthful, exact package pins và build/HTTP evidence. V5-002 đã nối Server Component views tới FastAPI thật cho jobs, detail/change history, skill analytics và crawler health; API failure/empty/loading states được render fail-closed. V5-003 đã triển khai local-gated PDF/DOCX parser, ephemeral `ResumeProfile`, owner-scoped POST/GET/DELETE, TTL 24 giờ và safe metrics với PostgreSQL/security evidence. V5-004 đã khóa synthetic scoring evaluation, `JobMatch` migration/model, local structured MiniLM generation top 100, stale/current identity và owner-scoped POST/GET API với PostgreSQL/static evidence. V5-005 đã hoàn tất protected CV matching UI và deletion. V5-006 đã hoàn tất một Discord connector local/protected với AlertRule/AlertDelivery, bounded retry và idempotency.
 
 ### Non-goals
 
@@ -280,9 +280,10 @@ Anonymous public CV storage, xác suất tuyển dụng, auto-apply, recruiter A
 - crawler health cùng source degraded.
 
 V5-003 evidence: [secure CV upload và ResumeProfile lifecycle](evidence/V5-003-secure-cv-upload.md).
-V5-004 evidence: [scoring evaluation](evidence/V5-004-scoring-evaluation.md) và [implementation closeout](evidence/V5-004-job-match.md), gồm generation/API/live smoke, full default/PostgreSQL/static/Compose gates. V5-005 đã hoàn tất local/protected CV matching UI và deletion; V5-006 sẵn sàng cho alert connector.
+V5-004 evidence: [scoring evaluation](evidence/V5-004-scoring-evaluation.md) và [implementation closeout](evidence/V5-004-job-match.md), gồm generation/API/live smoke, full default/PostgreSQL/static/Compose gates. V5-005 đã hoàn tất local/protected CV matching UI và deletion; V5-006 đã hoàn tất alert connector và idempotent delivery.
 
 V5-005 evidence: [CV matching UI và deletion](evidence/V5-005-cv-matching-ui.md).
+V5-006 evidence: [Discord alert connector và idempotent delivery](evidence/V5-006-alert-connector.md).
 
 ## 8. V6 — Production-like hardening
 

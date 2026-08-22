@@ -21,7 +21,7 @@ flowchart LR
     EMB["Fixed local multilingual MiniLM - V3"] --> INT
     INT <--> DB
     API --> INT
-    ALT["Telegram / Discord - V5+"] <-- ALERT["Alert module"]
+    ALT["Discord webhook - V5-006"] <-- ALERT["Alert module"]
     DB --> ALERT
 ```
 
@@ -30,6 +30,9 @@ External actors và trust level:
 - job source, HTML, JSON-LD, redirect và file CV là **untrusted input**;
 - external LLM là **external processor**, không phải nguồn dữ liệu có thẩm quyền; local embedding artifact là dependency không đáng tin cho tới khi revision/hash được xác minh;
 - operator local được tin cậy có giới hạn; secret vẫn không được ghi log;
+- Discord webhook là external notification boundary; URL chỉ từ environment
+  allow-list, request payload bounded và delivery key không được xem là provider
+  idempotency guarantee;
 - người dùng public là anonymous/untrusted cho tới khi V6 có auth.
 
 ## 3. Module ownership
@@ -43,7 +46,7 @@ External actors và trust level:
 | `intelligence` | LLM extraction, embeddings, trend queries/evaluation | V3 | authoritative raw data |
 | `matching` | resume profile, score components, explanation evidence | V5 | file transport/security policy |
 | `presentation` | Next.js UI, charts, upload experience | V5 | domain rules hoặc data correction |
-| `alerts` | rule evaluation, idempotent delivery, delivery history | V5 | source crawling |
+| `alerts` | rule evaluation, Discord delivery, idempotent delivery history | V5-006 | source crawling, webhook secret persistence |
 | `platform` | config, logging, metrics, DB integration, security primitives | V1 | domain policy riêng của từng module |
 
 Đây là logical boundary trong cùng repository. Không tạo network call giữa các module chỉ để mô phỏng microservice.
@@ -143,12 +146,17 @@ flowchart LR
 | V2 | V1 + deterministic scheduler/runner từ cùng codebase, PostgreSQL coordination | Accepted theo ADR-006 |
 | V3 | V2 + extraction/taxonomy; local FastEmbed multilingual MiniLM artifact, pgvector `vector(384)`, exact semantic search và bounded analytics | Complete; ADR-010 Accepted cho local/private |
 | V4 | Không thêm runtime vào V3; đánh giá rồi loại planner/validator/analyst reasoning path; LangGraph deferred | Complete; ADR-013 Accepted |
-| V5 | V3 runtime baseline + Next.js App Router + local-gated ResumeProfile + bounded JobMatch service/API | In progress; V5-001–V5-004 complete |
+| V5 | V3 runtime baseline + Next.js App Router/BFF + local-gated ResumeProfile/JobMatch + bounded Discord alert connector | In progress; V5-001–V5-006 complete |
 | V6 | Public ingress, auth, managed secrets, backup/monitoring; Redis/worker pool nếu metric yêu cầu | Proposed |
 
 Crawler/one-shot worker CLI và API dùng cùng code nhưng là entrypoint/process khác nhau. Điều này giữ network work ngoài HTTP request mà không tách service sớm.
 
-`web/` là presentation boundary của V5. App Router dùng Server Components mặc định và gọi FastAPI trực tiếp khi view cần data; không có Next Route Handler/BFF, public env hoặc duplicated backend contract. `DEVRADAR_API_BASE_URL` là server-only configuration. Client interactivity chỉ được thêm ở leaf component khi filter/upload/auth thật sự cần.
+`web/` là presentation boundary của V5. App Router dùng Server Components mặc định
+và gọi FastAPI trực tiếp khi view cần data; CV matching có same-origin Route
+Handler proxy để giữ owner token trong client memory và tránh mở CORS. Alert CRUD
+chưa có UI, chỉ dùng protected FastAPI contract. `DEVRADAR_API_BASE_URL` là
+server-only configuration. Client interactivity chỉ được thêm ở leaf component
+khi filter/upload/auth thật sự cần.
 
 ## 7. Trust boundaries và controls
 

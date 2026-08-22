@@ -199,7 +199,20 @@ Logical identity gồm profile/job ID, content/parser/hash, scoring/input schema
 
 ### 4.10. AlertRule và AlertDelivery
 
-`AlertRule` lưu filter/match threshold, channel, enabled state và owner. `AlertDelivery` lưu rule/job/job-version, idempotency key, attempt, result và provider message reference đã sanitize.
+`AlertRule` lưu `owner_hash`, tên, `company_query`, `skill_query`, optional
+`resume_profile_id` + `min_match_score`, channel (`discord` ở V5-006), enabled
+state và timestamps. Rule phải có ít nhất một predicate; match threshold luôn gắn
+với profile cùng owner còn hạn. Không lưu webhook URL/token trong entity.
+
+`AlertDelivery` lưu rule/job, `job_content_hash`, SHA-256 idempotency key,
+`pending|sent|failed`, attempt count tối đa 3, safe provider reference/error code
+và timestamps. Unique idempotency key chặn replay cùng job revision; job hash đổi
+tạo delivery candidate mới. `sent` không gửi lại, `failed` chỉ retry bounded,
+`pending` gần đây được coi là in-flight. Rule hoặc Job bị xóa thì delivery
+cascade; profile bị xóa thì match alert rule cascade để không giữ artifact CV.
+Provider crash sau khi nhận request nhưng trước DB commit là boundary của
+Discord webhook (provider không hỗ trợ native idempotency); run bình thường vẫn
+được bảo vệ bởi unique key và status.
 
 ## 5. Lifecycle
 

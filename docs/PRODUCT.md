@@ -120,6 +120,10 @@ Các mục `Candidate` không phải deliverable hoặc acceptance criterion cho
 - Người dùng cấu hình tiêu chí job hoặc ngưỡng match.
 - Alert chỉ gửi một lần cho cùng user/rule/job/version, trừ khi có thay đổi đủ điều kiện.
 - Alert luôn liên kết về canonical job và source gốc.
+- V5-006 chỉ mở local/protected với một Discord webhook operator-owned; rule có
+  company/skill literal hoặc ngưỡng `JobMatch`, dispatch tối đa 20 job/lần.
+- Webhook secret nằm ngoài database/log; delivery retry/replay phải giữ
+  idempotency key và không tạo duplicate cho cùng job content revision.
 
 ## 6. Yêu cầu phi chức năng
 

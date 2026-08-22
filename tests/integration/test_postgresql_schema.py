@@ -34,6 +34,8 @@ DOMAIN_TABLES = {
     "job_embeddings",
     "resume_profiles",
     "job_matches",
+    "alert_rules",
+    "alert_deliveries",
 }
 
 
@@ -129,6 +131,22 @@ def test_migration_and_domain_invariants_on_postgresql(
             "ck_job_matches_hash_shape",
             "ck_job_matches_embedding_identity",
             "ck_job_matches_structured_bounds",
+        },
+        "alert_rules": {
+            "ck_alert_rules_owner_hash",
+            "ck_alert_rules_name_not_blank",
+            "ck_alert_rules_has_predicate",
+            "ck_alert_rules_match_score",
+            "ck_alert_rules_match_profile",
+            "ck_alert_rules_channel",
+        },
+        "alert_deliveries": {
+            "ck_alert_deliveries_idempotency_key",
+            "ck_alert_deliveries_job_content_hash",
+            "ck_alert_deliveries_status",
+            "ck_alert_deliveries_attempts",
+            "ck_alert_deliveries_provider_reference",
+            "ck_alert_deliveries_error_code",
         },
     }
     for table_name, constraint_names in expected_checks.items():

@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from devradar.api.alert_rules import router as alert_rules_router
 from devradar.api.analytics import router as analytics_router
 from devradar.api.crawl_runs import router as crawl_runs_router
 from devradar.api.job_matches import router as job_matches_router
@@ -16,3 +17,4 @@ api_router.include_router(crawl_runs_router)
 api_router.include_router(analytics_router)
 api_router.include_router(resume_profiles_router)
 api_router.include_router(job_matches_router)
+api_router.include_router(alert_rules_router)

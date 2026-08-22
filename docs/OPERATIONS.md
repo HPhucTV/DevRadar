@@ -26,6 +26,9 @@ Không dùng production secret/data trong CI. Không gọi source/LLM thật t�
 - `.env`, local override, key/certificate và exported data phải bị ignore khi scaffold Git.
 - API key, database password, session secret, webhook token và source credential không được hardcode hoặc log.
 - `DEVRADAR_OPERATOR_WRITE_ENABLED` mặc định `false`; đây chỉ là local deployment gate, không phải auth. Không bật write API trên public ingress trước V6 auth/authorization.
+- `DEVRADAR_ALERTS_LOCAL_ENABLED` mặc định `false`; `DEVRADAR_DISCORD_WEBHOOK_URL`
+  chỉ được đọc từ environment của local/protected deployment, phải là HTTPS
+  Discord webhook allow-list và không được ghi vào DB/log.
 - `DEVRADAR_EMBEDDING_MODEL_PATH` là optional local path, không phải model selector. Dù đổi path, application vẫn khóa model ID/revision/artifact hash theo ADR-010; request không được chọn path/model.
 - External provider/source mới phải có owner, mục đích, data classification và rotation/revocation path.
 - Nếu secret từng bị commit hoặc lộ trong log, rotate/revoke trước; chỉ xóa khỏi file không đủ.
@@ -116,6 +119,9 @@ PostgreSQL test hiện dùng `DEVRADAR_TEST_DATABASE_URL`, tạo database tên n
 | Profile expire/delete giữa inference và persist | Generation trả generic `404`, không ghi row; cascade hoặc visibility predicate loại artifact. |
 | Log/error/trace | Không chứa raw CV, secret, auth header, raw embedding hoặc full payload. |
 | Alert retry | Không gửi trùng cùng idempotency key. |
+| Alert webhook thiếu/sai cấu hình | Dispatch fail closed `503`, không tạo outbound request tùy ý và không lộ URL/token. |
+| Alert rule của owner khác | Trả generic `404`; không trả rule, delivery hoặc profile existence. |
+| Job content hash đổi | Tạo candidate delivery key mới; revision cũ không bị ghi đè hoặc gửi lại. |
 
 ## 6. Security baseline
 
@@ -193,6 +199,9 @@ V1 hiện ghi JSON line ra stderr bằng standard library, không thêm telemetr
 - `job_observation_processed`: run/source/snapshot/job ID, outcome và `transaction_state=caller_owned_uncommitted`; không được diễn giải event này thành commit thành công;
 - `crawl_run_summary`: run/source ID, status, coverage, duration, bounded counters và safe error code; runner chỉ emit summary cuối sau transaction outcome rõ.
 - `resume_profile_processed`: profile ID, source format, extraction status và `created|reused`; không ghi filename, owner/content hash, skill/location, token hoặc raw CV.
+- `alert_delivery_processed`: rule/job ID, channel, `sent|failed|duplicate_prevented`,
+  attempt count và safe error code; không ghi idempotency key, webhook, title,
+  company, URL hoặc message body.
 
 API request count/latency/status và run/job outcome được tính bằng cách aggregate event name + bounded numeric/enum field. Opaque correlation ID chỉ dùng trace lookup, không dùng làm metric label. Persisted run counters và source failure vẫn đọc qua `/api/v1/crawl-runs`; V1 chưa cần Prometheus client hoặc in-process metrics registry.
 

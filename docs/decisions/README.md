@@ -30,6 +30,7 @@ Proposed → Accepted → Superseded | Deprecated
 | [ADR-011](0011-accept-secondary-remote-api-cohort.md) | Accepted | Cohort remote thứ cấp cho V3 scale gate |
 | [ADR-012](0012-accept-direct-v4-agent-workflow-defer-langgraph.md) | Superseded in part | Historical direct V4 workflow spike; quyết định defer LangGraph vẫn còn hiệu lực |
 | [ADR-013](0013-remove-unretained-v4-agent-runtime.md) | Accepted | Loại V4 agent runtime không có measurable usefulness; giữ deterministic paths |
+| [ADR-014](0014-accept-discord-webhook-alert-connector.md) | Accepted | Discord webhook là connector alert V5 đầu tiên |
 
 ## Candidate technology chưa được chấp nhận
 
