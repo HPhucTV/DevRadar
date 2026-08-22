@@ -1,7 +1,7 @@
 # V3-003 ExtractionResult, deterministic fallback và accepted-only cache — Design Spec
 
 **Ngày:** 2026-08-22  
-**Trạng thái:** Chờ user review trước implementation plan  
+**Trạng thái:** Đã được user duyệt; implementation plan đã sẵn sàng
 **Phase:** V3 — AI extraction, taxonomy và semantic search
 
 ## Mục tiêu
