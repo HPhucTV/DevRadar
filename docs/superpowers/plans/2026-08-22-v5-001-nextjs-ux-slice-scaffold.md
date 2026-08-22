@@ -6,7 +6,7 @@
 
 **Architecture:** Next.js là presentation boundary trong cùng repository; Server Components là mặc định và FastAPI/OpenAPI tiếp tục là backend contract duy nhất. V5-001 chưa fetch data, không tạo BFF và không đoán ResumeProfile/JobMatch schema.
 
-**Tech Stack:** Node 24.11.1, npm 11.6.2, Next.js 16.3.2, React 19.2.8, TypeScript 5.9.3, ESLint 10.9.0, native CSS, Node built-in test runner.
+**Tech Stack:** Node 24.11.1, npm 11.6.2, Next.js 16.3.2, React 19.2.8, TypeScript 5.9.3, ESLint 9.39.5, native CSS, Node built-in test runner.
 
 ---
 
@@ -111,7 +111,7 @@ Do not commit a knowingly failing repository state.
     "@types/node": "24.13.3",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",
-    "eslint": "10.9.0",
+    "eslint": "9.39.5",
     "eslint-config-next": "16.3.2",
     "typescript": "5.9.3"
   }

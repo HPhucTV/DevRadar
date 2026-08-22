@@ -14,7 +14,7 @@ Scaffold phải trung thực: không hiển thị metric/job/CV giả, không g�
 
 - Repository chưa có `package.json` hoặc frontend lockfile.
 - Local runtime là Node `24.11.1`, npm `11.6.2`.
-- npm registry snapshot ngày 2026-08-22: Next `16.3.2`, React/React DOM `19.2.8`, ESLint `10.9.0`, `eslint-config-next` `16.3.2`, TypeScript 5 stable `5.9.3`.
+- npm registry snapshot ngày 2026-08-22: Next `16.3.2`, React/React DOM `19.2.8`, `eslint-config-next` `16.3.2`, TypeScript 5 stable `5.9.3`. ESLint pin là `9.39.5`: package config công bố `>=9` nhưng plugin transitive hiện chỉ peer-support đến major 9; exact local gate reject ESLint 10.
 - Current FastAPI/OpenAPI đã có Job, JobChange, Source, CrawlRun, skill frequency/trend và health endpoint; ResumeProfile/JobMatch backend chưa tồn tại.
 - V4 agent runtime đã bị loại; frontend không tạo route, card hoặc API client cho AgentRun.
 
@@ -54,7 +54,7 @@ Runtime dependency exact:
 Development dependency exact:
 
 - `typescript@5.9.3`;
-- `eslint@10.9.0`;
+- `eslint@9.39.5`;
 - `eslint-config-next@16.3.2`;
 - `@types/react@19.2.18`;
 - `@types/react-dom@19.2.4`;
@@ -151,4 +151,3 @@ Sau GREEN chạy `npm run check`. Next production build phải liệt kê đủ 
 - Không thêm BFF, Tailwind/UI kit/state/data library, public env, Docker topology hoặc API/migration change.
 - Evidence ghi exact versions, commands, route build output, official sources và boundary chưa implement.
 - Local board chuyển V5-001 `Done`, V5-002 `Ready`; V5 vẫn `in_progress`.
-
