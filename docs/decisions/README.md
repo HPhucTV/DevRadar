@@ -28,8 +28,9 @@ Proposed → Accepted → Superseded | Deprecated
 | [ADR-009](0009-accept-local-multilingual-e5-and-pgvector.md) | Superseded | Historical local multilingual E5 baseline; thay bởi ADR-010 |
 | [ADR-010](0010-accept-fastembed-minilm-semantic-remediation.md) | Accepted | FastEmbed multilingual MiniLM 384d + exact pgvector sau semantic remediation |
 | [ADR-011](0011-accept-secondary-remote-api-cohort.md) | Accepted | Cohort remote thứ cấp cho V3 scale gate |
-| [ADR-012](0012-accept-direct-v4-agent-workflow-defer-langgraph.md) | Accepted | Direct bounded V4 agent workflow; hoãn LangGraph tới khi có measured durable-workflow need |
+| [ADR-012](0012-accept-direct-v4-agent-workflow-defer-langgraph.md) | Superseded in part | Historical direct V4 workflow spike; quyết định defer LangGraph vẫn còn hiệu lực |
+| [ADR-013](0013-remove-unretained-v4-agent-runtime.md) | Accepted | Loại V4 agent runtime không có measurable usefulness; giữ deterministic paths |
 
 ## Candidate technology chưa được chấp nhận
 
-Prefect đã được đánh giá và defer theo ADR-006; chỉ đánh giá lại khi có measured need. ADR-007 được giữ để truy vết nhưng đã `Superseded` bởi ADR-008. ADR-010 hiện hành chấp nhận local multilingual MiniLM + exact pgvector cho V3 private deployment. ADR-012 hoãn LangGraph và giữ V4 direct cho tới khi có measured durable-workflow need. External embedding provider, HNSW và mọi công nghệ V5–V6 vẫn cần phase gate/evidence riêng. Quyết định khó đảo ngược cần ADR mới hoặc amendment qua ADR kế tiếp, không âm thầm sửa lịch sử.
+Prefect đã được đánh giá và defer theo ADR-006; chỉ đánh giá lại khi có measured need. ADR-007 được giữ để truy vết nhưng đã `Superseded` bởi ADR-008. ADR-010 hiện hành chấp nhận local multilingual MiniLM + exact pgvector cho V3 private deployment. ADR-012 vẫn hoãn LangGraph; ADR-013 loại direct V4 agent runtime vì không có measurable usefulness gain, nên hiện không có agent runtime được chấp nhận. External embedding provider, HNSW và mọi công nghệ V5–V6 vẫn cần phase gate/evidence riêng. Quyết định khó đảo ngược cần ADR mới hoặc amendment qua ADR kế tiếp, không âm thầm sửa lịch sử.
