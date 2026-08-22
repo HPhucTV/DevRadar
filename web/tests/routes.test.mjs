@@ -11,7 +11,7 @@ const expected = [
   ["job-detail", "/jobs/[jobId]", "scaffolded", false],
   ["analytics", "/analytics", "scaffolded", true],
   ["crawler-health", "/crawler-health", "scaffolded", true],
-  ["cv-match", "/cv-match", "backend_not_ready", true],
+  ["cv-match", "/cv-match", "implemented", true],
 ];
 
 test("route manifest owns the exact V5-001 surface", async () => {
@@ -31,6 +31,49 @@ test("route manifest owns the exact V5-001 surface", async () => {
   for (const route of routes) {
     await access(new URL(route.pageFile, webRoot));
   }
-  assert.deepEqual(routes.at(-1).apiResources, []);
+  assert.deepEqual(routes.at(-1).apiResources, [
+    "POST /api/v1/resume-profiles",
+    "POST /api/v1/resume-profiles/{profileId}/matches",
+    "GET /api/v1/resume-profiles/{profileId}/matches",
+    "DELETE /api/v1/resume-profiles/{profileId}",
+  ]);
   assert.equal(routes.filter(({ showInNav }) => showInNav).length, 5);
+});
+
+test("cv match route exposes only protected local matching resources", async () => {
+  const source = await readFile(
+    new URL("src/app/(dashboard)/cv-match/page.tsx", webRoot),
+    "utf8",
+  );
+  const routes = JSON.parse(
+    await readFile(new URL("src/contracts/routes.json", webRoot), "utf8"),
+  );
+  const route = routes.find((candidate) => candidate.id === "cv-match");
+
+  assert.deepEqual(route.apiResources, [
+    "POST /api/v1/resume-profiles",
+    "POST /api/v1/resume-profiles/{profileId}/matches",
+    "GET /api/v1/resume-profiles/{profileId}/matches",
+    "DELETE /api/v1/resume-profiles/{profileId}",
+  ]);
+  assert.match(source, /CvMatchPanel/);
+  assert.doesNotMatch(source, /RoutePlaceholder/);
+});
+
+test("cv match client does not persist owner token or resume content", async () => {
+  const source = await readFile(new URL("src/components/cv-match-panel.tsx", webRoot), "utf8");
+  const clientApi = await readFile(new URL("src/lib/cv-match.ts", webRoot), "utf8");
+
+  assert.match(clientApi, /X-DevRadar-Owner/);
+  assert.match(clientApi, /FormData/);
+  assert.doesNotMatch(source + clientApi, /localStorage/);
+  assert.match(source, /type=\"password\"/);
+  assert.match(source, /MAX_RESUME_BYTES/);
+});
+
+test("cv match proxy preserves no-content delete responses", async () => {
+  const source = await readFile(new URL("src/lib/backend-proxy.ts", webRoot), "utf8");
+
+  assert.match(source, /response\.status === 204/);
+  assert.match(source, /\? null/);
 });
