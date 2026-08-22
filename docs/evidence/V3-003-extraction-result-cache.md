@@ -2,11 +2,10 @@
 
 ## Trạng thái
 
-`implementation complete; PostgreSQL integration gate pending local database access`
+`complete` — 2026-08-22
 
 V3-003 đã có typed payload, deterministic-first orchestration, accepted-only cache, bounded provider
-boundary và Alembic migration. Không nâng phase V3 và không tuyên bố PostgreSQL integration pass khi
-database opt-in chưa chạy được trên máy hiện tại.
+boundary và Alembic migration. Đây là task evidence, không phải V3 phase closeout.
 
 ## Scope và non-goals
 
@@ -32,15 +31,18 @@ database opt-in chưa chạy được trên máy hiện tại.
 
 | Gate | Kết quả hiện tại |
 |---|---|
-| `pytest tests/test_ai_evaluation.py tests/test_extraction.py -q` | `11 passed` |
-| `pytest tests/integration/test_extraction_result.py -m postgresql -q` | `7 skipped` — không có `DEVRADAR_TEST_DATABASE_URL`; Docker daemon không chạy và local PostgreSQL không có credential test |
+| `pytest tests/integration/test_extraction_result.py tests/integration/test_postgresql_schema.py -m postgresql -q` | `8 passed` trên PostgreSQL 18.4 UTF8 disposable cluster |
+| `pytest` với `DEVRADAR_TEST_DATABASE_URL` | `155 passed` |
+| Alembic `upgrade head` + `alembic check` online | upgrade exit `0`, check exit `0`, revision `b7e3f1c4a902` |
 | Alembic offline `upgrade head --sql` | exit `0`, chain tới `b7e3f1c4a902` |
-| Ruff check/format | pass trên các file V3-003 |
-| mypy | pass trên các file V3-003 |
+| Ruff check/format | pass trên toàn repository |
+| mypy | `Success: no issues found in 64 source files` |
+| pip check | `No broken requirements found` |
 
-Integration PostgreSQL, `alembic check` online, concurrent writer thật và full repository gate phải
-được chạy lại sau khi có database tạm đúng command trong `AGENTS.md`. Kết quả skipped không được
-diễn giải thành integration pass.
+Integration exercise gồm migration upgrade hai lần, accepted-only index, read-after-write, rejected/
+needs-review audit, deterministic zero-provider path, accepted cache hit zero-provider path, rollback
+và simulated concurrent duplicate insert re-read. Disposable cluster đã được stop sau verification; không
+ghi database URL hoặc credential vào repository.
 
 ## Boundaries chưa claim
 

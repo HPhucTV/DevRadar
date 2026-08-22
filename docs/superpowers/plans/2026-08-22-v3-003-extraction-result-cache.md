@@ -311,9 +311,7 @@ def test_extraction_result_table_and_constraints_on_fresh_postgresql(
     engine = create_engine(fresh_postgresql_url)
     inspector = inspect(engine)
     assert "extraction_results" in inspector.get_table_names()
-    check_names = {
-        check["name"] for check in inspector.get_check_constraints("extraction_results")
-    }
+    check_names = {check["name"] for check in inspector.get_check_constraints("extraction_results")}
     assert {
         "ck_extraction_results_input_hash",
         "ck_extraction_results_status",
@@ -343,7 +341,17 @@ Expected: FAIL do migration chưa có table/index; nếu biến môi trường k
 Tạo `src/devradar/intelligence/models.py` theo mapping này; expression `coalesce` làm `NULL` của `prompt_version`/`model` có cùng cache identity cho rule result:
 
 ```python
-from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, Index, Integer, Numeric, String, text
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -391,10 +399,16 @@ class ExtractionResult(Base):
         ),
         Index(
             "uq_extraction_results_accepted_cache",
-            "input_type", "input_ref", "input_hash", "extractor_type",
-            "extractor_version", "schema_version",
-            text("coalesce(prompt_version, '')"), text("coalesce(model, '')"),
-            "canonicalization_version", unique=True,
+            "input_type",
+            "input_ref",
+            "input_hash",
+            "extractor_type",
+            "extractor_version",
+            "schema_version",
+            text("coalesce(prompt_version, '')"),
+            text("coalesce(model, '')"),
+            "canonicalization_version",
+            unique=True,
             postgresql_where=text("validation_status = 'accepted'"),
         ),
     )
@@ -419,7 +433,9 @@ class ExtractionResult(Base):
     prompt_tokens: Mapped[int | None] = mapped_column(Integer)
     completion_tokens: Mapped[int | None] = mapped_column(Integer)
     estimated_cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(14, 8))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP")
+    )
 ```
 
 Use the existing `_enum_values` convention only if switching to SQLAlchemy `Enum`; string columns plus database `CheckConstraint` match existing schema and avoid duplicate Python/SQL enum naming. Keep the foreign key to `jobs.id`, so every result retains canonical Job provenance.
@@ -516,13 +532,23 @@ Add pure key tests and PostgreSQL persistence tests:
 def test_cache_key_changes_for_each_version_dimension() -> None:
     base = ExtractionCacheKey(
         input_type=ExtractionInputType.JOB,
-        input_ref=uuid4(), input_hash="a" * 64,
+        input_ref=uuid4(),
+        input_hash="a" * 64,
         extractor_type=ExtractionType.LLM,
-        extractor_version="provider-boundary-v1", schema_version=EXTRACTION_SCHEMA_VERSION,
-        prompt_version="prompt-v1", model="test-model",
+        extractor_version="provider-boundary-v1",
+        schema_version=EXTRACTION_SCHEMA_VERSION,
+        prompt_version="prompt-v1",
+        model="test-model",
         canonicalization_version=CANONICALIZATION_VERSION,
     )
-    for field in ("input_hash", "extractor_version", "schema_version", "prompt_version", "model", "canonicalization_version"):
+    for field in (
+        "input_hash",
+        "extractor_version",
+        "schema_version",
+        "prompt_version",
+        "model",
+        "canonicalization_version",
+    ):
         changed = replace(base, **{field: "b" * 64 if field == "input_hash" else "changed"})
         assert changed != base
 
@@ -532,12 +558,18 @@ def test_rejected_and_needs_review_are_audit_rows_but_never_cache_hits(
     session: Session, key: ExtractionCacheKey
 ) -> None:
     first, _ = persist_extraction_result(
-        session, key=key, output_data=_payload(),
-        status=ExtractionValidationStatus.REJECTED, validation_errors=[{"code": "bad", "path": "skills", "type": "invalid"}],
+        session,
+        key=key,
+        output_data=_payload(),
+        status=ExtractionValidationStatus.REJECTED,
+        validation_errors=[{"code": "bad", "path": "skills", "type": "invalid"}],
     )
     second, _ = persist_extraction_result(
-        session, key=key, output_data=_payload(),
-        status=ExtractionValidationStatus.NEEDS_REVIEW, validation_errors=[{"code": "timeout", "path": "provider", "type": "transient"}],
+        session,
+        key=key,
+        output_data=_payload(),
+        status=ExtractionValidationStatus.NEEDS_REVIEW,
+        validation_errors=[{"code": "timeout", "path": "provider", "type": "transient"}],
     )
     session.commit()
     assert first.id != second.id
@@ -609,13 +641,23 @@ def persist_extraction_result(
         if existing is not None:
             return existing, True
     result = ExtractionResult(
-        input_type=key.input_type.value, input_ref=key.input_ref, input_hash=key.input_hash,
-        extractor_type=key.extractor_type.value, extractor_version=key.extractor_version,
-        schema_version=key.schema_version, prompt_version=key.prompt_version, model=key.model,
-        canonicalization_version=key.canonicalization_version, output_data=output_data,
-        validation_status=status.value, validation_errors=validation_errors,
-        confidence=confidence, latency_ms=latency_ms, prompt_tokens=prompt_tokens,
-        completion_tokens=completion_tokens, estimated_cost_usd=estimated_cost_usd,
+        input_type=key.input_type.value,
+        input_ref=key.input_ref,
+        input_hash=key.input_hash,
+        extractor_type=key.extractor_type.value,
+        extractor_version=key.extractor_version,
+        schema_version=key.schema_version,
+        prompt_version=key.prompt_version,
+        model=key.model,
+        canonicalization_version=key.canonicalization_version,
+        output_data=output_data,
+        validation_status=status.value,
+        validation_errors=validation_errors,
+        confidence=confidence,
+        latency_ms=latency_ms,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        estimated_cost_usd=estimated_cost_usd,
     )
     session.add(result)
     session.flush()
@@ -666,10 +708,13 @@ def test_provider_success_keeps_deterministic_scalars() -> None:
             "location": {"city": "Hanoi", "province": "Hanoi", "workMode": "remote"},
             "skills": [],
         }
+
     resolution = resolve_provider_fallback(
         deterministic=_incomplete_deterministic(),
         source_text="Backend Engineer\nJoin the team.",
-        request=_provider_request(), provider=provider, metadata=TEST_PROVIDER,
+        request=_provider_request(),
+        provider=provider,
+        metadata=TEST_PROVIDER,
     )
     assert calls == 1
     assert resolution.status is ExtractionValidationStatus.ACCEPTED
@@ -681,10 +726,14 @@ def test_missing_provider_becomes_needs_review() -> None:
     resolution = resolve_provider_fallback(
         deterministic=_incomplete_deterministic(),
         source_text="Backend Engineer\nJoin the team.",
-        request=_provider_request(), provider=None, metadata=TEST_PROVIDER,
+        request=_provider_request(),
+        provider=None,
+        metadata=TEST_PROVIDER,
     )
     assert resolution.status is ExtractionValidationStatus.NEEDS_REVIEW
-    assert resolution.errors == [{"code": "provider_not_configured", "path": "provider", "type": "missing"}]
+    assert resolution.errors == [
+        {"code": "provider_not_configured", "path": "provider", "type": "missing"}
+    ]
 
 
 def test_transient_provider_failure_attempts_twice_then_needs_review() -> None:
@@ -694,10 +743,13 @@ def test_transient_provider_failure_attempts_twice_then_needs_review() -> None:
         nonlocal calls
         calls += 1
         raise ProviderTransientError("provider_timeout")
+
     resolution = resolve_provider_fallback(
         deterministic=_incomplete_deterministic(),
         source_text="Backend Engineer\nJoin the team.",
-        request=_provider_request(), provider=provider, metadata=TEST_PROVIDER,
+        request=_provider_request(),
+        provider=provider,
+        metadata=TEST_PROVIDER,
     )
     assert calls == 2
     assert resolution.status is ExtractionValidationStatus.NEEDS_REVIEW
@@ -720,8 +772,10 @@ Define the test helpers immediately above these tests, with no external provider
 
 ```python
 TEST_PROVIDER = ProviderMetadata(
-    extractor_version="provider-boundary-v1", schema_version=EXTRACTION_SCHEMA_VERSION,
-    prompt_version="test-prompt-v1", model="test-model",
+    extractor_version="provider-boundary-v1",
+    schema_version=EXTRACTION_SCHEMA_VERSION,
+    prompt_version="test-prompt-v1",
+    model="test-model",
     canonicalization_version=CANONICALIZATION_VERSION,
 )
 
@@ -731,10 +785,19 @@ def _incomplete_deterministic() -> DeterministicExtraction:
         payload=ExtractionPayload(
             levels=(JobLevel.SENIOR,),
             experience=ExperienceExpectation(minimum_years=Decimal("3"), maximum_years=None),
-            salary=SalaryExpectation(minimum=Decimal("30000000"), maximum=Decimal("40000000"), currency="VND", period=SalaryPeriod.MONTH),
-            location=LocationExpectation(city="Ho Chi Minh City", province="Ho Chi Minh City", work_mode=WorkMode.HYBRID),
+            salary=SalaryExpectation(
+                minimum=Decimal("30000000"),
+                maximum=Decimal("40000000"),
+                currency="VND",
+                period=SalaryPeriod.MONTH,
+            ),
+            location=LocationExpectation(
+                city="Ho Chi Minh City", province="Ho Chi Minh City", work_mode=WorkMode.HYBRID
+            ),
             skills=(),
-        ), complete=False, extractor_version=DETERMINISTIC_EXTRACTOR_VERSION,
+        ),
+        complete=False,
+        extractor_version=DETERMINISTIC_EXTRACTOR_VERSION,
         warnings=("skills_not_determined",),
     )
 
@@ -742,8 +805,11 @@ def _incomplete_deterministic() -> DeterministicExtraction:
 def _provider_request() -> ProviderRequest:
     deterministic = _incomplete_deterministic()
     return ProviderRequest(
-        input_ref=uuid4(), input_hash="a" * 64, title="Backend Engineer",
-        description_text="Join the team.", deterministic_payload=deterministic.payload,
+        input_ref=uuid4(),
+        input_hash="a" * 64,
+        title="Backend Engineer",
+        description_text="Join the team.",
+        deterministic_payload=deterministic.payload,
     )
 ```
 
@@ -833,7 +899,9 @@ def validate_provider_candidate(
         }
     )
     keys = [(skill.name, skill.requirement_type) for skill in merged.skills]
-    if len(keys) != len(set(keys)) or any(skill.evidence not in source_text for skill in merged.skills):
+    if len(keys) != len(set(keys)) or any(
+        skill.evidence not in source_text for skill in merged.skills
+    ):
         raise ProviderValidationError("provider_evidence_invalid")
     return merged
 
@@ -860,19 +928,23 @@ def resolve_provider_fallback(
                 candidate, deterministic=deterministic, source_text=source_text
             )
             return ExtractionResolution(
-                payload=payload, status=ExtractionValidationStatus.ACCEPTED,
-                errors=None, attempts=attempt,
+                payload=payload,
+                status=ExtractionValidationStatus.ACCEPTED,
+                errors=None,
+                attempts=attempt,
             )
         except ProviderValidationError as error:
             return ExtractionResolution(
-                payload=deterministic.payload, status=ExtractionValidationStatus.REJECTED,
+                payload=deterministic.payload,
+                status=ExtractionValidationStatus.REJECTED,
                 errors=[{"code": error.code, "path": "provider", "type": "validation"}],
                 attempts=attempt,
             )
         except ProviderTransientError as error:
             if attempt == MAX_PROVIDER_ATTEMPTS:
                 return ExtractionResolution(
-                    payload=deterministic.payload, status=ExtractionValidationStatus.NEEDS_REVIEW,
+                    payload=deterministic.payload,
+                    status=ExtractionValidationStatus.NEEDS_REVIEW,
                     errors=[{"code": error.code, "path": "provider", "type": "transient"}],
                     attempts=attempt,
                 )
@@ -908,31 +980,44 @@ def extract_job(
 ) -> ExtractionOutcome:
     deterministic = deterministic_extract(job)
     rule_key = ExtractionCacheKey(
-        input_type=ExtractionInputType.JOB, input_ref=job.id, input_hash=job.job_content_hash,
-        extractor_type=ExtractionType.RULE, extractor_version=DETERMINISTIC_EXTRACTOR_VERSION,
-        schema_version=EXTRACTION_SCHEMA_VERSION, prompt_version=None, model=None,
+        input_type=ExtractionInputType.JOB,
+        input_ref=job.id,
+        input_hash=job.job_content_hash,
+        extractor_type=ExtractionType.RULE,
+        extractor_version=DETERMINISTIC_EXTRACTOR_VERSION,
+        schema_version=EXTRACTION_SCHEMA_VERSION,
+        prompt_version=None,
+        model=None,
         canonicalization_version=CANONICALIZATION_VERSION,
     )
     if deterministic.complete:
         with session.begin():
             result, cache_hit = persist_extraction_result(
-                session, key=rule_key,
+                session,
+                key=rule_key,
                 output_data=deterministic.payload.model_dump(mode="json", by_alias=True),
-                status=ExtractionValidationStatus.ACCEPTED, validation_errors=None,
+                status=ExtractionValidationStatus.ACCEPTED,
+                validation_errors=None,
             )
         return ExtractionOutcome(result, deterministic, cache_hit, 0)
 
     if provider_metadata is None:
         provider_metadata = ProviderMetadata(
-            extractor_version="provider-boundary-v1", schema_version=EXTRACTION_SCHEMA_VERSION,
-            prompt_version="unconfigured", model="unconfigured",
+            extractor_version="provider-boundary-v1",
+            schema_version=EXTRACTION_SCHEMA_VERSION,
+            prompt_version="unconfigured",
+            model="unconfigured",
             canonicalization_version=CANONICALIZATION_VERSION,
         )
     llm_key = ExtractionCacheKey(
-        input_type=ExtractionInputType.JOB, input_ref=job.id, input_hash=job.job_content_hash,
-        extractor_type=ExtractionType.LLM, extractor_version=provider_metadata.extractor_version,
+        input_type=ExtractionInputType.JOB,
+        input_ref=job.id,
+        input_hash=job.job_content_hash,
+        extractor_type=ExtractionType.LLM,
+        extractor_version=provider_metadata.extractor_version,
         schema_version=provider_metadata.schema_version,
-        prompt_version=provider_metadata.prompt_version, model=provider_metadata.model,
+        prompt_version=provider_metadata.prompt_version,
+        model=provider_metadata.model,
         canonicalization_version=provider_metadata.canonicalization_version,
     )
     with session.begin():
@@ -942,19 +1027,26 @@ def extract_job(
 
     session.rollback()
     request = ProviderRequest(
-        input_ref=job.id, input_hash=job.job_content_hash, title=job.title,
-        description_text=job.description_text or "", deterministic_payload=deterministic.payload,
+        input_ref=job.id,
+        input_hash=job.job_content_hash,
+        title=job.title,
+        description_text=job.description_text or "",
+        deterministic_payload=deterministic.payload,
     )
     resolution = resolve_provider_fallback(
         deterministic=deterministic,
         source_text=f"{job.title}\n{job.description_text or ''}",
-        request=request, provider=provider, metadata=provider_metadata,
+        request=request,
+        provider=provider,
+        metadata=provider_metadata,
     )
     with session.begin():
         result, cache_hit = persist_extraction_result(
-            session, key=llm_key,
+            session,
+            key=llm_key,
             output_data=resolution.payload.model_dump(mode="json", by_alias=True),
-            status=resolution.status, validation_errors=resolution.errors,
+            status=resolution.status,
+            validation_errors=resolution.errors,
         )
     return ExtractionOutcome(result, deterministic, cache_hit, resolution.attempts)
 ```
@@ -995,17 +1087,26 @@ def _payload() -> dict[str, object]:
         "levels": ["senior"],
         "experience": {"minimumYears": 3, "maximumYears": None},
         "salary": {"minimum": 30000000, "maximum": 40000000, "currency": "VND", "period": "month"},
-        "location": {"city": "Ho Chi Minh City", "province": "Ho Chi Minh City", "workMode": "hybrid"},
+        "location": {
+            "city": "Ho Chi Minh City",
+            "province": "Ho Chi Minh City",
+            "workMode": "hybrid",
+        },
         "skills": [],
     }
 
 
 def _key(job: Job) -> ExtractionCacheKey:
     return ExtractionCacheKey(
-        input_type=ExtractionInputType.JOB, input_ref=job.id, input_hash=job.job_content_hash,
-        extractor_type=ExtractionType.LLM, extractor_version="provider-boundary-v1",
-        schema_version=EXTRACTION_SCHEMA_VERSION, prompt_version="test-prompt-v1",
-        model="test-model", canonicalization_version=CANONICALIZATION_VERSION,
+        input_type=ExtractionInputType.JOB,
+        input_ref=job.id,
+        input_hash=job.job_content_hash,
+        extractor_type=ExtractionType.LLM,
+        extractor_version="provider-boundary-v1",
+        schema_version=EXTRACTION_SCHEMA_VERSION,
+        prompt_version="test-prompt-v1",
+        model="test-model",
+        canonicalization_version=CANONICALIZATION_VERSION,
     )
 
 
@@ -1021,10 +1122,14 @@ def test_complete_deterministic_job_never_calls_provider(
         return _payload()
 
     outcome = extract_job(
-        session, job=complete_job, provider=provider,
+        session,
+        job=complete_job,
+        provider=provider,
         provider_metadata=ProviderMetadata(
-            extractor_version="provider-boundary-v1", schema_version=EXTRACTION_SCHEMA_VERSION,
-            prompt_version="test-prompt-v1", model="test-model",
+            extractor_version="provider-boundary-v1",
+            schema_version=EXTRACTION_SCHEMA_VERSION,
+            prompt_version="test-prompt-v1",
+            model="test-model",
             canonicalization_version=CANONICALIZATION_VERSION,
         ),
     )
@@ -1034,24 +1139,31 @@ def test_complete_deterministic_job_never_calls_provider(
 
 
 @pytest.mark.postgresql
-def test_accepted_cache_hit_never_calls_provider(
-    session: Session, incomplete_job: Job
-) -> None:
+def test_accepted_cache_hit_never_calls_provider(session: Session, incomplete_job: Job) -> None:
     metadata = ProviderMetadata(
-        extractor_version="provider-boundary-v1", schema_version=EXTRACTION_SCHEMA_VERSION,
-        prompt_version="test-prompt-v1", model="test-model",
+        extractor_version="provider-boundary-v1",
+        schema_version=EXTRACTION_SCHEMA_VERSION,
+        prompt_version="test-prompt-v1",
+        model="test-model",
         canonicalization_version=CANONICALIZATION_VERSION,
     )
     key = ExtractionCacheKey(
-        input_type=ExtractionInputType.JOB, input_ref=incomplete_job.id,
-        input_hash=incomplete_job.job_content_hash, extractor_type=ExtractionType.LLM,
-        extractor_version=metadata.extractor_version, schema_version=metadata.schema_version,
-        prompt_version=metadata.prompt_version, model=metadata.model,
+        input_type=ExtractionInputType.JOB,
+        input_ref=incomplete_job.id,
+        input_hash=incomplete_job.job_content_hash,
+        extractor_type=ExtractionType.LLM,
+        extractor_version=metadata.extractor_version,
+        schema_version=metadata.schema_version,
+        prompt_version=metadata.prompt_version,
+        model=metadata.model,
         canonicalization_version=metadata.canonicalization_version,
     )
     seed, _ = persist_extraction_result(
-        session, key=key, output_data=_payload(),
-        status=ExtractionValidationStatus.ACCEPTED, validation_errors=None,
+        session,
+        key=key,
+        output_data=_payload(),
+        status=ExtractionValidationStatus.ACCEPTED,
+        validation_errors=None,
     )
     session.commit()
     calls = 0
@@ -1075,24 +1187,34 @@ def test_accepted_cache_is_unique_but_rejected_rows_are_repeatable(
 ) -> None:
     key = _key(job)
     first, first_hit = persist_extraction_result(
-        session, key=key, output_data=_payload(),
-        status=ExtractionValidationStatus.ACCEPTED, validation_errors=None,
+        session,
+        key=key,
+        output_data=_payload(),
+        status=ExtractionValidationStatus.ACCEPTED,
+        validation_errors=None,
     )
     session.commit()
     second, second_hit = persist_extraction_result(
-        session, key=key, output_data=_payload(),
-        status=ExtractionValidationStatus.ACCEPTED, validation_errors=None,
+        session,
+        key=key,
+        output_data=_payload(),
+        status=ExtractionValidationStatus.ACCEPTED,
+        validation_errors=None,
     )
     assert second.id == first.id
     assert first_hit is False
     assert second_hit is True
     rejected_one, _ = persist_extraction_result(
-        session, key=key, output_data=_payload(),
+        session,
+        key=key,
+        output_data=_payload(),
         status=ExtractionValidationStatus.REJECTED,
         validation_errors=[{"code": "bad", "path": "skills", "type": "invalid"}],
     )
     rejected_two, _ = persist_extraction_result(
-        session, key=key, output_data=_payload(),
+        session,
+        key=key,
+        output_data=_payload(),
         status=ExtractionValidationStatus.REJECTED,
         validation_errors=[{"code": "bad", "path": "skills", "type": "invalid"}],
     )
@@ -1103,8 +1225,11 @@ def test_accepted_cache_is_unique_but_rejected_rows_are_repeatable(
 @pytest.mark.postgresql
 def test_failed_transaction_leaves_no_half_result(session: Session, job: Job) -> None:
     persist_extraction_result(
-        session, key=_key(job), output_data=_payload(),
-        status=ExtractionValidationStatus.ACCEPTED, validation_errors=None,
+        session,
+        key=_key(job),
+        output_data=_payload(),
+        status=ExtractionValidationStatus.ACCEPTED,
+        validation_errors=None,
     )
     session.rollback()
     assert session.scalar(select(ExtractionResult)) is None
@@ -1116,13 +1241,19 @@ def test_second_concurrent_accepted_writer_reads_winner(
 ) -> None:
     key = _key(job)
     first, _ = persist_extraction_result(
-        first_session, key=key, output_data=_payload(),
-        status=ExtractionValidationStatus.ACCEPTED, validation_errors=None,
+        first_session,
+        key=key,
+        output_data=_payload(),
+        status=ExtractionValidationStatus.ACCEPTED,
+        validation_errors=None,
     )
     first_session.commit()
     second, hit = persist_extraction_result(
-        second_session, key=key, output_data=_payload(),
-        status=ExtractionValidationStatus.ACCEPTED, validation_errors=None,
+        second_session,
+        key=key,
+        output_data=_payload(),
+        status=ExtractionValidationStatus.ACCEPTED,
+        validation_errors=None,
     )
     assert second.id == first.id
     assert hit is True
@@ -1148,34 +1279,56 @@ Define the fixtures in this integration file with this concrete seed helper, the
 def _seed_job(session: Session) -> Job:
     now = datetime.now(UTC)
     source = Source(
-        name="Extraction Test Source", base_url="https://careers.example.test/jobs",
-        adapter_key="extraction_test", approval_status=SourceApprovalStatus.APPROVED,
+        name="Extraction Test Source",
+        base_url="https://careers.example.test/jobs",
+        adapter_key="extraction_test",
+        approval_status=SourceApprovalStatus.APPROVED,
         rate_limit_policy={"requests_per_second": 1, "concurrency": 1},
-        allowed_hosts=["careers.example.test"], terms_reviewed_at=now, robots_reviewed_at=now,
+        allowed_hosts=["careers.example.test"],
+        terms_reviewed_at=now,
+        robots_reviewed_at=now,
     )
     session.add(source)
     session.flush()
     run = CrawlRun(
-        source_id=source.id, trigger_type=CrawlTriggerType.MANUAL,
-        status=CrawlRunStatus.SUCCEEDED, coverage_status=CoverageStatus.COMPLETE,
-        started_at=now, finished_at=now, pages_found=1, items_found=1,
-        adapter_version="fixture-v1", config_version="source-v1",
+        source_id=source.id,
+        trigger_type=CrawlTriggerType.MANUAL,
+        status=CrawlRunStatus.SUCCEEDED,
+        coverage_status=CoverageStatus.COMPLETE,
+        started_at=now,
+        finished_at=now,
+        pages_found=1,
+        items_found=1,
+        adapter_version="fixture-v1",
+        config_version="source-v1",
     )
     session.add(run)
     session.flush()
     snapshot = RawJobSnapshot(
-        crawl_run_id=run.id, source_id=source.id,
-        source_url="https://careers.example.test/jobs/1", external_id="1",
-        fetched_at=now, http_status=200, content_type="text/html",
-        raw_content_hash="b" * 64, raw_content="fixture", parse_status=ParseStatus.PARSED,
+        crawl_run_id=run.id,
+        source_id=source.id,
+        source_url="https://careers.example.test/jobs/1",
+        external_id="1",
+        fetched_at=now,
+        http_status=200,
+        content_type="text/html",
+        raw_content_hash="b" * 64,
+        raw_content="fixture",
+        parse_status=ParseStatus.PARSED,
     )
     session.add(snapshot)
     session.flush()
     job = Job(
-        source_id=source.id, external_id="1",
-        canonical_url="https://careers.example.test/jobs/1", title="Backend Engineer",
-        company_name="Example", description_text="Join the team.", levels=["senior"],
-        first_seen_at=now, last_seen_at=now, current_snapshot_id=snapshot.id,
+        source_id=source.id,
+        external_id="1",
+        canonical_url="https://careers.example.test/jobs/1",
+        title="Backend Engineer",
+        company_name="Example",
+        description_text="Join the team.",
+        levels=["senior"],
+        first_seen_at=now,
+        last_seen_at=now,
+        current_snapshot_id=snapshot.id,
         job_content_hash="a" * 64,
     )
     session.add(job)

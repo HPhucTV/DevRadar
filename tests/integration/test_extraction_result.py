@@ -176,17 +176,22 @@ def test_extraction_result_table_and_constraints_on_fresh_postgresql(
     command.check(alembic_config)
 
     engine = create_engine(fresh_postgresql_url)
-    inspector = inspect(engine)
-    assert "extraction_results" in inspector.get_table_names()
-    check_names = {check["name"] for check in inspector.get_check_constraints("extraction_results")}
-    assert {
-        "ck_extraction_results_input_hash",
-        "ck_extraction_results_status",
-        "ck_extraction_results_confidence",
-        "ck_extraction_results_non_negative_metrics",
-    } <= check_names
-    indexes = {index["name"] for index in inspector.get_indexes("extraction_results")}
-    assert "uq_extraction_results_accepted_cache" in indexes
+    try:
+        inspector = inspect(engine)
+        assert "extraction_results" in inspector.get_table_names()
+        check_names = {
+            check["name"] for check in inspector.get_check_constraints("extraction_results")
+        }
+        assert {
+            "ck_extraction_results_input_hash",
+            "ck_extraction_results_status",
+            "ck_extraction_results_confidence",
+            "ck_extraction_results_non_negative_metrics",
+        } <= check_names
+        indexes = {index["name"] for index in inspector.get_indexes("extraction_results")}
+        assert "uq_extraction_results_accepted_cache" in indexes
+    finally:
+        engine.dispose()
 
 
 @pytest.mark.postgresql
@@ -362,9 +367,7 @@ def test_duplicate_accepted_insert_re_reads_winner(
     real_lookup = extraction_module.load_accepted_cache
     lookup_calls = 0
 
-    def simulated_race(
-        session: Session, cache_key: ExtractionCacheKey
-    ) -> ExtractionResult | None:
+    def simulated_race(session: Session, cache_key: ExtractionCacheKey) -> ExtractionResult | None:
         nonlocal lookup_calls
         lookup_calls += 1
         if lookup_calls == 1:
