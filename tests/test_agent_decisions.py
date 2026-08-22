@@ -7,10 +7,12 @@ from pydantic import ValidationError
 
 from devradar.agents.decisions import (
     AnalystClaimCode,
+    AnalystDecisionData,
     DecisionEnvelope,
     DecisionRef,
     DecisionRefKind,
     PlannerDecision,
+    PlannerDecisionData,
     Responsibility,
 )
 
@@ -75,6 +77,7 @@ def test_planner_decision_is_typed_and_versioned() -> None:
     assert envelope.responsibility is Responsibility.PLANNER
     assert envelope.decision is PlannerDecision.DEFER
     assert envelope.schema_version == "agent-decision-v1"
+    assert isinstance(envelope.decision_data, PlannerDecisionData)
     assert envelope.decision_data.suggested_delay_seconds == 300
 
 
@@ -87,12 +90,13 @@ def test_all_responsibilities_have_frozen_typed_envelopes(
     envelope = DecisionEnvelope.model_validate(payload_factory())  # type: ignore[operator]
 
     with pytest.raises(ValidationError):
-        envelope.decision = envelope.decision  # type: ignore[misc]
+        envelope.decision = envelope.decision
 
 
 def test_analyst_payload_uses_typed_claim_code() -> None:
     envelope = DecisionEnvelope.model_validate(_analyst_payload())
 
+    assert isinstance(envelope.decision_data, AnalystDecisionData)
     assert envelope.decision_data.claim_code is AnalystClaimCode.SKILL_FREQUENCY
 
 

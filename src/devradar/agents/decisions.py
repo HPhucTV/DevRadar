@@ -177,12 +177,12 @@ class DecisionEnvelope(AgentModel):
 
         if self.responsibility is Responsibility.PLANNER:
             try:
-                decision = PlannerDecision(self.decision.value)
-                reason_code = PlannerReasonCode(self.reason_code.value)
+                planner_decision = PlannerDecision(self.decision.value)
+                planner_reason_code = PlannerReasonCode(self.reason_code.value)
             except ValueError:
                 raise ValueError("planner decision and reason code are required") from None
-            object.__setattr__(self, "decision", decision)
-            object.__setattr__(self, "reason_code", reason_code)
+            object.__setattr__(self, "decision", planner_decision)
+            object.__setattr__(self, "reason_code", planner_reason_code)
             if not isinstance(self.decision, PlannerDecision):
                 raise ValueError("planner decision enum is required")
             if not isinstance(self.reason_code, PlannerReasonCode):
@@ -196,12 +196,12 @@ class DecisionEnvelope(AgentModel):
                 raise ValueError("defer requires a bounded suggested delay")
         elif self.responsibility is Responsibility.VALIDATOR:
             try:
-                decision = ValidatorDecision(self.decision.value)
-                reason_code = ValidatorReasonCode(self.reason_code.value)
+                validator_decision = ValidatorDecision(self.decision.value)
+                validator_reason_code = ValidatorReasonCode(self.reason_code.value)
             except ValueError:
                 raise ValueError("validator decision and reason code are required") from None
-            object.__setattr__(self, "decision", decision)
-            object.__setattr__(self, "reason_code", reason_code)
+            object.__setattr__(self, "decision", validator_decision)
+            object.__setattr__(self, "reason_code", validator_reason_code)
             if not isinstance(self.decision, ValidatorDecision):
                 raise ValueError("validator decision enum is required")
             if not isinstance(self.reason_code, ValidatorReasonCode):
@@ -220,12 +220,12 @@ class DecisionEnvelope(AgentModel):
                 raise ValueError("retry strategy is only valid for retry_with_strategy")
         else:
             try:
-                decision = AnalystDecision(self.decision.value)
-                reason_code = AnalystReasonCode(self.reason_code.value)
+                analyst_decision = AnalystDecision(self.decision.value)
+                analyst_reason_code = AnalystReasonCode(self.reason_code.value)
             except ValueError:
                 raise ValueError("analyst decision and reason code are required") from None
-            object.__setattr__(self, "decision", decision)
-            object.__setattr__(self, "reason_code", reason_code)
+            object.__setattr__(self, "decision", analyst_decision)
+            object.__setattr__(self, "reason_code", analyst_reason_code)
             if not isinstance(self.decision, AnalystDecision):
                 raise ValueError("analyst decision enum is required")
             if not isinstance(self.reason_code, AnalystReasonCode):
