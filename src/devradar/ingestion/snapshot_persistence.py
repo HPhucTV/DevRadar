@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import codecs
 import re
+from urllib.parse import urlsplit, urlunsplit
 
 from sqlalchemy.orm import Session
 
@@ -60,6 +61,37 @@ def decode_text_payload(result: FetchResult) -> str:
     return decoded
 
 
+def _validate_provenance_url(url: str, source_config: SourceConfig) -> str:
+    """Validate a canonical listing URL without widening the fetch boundary."""
+
+    try:
+        parsed = urlsplit(url)
+        port = parsed.port
+    except ValueError as error:
+        raise SnapshotPersistenceError(
+            "provenance_url_invalid",
+            "Listing provenance URL is invalid.",
+        ) from error
+    host = parsed.hostname.lower() if parsed.hostname else None
+    allowed_hosts = frozenset(
+        (*source_config.fetch_policy.allowed_hosts, *source_config.reference_hosts)
+    )
+    if (
+        parsed.scheme != "https"
+        or host not in allowed_hosts
+        or parsed.username
+        or parsed.password
+        or port not in (None, 443)
+        or parsed.fragment
+        or not parsed.path
+    ):
+        raise SnapshotPersistenceError(
+            "provenance_url_outside_policy",
+            "Listing provenance URL is outside the approved source boundary.",
+        )
+    return urlunsplit(("https", host, parsed.path, parsed.query, ""))
+
+
 def persist_raw_snapshot(
     session: Session,
     *,
@@ -67,6 +99,7 @@ def persist_raw_snapshot(
     source_config: SourceConfig,
     listing_ref: ListingRef,
     fetch_result: FetchResult,
+    provenance_url: str | None = None,
 ) -> RawJobSnapshot:
     if source_config.approval_status is not SourceApprovalStatus.APPROVED:
         raise SnapshotPersistenceError(
@@ -105,7 +138,12 @@ def persist_raw_snapshot(
             "fetch_result_outside_policy",
             "Fetch result URL is outside the approved source boundary.",
         ) from error
-    if len(final_url) > 2048 or len(listing_ref.external_id) > 500:
+    source_url = (
+        _validate_provenance_url(provenance_url, source_config)
+        if provenance_url is not None
+        else final_url
+    )
+    if len(source_url) > 2048 or len(listing_ref.external_id) > 500:
         raise SnapshotPersistenceError(
             "snapshot_identity_too_long",
             "Snapshot URL or external identity exceeds the persistence limit.",
@@ -125,7 +163,7 @@ def persist_raw_snapshot(
     snapshot = RawJobSnapshot(
         crawl_run_id=crawl_run.id,
         source_id=crawl_run.source_id,
-        source_url=final_url,
+        source_url=source_url,
         external_id=listing_ref.external_id,
         fetched_at=fetch_result.fetched_at,
         http_status=fetch_result.http_status,

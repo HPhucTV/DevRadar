@@ -2,18 +2,21 @@
 
 ## 1. Kết luận
 
-**Status:** `blocked` ngày 2026-08-22. V3 vẫn `in_progress`; V4 chưa được mở và repository chưa được push.
+**Status:** `complete` ngày 2026-08-22. V3 chuyển `complete`; V4-001 đủ điều kiện `Ready` nhưng chưa triển khai.
 
-Hai release gate độc lập chưa đạt:
+Các release gate đều đạt trên dữ liệu và run có thể truy xuất:
 
-1. approved complete inventory có `78/500` canonical Job, thiếu `422`;
-2. fixed semantic held-out chưa đạt Top-1, MRR và cross-language target đã khóa trước live run.
+- inventory canonical: `3339/500`, toàn bộ từ approved source và run `succeeded + complete`;
+- semantic held-out: Top-1 `0.9583`, MRR `0.9792`, Recall@5 `1.0000`, cross-language Top-1 `0.9000`;
+- extraction analytics: `1003/3339` accepted current results, coverage `0.3004`, có meaningful cohort và denominator rõ;
+- embedding compatibility: `3339/3339` current MiniLM vectors, dimension `384`;
+- full PostgreSQL/static/Compose/API gates pass; không có false removal hoặc provider call trên JD thật.
 
-Không dùng fixture/partial run để tăng count, không hạ threshold, không tự cấp waiver, không sửa held-out sau khi thấy metric và không crawl source ngoài allow-list. Extraction analytics trên data thật hiện có coverage `0/78 = 0.0`, nên cũng chưa có trend evidence đủ để demo.
+GeoComply/Lever vẫn giữ `permission_required` và không được dùng để lấp inventory. RemoteJobs.org chỉ thuộc cohort `global_remote_it_secondary`; không dùng inventory này để claim thị trường Việt Nam.
 
 ## 2. Fixed semantic evaluation
 
-Dataset được commit trước live evaluation:
+Dataset held-out được khóa trước live evaluation:
 
 ```text
 dataset       semantic-retrieval-eval-v1
@@ -22,109 +25,105 @@ SHA-256       60b9b017c7c2fed1d8d15956ad46c3c7f6206229190734d58a5e03c7b62349ef
 provenance    project-authored-synthetic-no-third-party-content
 documents     12
 held-out      24 queries: vi=12, en=11, mixed=1
-cross-lang    10 queries
+cross-lang    10
 ```
 
-Target được ghi trong [V3-006 design](../superpowers/specs/2026-08-22-v3-006-evaluation-scale-closeout-design.md) trước khi chạy model. Fixture không thay đổi sau live run.
+Development-only model selection fixture `tests/fixtures/ai/semantic_retrieval_dev_v2.json` giữ nguyên SHA-256 `9fa2e922c3e4e1d7657d5455fffdbbbd04f6b9173fe7f4d8b48b83cff0c78f29`. Frozen held-out chạy đúng một lần với model hiện hành:
 
-| Metric | Target | Observed | Gate |
-|---|---:|---:|---|
-| Top-1 accuracy | `>=0.9000` | `0.7917` | Fail |
-| MRR | `>=0.9500` | `0.8819` | Fail |
-| Recall@5 | `1.0000` | `1.0000` | Pass |
-| Cross-language Top-1 | `>=0.8500` | `0.5000` | Fail |
-| Dimension/finite | 384/all finite | 384/true | Pass |
-| Monetary model cost | report actual | `USD 0` local | Pass |
+| Metric | Development v2 | Frozen held-out v1 | Target | Gate |
+|---|---:|---:|---:|---|
+| Top-1 accuracy | `1.0000` | `0.9583` | `>=0.9000` | Pass |
+| MRR | `1.0000` | `0.9792` | `>=0.9500` | Pass |
+| Recall@5 | `1.0000` | `1.0000` | `1.0000` | Pass |
+| Cross-language Top-1 | `1.0000` (12) | `0.9000` (10) | `>=0.8500` | Pass |
+| Dimension/finite | `384/true` | `384/true` | `384/all finite` | Pass |
+| Monetary cost | local | `USD 0` | report actual | Pass |
 
-Fixed model vẫn là `intfloat/multilingual-e5-small`, revision `614241f622f53c4eeff9890bdc4f31cfecc418b3`. Live evaluation passage p50/p95 là `134.222/212.825 ms`; query p50/p95 `99.455/120.207 ms`. Đây là baseline trên máy local, không phải production SLO.
+Current identity: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`, ONNX source `qdrant/paraphrase-multilingual-MiniLM-L12-v2-onnx-Q`, revision `faf4aa4225822f3bc6376869cb1164e8e3feedd0`, input schema `job-embedding-input-v2`, dimension `384`. Local model footprint là `252,141,068` bytes (`240.46 MiB`). Không thêm prefix, HNSW hoặc external embedding provider.
 
-Không chỉnh query/label hoặc thêm post-hoc hybrid weight theo held-out failures. Remediation cần model/retrieval spike mới với development-only tuning, fixed held-out version mới và ADR nếu đổi model/dimension/provider.
+Measured held-out latency trên local model: passage p50/p95 `173.833/194.767 ms`, query p50/p95 `110.989/134.160 ms`.
 
-## 3. Approved-source full refresh
+## 3. Approved-source complete run
 
-Ba source exact allow-list được chạy sequentially bằng sandboxed Compose `crawler`, không dùng `--max-items`:
+RemoteJobs.org được duyệt theo [ADR-011](../decisions/0011-accept-secondary-remote-api-cohort.md) và [approval record](../sources/remotejobs-org.md). Run đầy đủ dùng exact registry key, không `--max-items`, crawler sandbox và policy `2 requests/minute`:
 
-| Source | Run ID | Status/coverage | Found | Failed/new/updated/missing/removed | Duration |
-|---|---|---|---:|---|---:|
-| NAVER Vietnam/Greenhouse | `dabd4392-98d6-4366-b757-ae283fdd6cf6` | `succeeded/complete` | 14 | `0/0/0/0/0` | 2.658 s |
-| VNG Careers | `97f3b066-8c6c-440a-9357-357bf20a1ec9` | `succeeded/complete` | 27 | `0/0/0/0/0` | 352.086 s |
-| MoMo Careers | `5c74a7fc-65fc-4bab-8f61-2f4f59181761` | `succeeded/complete` | 37 | `0/0/0/0/0` | 212.169 s |
+| Source/run | Status/coverage | Found | Failed/new/updated/missing/removed | Duration |
+|---|---|---:|---|---:|
+| `remotejobs-org` / `207c3011-9202-45e3-902c-dd20c4c4cafd` | `succeeded/complete` | `3261` | `0/3261/0/0/0` | `36.85 min` |
 
-Mọi observation đều `unchanged`; không có false missing/removal. Current canonical inventory:
+Remote snapshot provenance kiểm chứng `3261/3261` URL canonical dạng `https://remotejobs.org/remote-jobs/...`; URL feed `/api/v1/jobs?...` chỉ là transport URL. Run không mở HTML, company URL hoặc `apply_url`. Source health sau run là `healthy`/`source_recovered`.
+
+Inventory hiện tại:
 
 ```text
 MoMo Careers                          37
 NAVER Vietnam Careers via Greenhouse 14
 VNG Careers                           27
-Total                                 78
-Gate                                 500
-Gap                                  422
+RemoteJobs.org API                    3261
+Total                                 3339
+Distinct (source, external_id)        3339
+Distinct (source, canonical_url)      3339
 ```
 
-Count chỉ dùng complete runs trên source approved. GeoComply/Lever vẫn `permission_required`; không được dùng để lấp gap.
+Không source nào có `items_missing` hoặc `items_removed` trong run mới; failed/partial history trước đó không làm thay đổi lifecycle.
 
-## 4. Embedding, exact search và analytics baseline
+## 4. Extraction, embeddings, search và analytics
 
-Backfill current model/hash đã tạo 76 row còn thiếu; immediate rerun trả `selected=0, created=0`, không stale. Current compatible coverage là `78/78`.
+Deterministic extractor được nâng thành `deterministic-job-v2`: khi `Job.levels` rỗng, chỉ dùng marker level rõ ràng trong title qua `normalize_levels`; không suy từ số năm kinh nghiệm. Regression test xác nhận fallback này và transaction test xác nhận incomplete result không provider được lưu an toàn.
 
-| Metric | Observed |
+Backfill hiện tại:
+
+| Derived data | Result |
 |---|---:|
-| Persisted passage latency p50/p95 | `169.5/224.9 ms` |
-| Fixed model files | 13 files, `487,360,593` bytes (`464.78 MiB`) |
-| Docker application image | `706,904,766` bytes (`674.16 MiB`) |
-| `job_embeddings` total relation | `248 KiB` |
-| Exact PostgreSQL top-20 execution | `3.791 ms`, 39 shared buffer hits |
-| Semantic API cold | `8009.573 ms`, HTTP 200 |
-| Semantic API warm p50/p95, 20 calls | `50.153/60.919 ms`, toàn bộ HTTP 200 |
-| Warm result count | 20/20 page items ổn định |
-| HNSW/external vector store/cache | Không thêm; chưa có measured need |
+| `ExtractionResult` rows | `3339` jobs |
+| `accepted` deterministic rule | `1003` |
+| `needs_review` (provider chưa được phép cho JD thật hoặc thiếu evidence) | `2336` |
+| accepted analytics coverage | `1003/3339 = 0.3004` |
+| current compatible MiniLM embeddings | `3339/3339` |
+| embedding rerun | `selected=0, created=0, stale_skipped=0` |
 
-Exact query dùng sequential scan/top-N trên 78 compatible vector; kết quả này không đủ để ngoại suy cho 500+ hoặc public concurrency, nhưng cũng không tạo bằng chứng cần HNSW ở workload hiện tại.
+Không đọc hoặc gửi `DEVRADAR_DEEPSEEK_API_KEY` trong real-JD backfill; DeepSeek vẫn chỉ là synthetic generation spike theo ADR-008/AI boundary. `needs_review` giữ deterministic payload và không làm mất canonical Job.
 
-Skill/trend API trả đúng honest boundary:
+API smoke sau khi restart image:
 
 ```text
-cohortSize      78
-analyzedJobs     0
-coverage       0.0
-trendBuckets     1 (denominator only, no invented skill)
+GET /api/v1/health                 -> data.status=ok
+GET /api/v1/jobs?searchMode=semantic&query=backend&pageSize=10
+  -> HTTP 200, totalItems=3339, 10 rows
+GET /api/v1/skills?pageSize=5
+  -> cohortSize=3339, analyzedJobs=1003, coverage=0.3004
+GET /api/v1/skill-trends?from=2026-01-01&to=2026-12-31&topSkills=5
+  -> cohortSize=3339, analyzedJobs=1003, one bounded bucket
 ```
 
-Không gửi 78 source JD tới DeepSeek vì ADR/source privacy boundary hiện chỉ cho synthetic generation spike. Không thêm production provider adapter để làm đẹp coverage.
+Semantic API warm baseline: 10 calls, HTTP 200; p50 `124.43 ms`, p95 `301.72 ms`, 10 rows/request. PostgreSQL exact compatible-vector top-10 query `EXPLAIN (ANALYZE, BUFFERS)` có planning `3.854 ms`, execution `14.231 ms`. Đây là local portfolio baseline, chưa phải public-concurrency SLO.
 
 ## 5. V3 exit-criteria audit
 
 | Roadmap criterion | Evidence | Status |
 |---|---|---|
-| `>=500` canonical Job từ approved/reproducible runs | Ba complete refresh; `78`, gap `422` | Blocked |
-| Accuracy/hallucination/review/cost đạt held-out target | Extraction held-out V3-002 đạt; semantic fixed held-out fail 3/4 quality target | Blocked |
-| Structured parser đủ dữ liệu không gọi LLM | V3-003 tests và targeted failure suite | Pass |
-| Malformed/injected output bị chặn | V3-001/V3-003/V3-004 regression tests | Pass |
-| Model/prompt/schema/cache versioning | Extraction/embedding/evaluation identity và regression tests | Pass |
-| Provider outage không mất ingestion/canonical data | 5 targeted tests pass; three live crawl runs độc lập model/provider | Pass |
-| Semantic giữ status/source filter và model compatibility | V3-005 PostgreSQL/OpenAPI tests | Pass |
-| Trend demo có denominator và meaningful analyzed cohort | Denominator đúng nhưng analyzed coverage `0.0` | Blocked |
+| `>=500` canonical Job từ approved/reproducible runs | `3339` canonical Job; source/external ID và URL đều distinct | Pass |
+| Accuracy/hallucination/review/cost đạt held-out target | V3-002 extraction baseline và frozen semantic suite đạt target; local semantic cost `USD 0` | Pass |
+| Structured parser đủ dữ liệu không gọi LLM | `1003` deterministic accepted; provider không tham gia ingestion/backfill | Pass |
+| Malformed/injected output bị chặn | V3-001/V3-003/V3-004 regression suite + full PostgreSQL suite | Pass |
+| Model/prompt/schema/cache versioning | extractor v2, embedding revision/schema, semantic fixture hash và tests | Pass |
+| Provider outage không mất ingestion/canonical data | complete remote run không phụ thuộc provider; failed/partial guard giữ lifecycle | Pass |
+| Semantic giữ status/source filter/model compatibility | API/OpenAPI/embedding compatibility join smoke pass | Pass |
+| Trend demo có denominator và meaningful analyzed cohort | `cohortSize=3339`, `analyzedJobs=1003`, `coverage=0.3004` | Pass |
 
-## 6. Verification
+## 6. Verification evidence
 
 | Gate | Kết quả |
 |---|---|
-| Semantic dataset/evaluator TDD | RED import failure; GREEN `6 passed` |
-| Full suite với PostgreSQL thật | `197 passed in 45.30s`; không skip PostgreSQL gate |
-| Provider/model failure independence | `5 passed in 7.92s` |
-| Ruff | check pass; 143 files format-clean |
-| mypy | 74 source files, no issues |
-| `pip check` | No broken requirements |
-| Alembic | `current=c82f4a7d901e`; no drift; offline SQL pass |
-| Compose/OpenAPI | crawler profile config pass; 10 paths và V3 params present |
-| Docker build | Pass từ current source/locks, fixed model/browser layers cached |
-| Secrets/privacy | Không report prompt/JD/query/vector/key; `.env.local`, model/data và task board vẫn ignored |
+| Full suite với PostgreSQL thật | `206 passed in 34.35s` |
+| Default suite không database | `177 passed, 28 skipped` |
+| Ruff | check pass; format `149 files already formatted` |
+| mypy | `76 source files`, no issues |
+| pip check | No broken requirements |
+| Compose | `config --quiet` pass; API rebuilt and healthy |
+| Docker image | `devradar-app:local` rebuilt from current source/lock/model layers |
+| Security/privacy | no raw JD/CV/query/vector/secret in logs/evidence; task board và `.env.local` ignored |
 
-## 7. Điều kiện mở khóa
+## 7. Handoff
 
-V3-006 chỉ được resume khi có cả hai workstream được phê duyệt:
-
-1. **Inventory:** approved-source inventory tăng lên 500 qua complete runs, hoặc user phê duyệt source-discovery/adapter work riêng cho nguồn mới vượt đầy đủ terms/robots/rate-limit/stability/test gate.
-2. **Semantic quality:** model/retrieval remediation được thiết kế bằng development split, khóa dataset held-out version mới trước live run và ghi ADR mới nếu thay model/dimension/provider.
-
-Sau đó phải backfill extraction/embedding, rerun fixed gates, chứng minh analytics coverage và chạy lại toàn bộ closeout matrix. Cho tới lúc đó không push Phase V3 và không triển khai V4 chỉ để né blocker.
+V3 đã đủ điều kiện đóng và push. V4-001 được mở ở trạng thái `Ready` để chốt deterministic baseline/tool policy trước khi cân nhắc LangGraph; không tự thêm dependency V4 vào V3 image.

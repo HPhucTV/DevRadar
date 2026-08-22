@@ -7,12 +7,12 @@
 | Thuộc tính | Giá trị |
 |---|---|
 | Trạng thái | `implementation` |
-| Phase hiện tại | `v3` — AI extraction, taxonomy và semantic search (`in_progress`) |
+| Phase hiện tại | `v4` — Agentic decision layer (`planned`); V3 đã `complete` |
 | Mô hình sử dụng ban đầu | Portfolio cá nhân, single-operator |
 | Thị trường ưu tiên | Job IT Việt Nam, nội dung Việt/Anh, lương VND |
 | Code chạy được | Có — V1/V2 data pipeline, PostgreSQL one-shot worker, REST contract và V3 extraction/taxonomy/local semantic capabilities |
 
-V1 đã hoàn tất safe fetch/snapshot pipeline, ba concrete source adapters, PostgreSQL persistence và REST API; 78 canonical jobs hiện có identity/provenance 1:1 và replay không tạo update giả. V2 đã hoàn tất direct schedule/retry, JobChange lifecycle, source health/quarantine, operator enqueue và one-shot worker. V3-001–V3-004 đã khóa evaluation, DeepSeek synthetic spike, `ExtractionResult` cache và taxonomy/classification/summary deterministic. ADR-009 chấp nhận local `intfloat/multilingual-e5-small` 384d cùng exact pgvector; V3-005 thêm model-version-safe embeddings, semantic job search và skill frequency/trend API có denominator. Mục tiêu `>=500` vẫn là gate trước khi đóng V3 hoặc tuyên bố analytics có quy mô.
+V1 đã hoàn tất safe fetch/snapshot pipeline, ba concrete source adapters, PostgreSQL persistence và REST API. V2 đã hoàn tất direct schedule/retry, JobChange lifecycle, source health/quarantine, operator enqueue và one-shot worker. V3 đã đóng với `3339` canonical jobs từ approved complete runs, semantic held-out gate đạt, `1003/3339` accepted deterministic extraction results, `3339/3339` current embeddings và analytics denominator/coverage có evidence. ADR-010 chấp nhận local `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` 384d cùng exact pgvector; RemoteJobs.org là cohort remote thứ cấp, không đại diện cho claim thị trường Việt Nam. V4-001 là task Ready; LangGraph và dependency V4 chưa được thêm.
 
 ## Mục tiêu
 
@@ -52,7 +52,7 @@ flowchart LR
     G --> X
 ```
 
-Các thành phần ghi kèm phiên bản chỉ được triển khai khi task/entry gate tương ứng đạt. ADR-009 chỉ chấp nhận local multilingual E5 + exact pgvector cho V3 private deployment; external embedding provider, HNSW và công nghệ phase sau vẫn chưa được mở.
+Các thành phần ghi kèm phiên bản chỉ được triển khai khi task/entry gate tương ứng đạt. ADR-010 hiện hành chấp nhận local multilingual MiniLM + exact pgvector cho V3 private deployment; external embedding provider, HNSW và công nghệ phase sau vẫn chưa được mở.
 
 ## Roadmap tóm tắt
 
@@ -76,7 +76,7 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [API](docs/API.md): REST contract dưới `/api/v1` và phase availability.
 - [AI](docs/AI.md): deterministic-first, evaluation, agent boundary, chi phí và quyền riêng tư.
 - [Operations](docs/OPERATIONS.md): test, security, observability, retention, CI/CD và deployment gates.
-- [Source discovery](docs/sources/SHORTLIST.md): evidence và approval outcome; VNG, NAVER Vietnam/Greenhouse và MoMo đã được duyệt cho bounded local non-commercial scope, GeoComply/Lever vẫn `permission_required`.
+- [Source discovery](docs/sources/SHORTLIST.md): evidence và approval outcome; VNG, NAVER Vietnam/Greenhouse và MoMo đã được duyệt cho bounded Vietnam scope, RemoteJobs.org được duyệt riêng cho V3 remote cohort có attribution, GeoComply/Lever vẫn `permission_required`.
 - [Pre-V1 local evidence](docs/evidence/PRE-007-local-prerequisites.md): Docker/PostgreSQL capability và constraint đã xác minh.
 - [V1 scaffold evidence](docs/evidence/V1-001-scaffold.md): clean install, test/static gates, live API và Docker Compose smoke.
 - [V1 PostgreSQL evidence](docs/evidence/V1-002-postgresql-schema.md): schema invariants, fresh migration, integration test và container migration smoke.
@@ -103,6 +103,7 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [V3 extraction/cache evidence](docs/evidence/V3-003-extraction-result-cache.md): accepted-only cache, deterministic-first orchestration và PostgreSQL transaction semantics.
 - [V3 taxonomy evidence](docs/evidence/V3-004-taxonomy-classification-summary.md): versioned skill category, role classification và bounded evidence-rendered summary.
 - [V3 embeddings/search/trends evidence](docs/evidence/V3-005-embeddings-search-trends.md): fixed local model integrity, pgvector persistence, semantic filters và analytics denominator/coverage.
+- [V3 closeout evidence](docs/evidence/V3-006-v3-closeout.md): approved inventory `3339`, frozen semantic held-out, extraction/backfill coverage, API/DB/static gates và phase handoff.
 - [DeepSeek V3 spike module](src/devradar/intelligence/deepseek_spike.py): synthetic-only, fail-closed JSON extraction spike; không phải production provider adapter.
 - [Roadmap](docs/ROADMAP.md): kế hoạch V1–V6 và definition of done.
 - [Architecture Decision Records](docs/decisions/README.md): quyết định đã chấp nhận và quyết định còn đề xuất.
@@ -172,7 +173,7 @@ try {
 
 ### V3 local embeddings
 
-Model `intfloat/multilingual-e5-small` chỉ được tải từ revision đã khóa; inference không tự download và không gửi JD/query ra external provider. Lần đầu local có thể tải khoảng 465 MiB. Sau khi PostgreSQL Compose đang chạy và migration đã lên `head`, tải model rồi backfill một batch bounded:
+Model `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` chỉ được tải từ artifact ONNX/revision đã khóa; inference không tự download và không gửi JD/query ra external provider. Lần đầu local có thể tải khoảng 240 MiB. Sau khi PostgreSQL Compose đang chạy và migration đã lên `head`, tải model rồi backfill một batch bounded:
 
 ```powershell
 $env:PYTHONPATH = (Join-Path (Get-Location) 'src')
@@ -187,7 +188,7 @@ try {
 }
 ```
 
-`--max-items` nhận `1..1000`; rerun cùng Job/hash/model là idempotent. Có thể đặt `DEVRADAR_EMBEDDING_MODEL_PATH` cho một thư mục local khác, nhưng model identity/revision/hash không thay đổi. Docker image đã prefetch đúng revision vào image build; semantic API trả `503` an toàn nếu artifact thiếu hoặc sai hash.
+`--max-items` nhận `1..1000`; rerun cùng Job/hash/model là idempotent. Có thể đặt `DEVRADAR_EMBEDDING_MODEL_PATH` cho một thư mục local khác, nhưng model identity/revision/hash không thay đổi. Docker image đã prefetch đúng artifact revision vào image build; semantic API trả `503` an toàn nếu artifact thiếu hoặc sai hash.
 
 PostgreSQL integration là opt-in và tạo/xóa database test tên ngẫu nhiên. Với database Compose đang chạy:
 

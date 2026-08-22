@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,9 @@ from devradar.intelligence.semantic_evaluation import (
 )
 
 DATASET_PATH = Path(__file__).parent / "fixtures" / "ai" / "semantic_retrieval_eval_v1.json"
+DEVELOPMENT_SELECTION_PATH = (
+    Path(__file__).parent / "fixtures" / "ai" / "semantic_retrieval_dev_v2.json"
+)
 
 
 def test_semantic_dataset_is_versioned_synthetic_and_held_out_complete() -> None:
@@ -30,6 +34,26 @@ def test_semantic_dataset_is_versioned_synthetic_and_held_out_complete() -> None
     assert {query.language for query in dataset.held_out_queries} == set(SemanticLanguage)
     assert sum(query.cross_language for query in dataset.held_out_queries) >= 10
     serialized = DATASET_PATH.read_text(encoding="utf-8").casefold()
+    assert "http://" not in serialized
+    assert "https://" not in serialized
+    assert "@" not in serialized
+
+
+def test_semantic_model_selection_fixture_is_frozen_and_development_only() -> None:
+    raw = DEVELOPMENT_SELECTION_PATH.read_bytes()
+    payload = json.loads(raw)
+
+    assert payload["datasetVersion"] == "semantic-retrieval-dev-v2"
+    assert payload["provenance"] == "project-authored-synthetic-no-third-party-content"
+    assert len(payload["documents"]) == 12
+    assert len(payload["queries"]) == 24
+    assert {query["split"] for query in payload["queries"]} == {"development"}
+    assert sum(query["crossLanguage"] for query in payload["queries"]) == 12
+    assert len({query["text"].casefold() for query in payload["queries"]}) == 24
+    assert sha256(raw).hexdigest() == (
+        "9fa2e922c3e4e1d7657d5455fffdbbbd04f6b9173fe7f4d8b48b83cff0c78f29"
+    )
+    serialized = raw.decode("utf-8").casefold()
     assert "http://" not in serialized
     assert "https://" not in serialized
     assert "@" not in serialized

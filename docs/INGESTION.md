@@ -2,7 +2,7 @@
 
 ## 1. Mục tiêu
 
-Ingestion tạo dataset có thể tin cậy và replay từ các nguồn job công khai đã được phê duyệt. V1 ưu tiên ba source tại Việt Nam có identity ổn định; tên source chỉ được ghi vào registry sau khi vượt gate, không được chọn ngầm trong code.
+Ingestion tạo dataset có thể tin cậy và replay từ các nguồn job công khai đã được phê duyệt. V1 ưu tiên ba source tại Việt Nam có identity ổn định; V3 có thể thêm cohort remote thứ cấp nếu được gắn nhãn theo [ADR-011](decisions/0011-accept-secondary-remote-api-cohort.md). Tên source chỉ được ghi vào registry sau khi vượt gate, không được chọn ngầm trong code.
 
 ## 2. Source approval gate
 
@@ -26,7 +26,7 @@ Review này là engineering gate, không phải tuyên bố tư vấn pháp lý.
 - xác định được list/detail boundary và điều kiện run complete;
 - có giới hạn request rate, concurrency, timeout, redirect và response size;
 - parser có fixture đại diện và fixture malformed/empty;
-- source có dữ liệu thật thuộc phạm vi job IT Việt Nam;
+- source có dữ liệu thật thuộc phạm vi job IT Việt Nam, hoặc có approval/ADR riêng cho cohort remote thứ cấp không được dùng để claim Vietnam;
 - browser chỉ cần khi HTTP/structured data không đủ;
 - dữ liệu cần thiết không phụ thuộc vào bypass geo/account/private API.
 
@@ -56,7 +56,7 @@ policy_review:
 
 Đây là contract minh họa, không phải config chạy được và domain `.test` không phải source thật.
 
-V1 implementation nằm tại [source registry](../src/devradar/ingestion/source_registry.py). Registry active chỉ có `vng-careers`, `naver-vietnam-greenhouse`, `momo-careers`; config copy đúng boundary trong từng approval record. Caller resolve bằng `source_key`, không truyền adapter key/URL. GeoComply/Lever không nằm trong active registry và giữ `candidate/permission_required`.
+V1 implementation nằm tại [source registry](../src/devradar/ingestion/source_registry.py). Registry V1 giữ `vng-careers`, `naver-vietnam-greenhouse`, `momo-careers`; V3 registry bổ sung `remotejobs-org` sau khi adapter/fixtures/registry boundary của PRE-V3-006A được kiểm chứng. Config copy đúng boundary trong từng approval record. Caller resolve bằng `source_key`, không truyền adapter key/URL. GeoComply/Lever không nằm trong active registry và giữ `candidate/permission_required`.
 
 ## 3. Crawler adapter boundary
 
@@ -76,7 +76,7 @@ parse(snapshot) -> ParsedJob | ParseFailure
 
 ### Output bắt buộc
 
-- `FetchResult`: final approved URL, HTTP metadata, fetch time, content type, bounded payload/reference và raw hash;
+- `FetchResult`: final approved URL dùng cho transport, HTTP metadata, fetch time, content type, bounded payload/reference và raw hash;
 - `ParsedJob`: raw values, normalized candidates, evidence/selector, parser version và warnings;
 - `ParseFailure`: stable error code, stage và safe summary; không chứa toàn bộ HTML hoặc secret.
 
@@ -86,7 +86,7 @@ Contract code tại [ingestion contracts](../src/devradar/ingestion/contracts.py
 
 ### 3.1. Raw snapshot storage V1
 
-V1 lưu text payload đã qua fetch limit trực tiếp trong PostgreSQL `RawJobSnapshot.raw_content`, cùng HTTP metadata và `raw_content_hash`. Fetcher reject payload vượt `max_response_bytes`, content type chưa duyệt hoặc content encoding khác `identity` trước persistence; schema `Text` không thay thế byte-limit control. Persistence revalidate final URL, approval/config version và strict-decode charset, tạo snapshot ở `parse_status=pending`, rồi chỉ `flush`; commit/rollback thuộc ingestion workflow caller. Raw column được deferred khi ORM query để read path không vô tình tải payload. Object storage chỉ được xem xét lại khi có số đo size/retention cho thấy PostgreSQL không còn phù hợp.
+V1 lưu text payload đã qua fetch limit trực tiếp trong PostgreSQL `RawJobSnapshot.raw_content`, cùng HTTP metadata và `raw_content_hash`. Fetcher reject payload vượt `max_response_bytes`, content type chưa duyệt hoặc content encoding khác `identity` trước persistence; schema `Text` không thay thế byte-limit control. Persistence revalidate final URL, approval/config version và strict-decode charset, tạo snapshot ở `parse_status=pending`, rồi chỉ `flush`; commit/rollback thuộc ingestion workflow caller. `RawJobSnapshot.source_url` là canonical provenance của `ListingRef`, được kiểm tra trên `allowed_hosts ∪ reference_hosts`; với list/API adapter, URL này có thể khác `FetchResult.final_url` là endpoint feed đã trả payload. Việc cho phép reference host không mở rộng path/host được phép fetch. Raw column được deferred khi ORM query để read path không vô tình tải payload. Object storage chỉ được xem xét lại khi có số đo size/retention cho thấy PostgreSQL không còn phù hợp.
 
 Implementation và verification hiện tại: [safe HTTP fetcher](../src/devradar/ingestion/safe_http.py), [snapshot persistence](../src/devradar/ingestion/snapshot_persistence.py) và [V1-004 evidence](evidence/V1-004-safe-fetch-and-snapshot.md).
 

@@ -286,6 +286,27 @@ def test_complete_deterministic_job_never_calls_provider(
 
 
 @pytest.mark.postgresql
+def test_incomplete_extraction_without_provider_persists_needs_review(
+    extraction_session: Session, seeded_job: UUID
+) -> None:
+    job = extraction_session.get(Job, seeded_job)
+    assert job is not None
+
+    outcome = extract_job(
+        extraction_session,
+        job=job,
+        provider=None,
+        provider_metadata=None,
+    )
+
+    assert outcome.result.extractor_type == ExtractionType.LLM.value
+    assert outcome.result.validation_status == ExtractionValidationStatus.NEEDS_REVIEW.value
+    assert outcome.result.validation_errors == [
+        {"code": "provider_not_configured", "path": "provider", "type": "missing"}
+    ]
+
+
+@pytest.mark.postgresql
 def test_accepted_cache_hit_never_calls_provider(
     extraction_session: Session, seeded_job: UUID
 ) -> None:

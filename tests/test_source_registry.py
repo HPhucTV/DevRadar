@@ -16,8 +16,10 @@ from devradar.ingestion.contracts import (
 )
 from devradar.ingestion.models import SourceApprovalStatus
 from devradar.ingestion.source_registry import (
+    REMOTEJOBS_ORG,
     V1_SOURCE_CONFIGS,
     V1_SOURCE_REGISTRY,
+    V3_SOURCE_REGISTRY,
     AdapterNotRegisteredError,
     AdapterRegistry,
     FetchPolicy,
@@ -66,6 +68,27 @@ def test_v1_registry_contains_only_three_approved_sources() -> None:
         config.identity_strategy is IdentityStrategy.EXTERNAL_ID for config in V1_SOURCE_CONFIGS
     )
     assert "geocomply-lever" not in V1_SOURCE_REGISTRY.keys()
+
+
+def test_v3_remote_source_is_separate_labeled_cohort() -> None:
+    assert V3_SOURCE_REGISTRY.keys() == (
+        "momo-careers",
+        "naver-vietnam-greenhouse",
+        "remotejobs-org",
+        "vng-careers",
+    )
+    assert REMOTEJOBS_ORG.cohort == "global_remote_it_secondary"
+    assert REMOTEJOBS_ORG.countries == ()
+    assert REMOTEJOBS_ORG.fetch_policy.allowed_hosts == ("remotejobs.org",)
+    assert REMOTEJOBS_ORG.fetch_policy.allowed_path_prefixes == ("/api/v1/jobs",)
+    assert REMOTEJOBS_ORG.fetch_policy.requests_per_minute == 2
+    assert REMOTEJOBS_ORG.adapter_settings["categories"] == (
+        "programming",
+        "data-science",
+        "devops",
+        "product-management",
+        "design",
+    )
 
 
 @pytest.mark.parametrize("source_key", V1_SOURCE_REGISTRY.keys())

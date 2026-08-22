@@ -5,10 +5,10 @@
 | Thuộc tính | Giá trị |
 |---|---|
 | Project status | `implementation` |
-| Active phase | `v3` (`in_progress`) |
+| Active phase | `v4` (`planned`) |
 | Code scaffold | Có — FastAPI health + read-only domain API, PostgreSQL schema/migration, test/static gates và Compose local |
-| Source approved | `3/3` cho bounded local non-commercial scope |
-| Runtime/test evidence | V1 [complete](evidence/V1-closeout.md); V2 [complete](evidence/V2-006-v2-closeout.md); V3 có evaluation/provider/extraction/taxonomy evidence và [local embedding/search/trend gate](evidence/V3-005-embeddings-search-trends.md); V3-006 scale/closeout còn mở |
+| Source approved | `3` Vietnam V1 sources + `1` V3 secondary remote API source; mỗi source có scope riêng |
+| Runtime/test evidence | V1 [complete](evidence/V1-closeout.md); V2 [complete](evidence/V2-006-v2-closeout.md); V3 [complete](evidence/V3-006-v3-closeout.md) với inventory, semantic, extraction, embedding và API gates; V4-001 là task Ready |
 
 Task-level status có thể được theo dõi bằng `TASK_BOARD.md` cục bộ. File này bị Git ignore và không thay đổi phase gate hoặc exit criteria của roadmap.
 
@@ -144,7 +144,9 @@ Adaptive LLM planner, distributed queue, public mutation API và AI-generated in
 
 ## 5. V3 — AI extraction, taxonomy và semantic search
 
-**Status:** `in_progress`
+**Status:** `complete` — 2026-08-22.
+
+Completion evidence: [V3 closeout](evidence/V3-006-v3-closeout.md), cùng [embedding/search/trend evidence](evidence/V3-005-embeddings-search-trends.md) và [remote source approval](sources/remotejobs-org.md).
 
 ### Mục tiêu
 
@@ -173,7 +175,7 @@ Agent tự điều phối, arbitrary tools, auto-generated claim không có quer
 
 ### Exit criteria
 
-- tối thiểu 500 canonical jobs từ approved/reproducible runs, không tính fixture, trước khi phase tuyên bố semantic/trend analytics có quy mô;
+- tối thiểu 500 canonical jobs từ approved/reproducible runs, không tính fixture, có source/cohort label và không dùng remote cohort để claim thị trường Việt Nam, trước khi phase tuyên bố semantic/trend analytics có quy mô;
 - target accuracy/hallucination/review/cost được đặt từ baseline và đạt trên held-out suite;
 - structured parser đủ dữ liệu không gọi LLM;
 - malformed/injected model output bị chặn;
@@ -189,7 +191,7 @@ Agent tự điều phối, arbitrary tools, auto-generated claim không có quer
 
 ## 6. V4 — Agentic decision layer
 
-**Status:** `proposed`
+**Status:** `planned`
 
 ### Mục tiêu
 

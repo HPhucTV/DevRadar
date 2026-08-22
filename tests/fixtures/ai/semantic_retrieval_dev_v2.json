@@ -1,0 +1,105 @@
+{
+  "datasetVersion": "semantic-retrieval-dev-v2",
+  "schemaVersion": "semantic-retrieval-eval-schema-v1",
+  "provenance": "project-authored-synthetic-no-third-party-content",
+  "documents": [
+    {
+      "id": "job-backend-java",
+      "language": "vi",
+      "role": "backend-java",
+      "text": "Kỹ sư backend xây dịch vụ máy chủ và microservices bằng Java, Spring Boot, REST API và MySQL."
+    },
+    {
+      "id": "job-backend-python",
+      "language": "en",
+      "role": "backend-python",
+      "text": "Backend engineer builds high-throughput APIs with Python, FastAPI, PostgreSQL and asynchronous services."
+    },
+    {
+      "id": "job-frontend-react",
+      "language": "vi",
+      "role": "frontend-react",
+      "text": "Kỹ sư frontend phát triển giao diện web, component React, TypeScript, Next.js và design system."
+    },
+    {
+      "id": "job-data-engineer",
+      "language": "en",
+      "role": "data-engineer",
+      "text": "Data engineer designs batch and streaming ETL pipelines using Airflow, Spark, Kafka, SQL and a cloud data warehouse."
+    },
+    {
+      "id": "job-data-scientist",
+      "language": "vi",
+      "role": "data-scientist",
+      "text": "Nhà khoa học dữ liệu xây mô hình dự báo, machine learning, thí nghiệm thống kê bằng Python và scikit-learn."
+    },
+    {
+      "id": "job-mobile-flutter",
+      "language": "en",
+      "role": "mobile-flutter",
+      "text": "Mobile engineer develops cross-platform Android and iOS applications with Flutter, Dart and mobile release tooling."
+    },
+    {
+      "id": "job-devops-platform",
+      "language": "mixed",
+      "role": "devops-platform",
+      "text": "Kỹ sư DevOps vận hành hạ tầng cloud, Kubernetes, Terraform, CI CD, monitoring và incident response."
+    },
+    {
+      "id": "job-qa-automation",
+      "language": "en",
+      "role": "qa-automation",
+      "text": "QA automation engineer creates browser and API regression suites with Playwright, Selenium and continuous testing."
+    },
+    {
+      "id": "job-security-engineer",
+      "language": "mixed",
+      "role": "security-engineer",
+      "text": "Security engineer thực hiện threat modeling, application security, penetration testing, SIEM và incident investigation."
+    },
+    {
+      "id": "job-product-manager",
+      "language": "vi",
+      "role": "product-manager",
+      "text": "Quản lý sản phẩm phụ trách product discovery, ưu tiên roadmap, stakeholder, metrics và chiến lược phát hành."
+    },
+    {
+      "id": "job-product-designer",
+      "language": "en",
+      "role": "product-designer",
+      "text": "Product designer conducts user research, maps user flows and builds accessible Figma prototypes and design systems."
+    },
+    {
+      "id": "job-database-administrator",
+      "language": "mixed",
+      "role": "database-administrator",
+      "text": "Database administrator tối ưu PostgreSQL queries, backup, replication, availability và production database performance."
+    }
+  ],
+  "queries": [
+    {"id": "dev-vi-backend-python-101", "split": "development", "language": "vi", "crossLanguage": true, "text": "phát triển API Python FastAPI bất đồng bộ", "relevantDocumentIds": ["job-backend-python"]},
+    {"id": "dev-en-backend-java-102", "split": "development", "language": "en", "crossLanguage": true, "text": "Java Spring Boot microservices and REST services", "relevantDocumentIds": ["job-backend-java"]},
+    {"id": "dev-en-backend-python-103", "split": "development", "language": "en", "crossLanguage": false, "text": "high throughput Python web API backend", "relevantDocumentIds": ["job-backend-python"]},
+    {"id": "dev-vi-backend-java-104", "split": "development", "language": "vi", "crossLanguage": false, "text": "dịch vụ backend Java Spring Boot và MySQL", "relevantDocumentIds": ["job-backend-java"]},
+    {"id": "dev-en-frontend-react-105", "split": "development", "language": "en", "crossLanguage": true, "text": "React TypeScript components for a web design system", "relevantDocumentIds": ["job-frontend-react"]},
+    {"id": "dev-vi-frontend-react-106", "split": "development", "language": "vi", "crossLanguage": false, "text": "xây giao diện web React TypeScript Next.js", "relevantDocumentIds": ["job-frontend-react"]},
+    {"id": "dev-vi-data-engineer-107", "split": "development", "language": "vi", "crossLanguage": true, "text": "kỹ sư ETL streaming với Spark và Kafka", "relevantDocumentIds": ["job-data-engineer"]},
+    {"id": "dev-en-data-engineer-108", "split": "development", "language": "en", "crossLanguage": false, "text": "batch data warehouse pipelines with Airflow", "relevantDocumentIds": ["job-data-engineer"]},
+    {"id": "dev-en-data-scientist-109", "split": "development", "language": "en", "crossLanguage": true, "text": "forecasting and statistical machine learning in Python", "relevantDocumentIds": ["job-data-scientist"]},
+    {"id": "dev-vi-data-scientist-110", "split": "development", "language": "vi", "crossLanguage": false, "text": "thí nghiệm mô hình dự báo với scikit-learn", "relevantDocumentIds": ["job-data-scientist"]},
+    {"id": "dev-vi-mobile-flutter-111", "split": "development", "language": "vi", "crossLanguage": true, "text": "ứng dụng Android iOS đa nền tảng bằng Flutter", "relevantDocumentIds": ["job-mobile-flutter"]},
+    {"id": "dev-en-mobile-flutter-112", "split": "development", "language": "en", "crossLanguage": false, "text": "Dart mobile applications for Android and iPhone", "relevantDocumentIds": ["job-mobile-flutter"]},
+    {"id": "dev-en-devops-platform-113", "split": "development", "language": "en", "crossLanguage": true, "text": "Kubernetes Terraform cloud infrastructure and monitoring", "relevantDocumentIds": ["job-devops-platform"]},
+    {"id": "dev-mixed-devops-platform-114", "split": "development", "language": "mixed", "crossLanguage": false, "text": "vận hành cloud platform, CI/CD và incident response", "relevantDocumentIds": ["job-devops-platform"]},
+    {"id": "dev-vi-qa-automation-115", "split": "development", "language": "vi", "crossLanguage": true, "text": "kiểm thử hồi quy API và trình duyệt với Playwright", "relevantDocumentIds": ["job-qa-automation"]},
+    {"id": "dev-en-qa-automation-116", "split": "development", "language": "en", "crossLanguage": false, "text": "automated Selenium browser regression testing", "relevantDocumentIds": ["job-qa-automation"]},
+    {"id": "dev-en-security-117", "split": "development", "language": "en", "crossLanguage": true, "text": "application security threat modeling and SIEM investigations", "relevantDocumentIds": ["job-security-engineer"]},
+    {"id": "dev-mixed-security-118", "split": "development", "language": "mixed", "crossLanguage": false, "text": "penetration testing và điều tra incident", "relevantDocumentIds": ["job-security-engineer"]},
+    {"id": "dev-en-product-119", "split": "development", "language": "en", "crossLanguage": true, "text": "product discovery roadmap and release metrics", "relevantDocumentIds": ["job-product-manager"]},
+    {"id": "dev-vi-product-120", "split": "development", "language": "vi", "crossLanguage": false, "text": "quản lý sản phẩm và ưu tiên stakeholder", "relevantDocumentIds": ["job-product-manager"]},
+    {"id": "dev-vi-design-121", "split": "development", "language": "vi", "crossLanguage": true, "text": "nghiên cứu người dùng và prototype Figma dễ tiếp cận", "relevantDocumentIds": ["job-product-designer"]},
+    {"id": "dev-en-design-122", "split": "development", "language": "en", "crossLanguage": false, "text": "accessible user flow prototypes in Figma", "relevantDocumentIds": ["job-product-designer"]},
+    {"id": "dev-en-database-123", "split": "development", "language": "en", "crossLanguage": true, "text": "PostgreSQL query tuning, replication and backups", "relevantDocumentIds": ["job-database-administrator"]},
+    {"id": "dev-mixed-database-124", "split": "development", "language": "mixed", "crossLanguage": false, "text": "tối ưu production database availability và performance", "relevantDocumentIds": ["job-database-administrator"]}
+  ]
+}

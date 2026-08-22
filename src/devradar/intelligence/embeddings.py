@@ -21,10 +21,12 @@ from devradar.catalog.models import Job
 from devradar.intelligence.models import JobEmbedding
 
 EMBEDDING_PROVIDER = "local_fastembed"
-EMBEDDING_MODEL_ID = "intfloat/multilingual-e5-small"
-EMBEDDING_MODEL_REVISION = "614241f622f53c4eeff9890bdc4f31cfecc418b3"
+EMBEDDING_MODEL_ID = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+EMBEDDING_MODEL_SOURCE = "qdrant/paraphrase-multilingual-MiniLM-L12-v2-onnx-Q"
+EMBEDDING_FASTEMBED_MODEL_ID = "devradar/paraphrase-multilingual-MiniLM-L12-v2"
+EMBEDDING_MODEL_REVISION = "faf4aa4225822f3bc6376869cb1164e8e3feedd0"
 EMBEDDING_DIMENSION = 384
-EMBEDDING_INPUT_SCHEMA_VERSION = "job-embedding-input-v1"
+EMBEDDING_INPUT_SCHEMA_VERSION = "job-embedding-input-v2"
 MAX_EMBEDDING_TEXT_CHARS = 12_000
 MAX_QUERY_CHARS = 300
 EMBEDDING_MODEL_PATH_ENV = "DEVRADAR_EMBEDDING_MODEL_PATH"
@@ -34,14 +36,14 @@ _REQUIRED_MODEL_FILES = (
     "special_tokens_map.json",
     "tokenizer.json",
     "tokenizer_config.json",
-    "onnx/model.onnx",
+    "model_optimized.onnx",
 )
 _MODEL_FILE_SHA256 = {
-    "config.json": "69137736cab8b8903a07fe8afaafdda25aac55415a12a55d1bffa9f581abf959",
-    "special_tokens_map.json": "d05497f1da52c5e09554c0cd874037a083e1dc1b9cfd48034d1c717f1afc07a7",
-    "tokenizer.json": "0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39",
-    "tokenizer_config.json": "a1d6bc8734a6f635dc158508bef000f8e2e5a759c7d92f984b2c86e5ff53425b",
-    "onnx/model.onnx": "ca456c06b3a9505ddfd9131408916dd79290368331e7d76bb621f1cba6bc8665",
+    "config.json": "c8ec081fdad2df991bf5abbf18418fec7a5cdaa421f60ffb060a30040b8c376f",
+    "special_tokens_map.json": "8c785abebea9ae3257b61681b4e6fd8365ceafde980c21970d001e834cf10835",
+    "tokenizer.json": "fa685fc160bbdbab64058d4fc91b60e62d207e8dc60b9af5c002c5ab946ded00",
+    "tokenizer_config.json": "0666eebf692422757e1dddf3c9fb1ded73ba3dc726c5828671fc89e45bf3609f",
+    "model_optimized.onnx": "634d0f66c29dc934c8fa72b8a4fe91dd4d420a22f1d82a241058d4316e659a99",
 }
 _CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]+")
 _WHITESPACE = re.compile(r"\s+")
@@ -116,7 +118,7 @@ def get_embedding_model_path() -> Path:
     configured = os.environ.get(EMBEDDING_MODEL_PATH_ENV)
     if configured:
         return Path(configured)
-    return Path("data/models") / f"multilingual-e5-small-{EMBEDDING_MODEL_REVISION}"
+    return Path("data/models") / f"multilingual-minilm-{EMBEDDING_MODEL_REVISION}"
 
 
 def download_embedding_model(target: Path) -> Path:
@@ -127,7 +129,7 @@ def download_embedding_model(target: Path) -> Path:
     try:
         downloaded = Path(
             snapshot_download(
-                repo_id=EMBEDDING_MODEL_ID,
+                repo_id=EMBEDDING_MODEL_SOURCE,
                 revision=EMBEDDING_MODEL_REVISION,
                 local_dir=target,
                 allow_patterns=list(_REQUIRED_MODEL_FILES),
@@ -305,19 +307,20 @@ class LocalEmbeddingModel:
             raise EmbeddingModelUnavailable from None
 
         if not any(
-            item["model"] == EMBEDDING_MODEL_ID for item in TextEmbedding.list_supported_models()
+            item["model"] == EMBEDDING_FASTEMBED_MODEL_ID
+            for item in TextEmbedding.list_supported_models()
         ):
             TextEmbedding.add_custom_model(
-                model=EMBEDDING_MODEL_ID,
+                model=EMBEDDING_FASTEMBED_MODEL_ID,
                 pooling=PoolingType.MEAN,
                 normalization=True,
-                sources=ModelSource(hf=EMBEDDING_MODEL_ID),
+                sources=ModelSource(hf=EMBEDDING_MODEL_SOURCE),
                 dim=EMBEDDING_DIMENSION,
-                model_file="onnx/model.onnx",
+                model_file="model_optimized.onnx",
             )
         try:
             model = TextEmbedding(
-                model_name=EMBEDDING_MODEL_ID,
+                model_name=EMBEDDING_FASTEMBED_MODEL_ID,
                 specific_model_path=str(model_path),
                 providers=["CPUExecutionProvider"],
                 local_files_only=True,
@@ -345,13 +348,13 @@ class LocalEmbeddingModel:
         cleaned = _clean_text(query)
         if not cleaned or len(cleaned) > MAX_QUERY_CHARS:
             raise EmbeddingValidationError("embedding_query_invalid")
-        return self._embed_one(f"query: {cleaned}")
+        return self._embed_one(cleaned)
 
     def embed_passage(self, text: str) -> tuple[float, ...]:
         cleaned = _clean_text(text)
         if not cleaned or len(cleaned) > MAX_EMBEDDING_TEXT_CHARS:
             raise EmbeddingValidationError("embedding_input_invalid")
-        return self._embed_one(f"passage: {cleaned}")
+        return self._embed_one(cleaned)
 
 
 @lru_cache(maxsize=1)

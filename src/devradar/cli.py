@@ -18,8 +18,8 @@ from sqlalchemy.orm import Session
 from devradar.automation.orchestrator import orchestrate_source
 from devradar.automation.worker import work_one_pending_run
 from devradar.ingestion.models import CrawlRunStatus
-from devradar.ingestion.runner import IngestionRunError, resolve_v1_source
-from devradar.ingestion.source_registry import V1_SOURCE_REGISTRY
+from devradar.ingestion.runner import IngestionRunError, resolve_approved_source
+from devradar.ingestion.source_registry import V3_SOURCE_REGISTRY
 from devradar.intelligence.embeddings import (
     EMBEDDING_MODEL_ID,
     EMBEDDING_MODEL_REVISION,
@@ -57,7 +57,7 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="devradar")
     subparsers = parser.add_subparsers(dest="command", required=True)
     crawl = subparsers.add_parser("crawl", help="run one approved source on demand")
-    crawl.add_argument("--source", choices=V1_SOURCE_REGISTRY.keys(), required=True)
+    crawl.add_argument("--source", choices=V3_SOURCE_REGISTRY.keys(), required=True)
     crawl.add_argument(
         "--deadline-minutes",
         type=_deadline_minutes,
@@ -155,7 +155,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
             deadline = datetime.now(UTC) + timedelta(minutes=args.deadline_minutes)
             if args.command == "crawl":
-                resolved = resolve_v1_source(args.source)
+                resolved = resolve_approved_source(args.source)
                 result = orchestrate_source(
                     session,
                     config=resolved.config,

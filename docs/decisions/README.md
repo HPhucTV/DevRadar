@@ -25,8 +25,9 @@ Proposed → Accepted → Superseded | Deprecated
 | [ADR-006](0006-defer-prefect-use-direct-v2-orchestration.md) | Accepted | Hoãn Prefect; V2 dùng PostgreSQL-backed direct orchestration |
 | [ADR-007](0007-proposed-openai-first-v3-provider-and-pgvector.md) | Superseded | Lịch sử đề xuất OpenAI-first; bị ADR-008 thay thế |
 | [ADR-008](0008-proposed-deepseek-v4-flash-generation-and-embedding-boundary.md) | Accepted | DeepSeek V4 Pro generation spike synthetic-only; embedding tách quyết định |
-| [ADR-009](0009-accept-local-multilingual-e5-and-pgvector.md) | Accepted | Local multilingual E5 384d + exact pgvector cho V3 private deployment |
+| [ADR-009](0009-accept-local-multilingual-e5-and-pgvector.md) | Superseded | Historical local multilingual E5 baseline; thay bởi ADR-010 |
+| [ADR-010](0010-accept-fastembed-minilm-semantic-remediation.md) | Accepted | FastEmbed multilingual MiniLM 384d + exact pgvector sau semantic remediation |
 
 ## Candidate technology chưa được chấp nhận
 
-Prefect đã được đánh giá và defer theo ADR-006; chỉ đánh giá lại khi có measured need. ADR-007 được giữ để truy vết nhưng đã `Superseded` bởi ADR-008. ADR-009 chấp nhận local multilingual E5 + exact pgvector cho V3 private deployment; external embedding provider, HNSW và mọi công nghệ V4–V6 vẫn cần phase gate/evidence riêng. Quyết định khó đảo ngược cần ADR mới hoặc amendment qua ADR kế tiếp, không âm thầm sửa lịch sử.
+Prefect đã được đánh giá và defer theo ADR-006; chỉ đánh giá lại khi có measured need. ADR-007 được giữ để truy vết nhưng đã `Superseded` bởi ADR-008. ADR-010 hiện hành chấp nhận local multilingual MiniLM + exact pgvector cho V3 private deployment; external embedding provider, HNSW và mọi công nghệ V4–V6 vẫn cần phase gate/evidence riêng. Quyết định khó đảo ngược cần ADR mới hoặc amendment qua ADR kế tiếp, không âm thầm sửa lịch sử.

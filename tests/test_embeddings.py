@@ -57,7 +57,7 @@ def test_canonical_embedding_text_is_bounded_and_stable() -> None:
     assert first.startswith("Title: Backend Engineer\nDescription: Build APIs with Python.")
     assert len(first) == MAX_EMBEDDING_TEXT_CHARS
     assert "\x00" not in first
-    assert EMBEDDING_INPUT_SCHEMA_VERSION == "job-embedding-input-v1"
+    assert EMBEDDING_INPUT_SCHEMA_VERSION == "job-embedding-input-v2"
 
 
 def test_embedding_vector_requires_exact_finite_dimension() -> None:
@@ -80,19 +80,18 @@ def test_local_model_requires_preloaded_fixed_revision_path(tmp_path: Path) -> N
     with pytest.raises(EmbeddingModelUnavailable, match="embedding_model_unavailable"):
         LocalEmbeddingModel(missing)
 
-    assert EMBEDDING_MODEL_ID == "intfloat/multilingual-e5-small"
-    assert EMBEDDING_MODEL_REVISION == "614241f622f53c4eeff9890bdc4f31cfecc418b3"
+    assert EMBEDDING_MODEL_ID == "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    assert EMBEDDING_MODEL_REVISION == "faf4aa4225822f3bc6376869cb1164e8e3feedd0"
 
 
-def test_local_model_wraps_query_and_passage_without_logging_content(tmp_path: Path) -> None:
+def test_local_model_normalizes_query_and_passage_without_logging_content(tmp_path: Path) -> None:
     model_path = tmp_path / "model"
-    (model_path / "onnx").mkdir(parents=True)
     for relative_path in (
         "config.json",
         "special_tokens_map.json",
         "tokenizer.json",
         "tokenizer_config.json",
-        "onnx/model.onnx",
+        "model_optimized.onnx",
     ):
         path = model_path / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -110,7 +109,7 @@ def test_local_model_wraps_query_and_passage_without_logging_content(tmp_path: P
 
     assert len(query) == EMBEDDING_DIMENSION
     assert len(passage) == EMBEDDING_DIMENSION
-    assert captured == ["query: backend Python", "passage: Backend role"]
+    assert captured == ["backend Python", "Backend role"]
 
 
 def test_embedding_key_and_mapping_pin_every_compatibility_field() -> None:

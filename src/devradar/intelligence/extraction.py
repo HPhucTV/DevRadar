@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from devradar.catalog.models import Job, JobLevel
-from devradar.ingestion.normalization import SalaryPeriod, WorkMode
+from devradar.ingestion.normalization import SalaryPeriod, WorkMode, normalize_levels
 from devradar.intelligence.evaluation import (
     EvaluationModel,
     ExperienceExpectation,
@@ -31,7 +31,7 @@ from devradar.intelligence.models import (
     ExtractionValidationStatus,
 )
 
-DETERMINISTIC_EXTRACTOR_VERSION = "deterministic-job-v1"
+DETERMINISTIC_EXTRACTOR_VERSION = "deterministic-job-v2"
 EXTRACTION_SCHEMA_VERSION = "job-extraction-schema-v1"
 CANONICALIZATION_VERSION = "extraction-canonicalization-v1"
 
@@ -313,10 +313,14 @@ def extract_job(
     """Persist one deterministic-first extraction with short transaction windows."""
 
     deterministic = deterministic_extract(job)
+    job_id = job.id
+    job_hash = job.job_content_hash
+    job_title = job.title
+    job_description = job.description_text or ""
     rule_key = ExtractionCacheKey(
         input_type=ExtractionInputType.JOB,
-        input_ref=job.id,
-        input_hash=job.job_content_hash,
+        input_ref=job_id,
+        input_hash=job_hash,
         extractor_type=ExtractionType.RULE,
         extractor_version=DETERMINISTIC_EXTRACTOR_VERSION,
         schema_version=EXTRACTION_SCHEMA_VERSION,
@@ -345,8 +349,8 @@ def extract_job(
     )
     llm_key = ExtractionCacheKey(
         input_type=ExtractionInputType.JOB,
-        input_ref=job.id,
-        input_hash=job.job_content_hash,
+        input_ref=job_id,
+        input_hash=job_hash,
         extractor_type=ExtractionType.LLM,
         extractor_version=metadata.extractor_version,
         schema_version=metadata.schema_version,
@@ -362,15 +366,15 @@ def extract_job(
 
     session.rollback()
     request = ProviderRequest(
-        input_ref=job.id,
-        input_hash=job.job_content_hash,
-        title=job.title,
-        description_text=job.description_text or "",
+        input_ref=job_id,
+        input_hash=job_hash,
+        title=job_title,
+        description_text=job_description,
         deterministic_payload=deterministic.payload,
     )
     resolution = resolve_provider_fallback(
         deterministic=deterministic,
-        source_text=f"{job.title}\n{job.description_text or ''}",
+        source_text=f"{job_title}\n{job_description}",
         request=request,
         provider=provider,
         metadata=metadata,
@@ -394,11 +398,15 @@ def deterministic_extract(job: Job) -> DeterministicExtraction:
     """Build the safe deterministic portion of an extraction from canonical Job data."""
 
     warnings: list[str] = []
+    levels_invalid = False
     try:
         levels = tuple(JobLevel(value) for value in job.levels)
     except ValueError:
         levels = ()
+        levels_invalid = True
         warnings.append("levels_invalid")
+    if not levels and not levels_invalid:
+        levels = normalize_levels(job.title).value or ()
 
     try:
         salary_period = SalaryPeriod(job.salary_period) if job.salary_period else None

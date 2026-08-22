@@ -31,13 +31,18 @@ from devradar.intelligence.extraction import (
 from devradar.intelligence.models import ExtractionInputType, ExtractionType
 
 
-def _job(*, description: str | None, levels: list[str] | None = None) -> Job:
+def _job(
+    *,
+    description: str | None,
+    levels: list[str] | None = None,
+    title: str = "Backend Engineer",
+) -> Job:
     now = datetime.now(UTC)
     return Job(
         id=uuid4(),
         source_id=uuid4(),
         canonical_url="https://careers.example.test/jobs/1",
-        title="Backend Engineer",
+        title=title,
         company_name="Example",
         description_text=description,
         location_raw="Ho Chi Minh City, hybrid",
@@ -50,7 +55,7 @@ def _job(*, description: str | None, levels: list[str] | None = None) -> Job:
         currency="VND",
         salary_period="month",
         level_raw="Senior",
-        levels=levels or [JobLevel.SENIOR.value],
+        levels=[JobLevel.SENIOR.value] if levels is None else levels,
         experience_min=Decimal("3"),
         experience_max=None,
         first_seen_at=now,
@@ -77,6 +82,20 @@ def test_deterministic_extraction_is_incomplete_when_skill_evidence_is_missing()
 
     assert result.complete is False
     assert result.warnings == ("skills_not_determined",)
+
+
+def test_deterministic_extraction_uses_explicit_title_level_when_parser_level_is_empty() -> None:
+    result = deterministic_extract(
+        _job(
+            title="Senior Backend Engineer",
+            description="Build APIs with Python.",
+            levels=[],
+        )
+    )
+
+    assert result.complete is True
+    assert result.payload.levels == (JobLevel.SENIOR,)
+    assert result.warnings == ()
 
 
 def test_payload_rejects_extra_fields() -> None:

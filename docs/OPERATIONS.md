@@ -26,7 +26,7 @@ Không dùng production secret/data trong CI. Không gọi source/LLM thật t�
 - `.env`, local override, key/certificate và exported data phải bị ignore khi scaffold Git.
 - API key, database password, session secret, webhook token và source credential không được hardcode hoặc log.
 - `DEVRADAR_OPERATOR_WRITE_ENABLED` mặc định `false`; đây chỉ là local deployment gate, không phải auth. Không bật write API trên public ingress trước V6 auth/authorization.
-- `DEVRADAR_EMBEDDING_MODEL_PATH` là optional local path, không phải model selector. Dù đổi path, application vẫn khóa model ID/revision/artifact hash; request không được chọn path/model.
+- `DEVRADAR_EMBEDDING_MODEL_PATH` là optional local path, không phải model selector. Dù đổi path, application vẫn khóa model ID/revision/artifact hash theo ADR-010; request không được chọn path/model.
 - External provider/source mới phải có owner, mục đích, data classification và rotation/revocation path.
 - Nếu secret từng bị commit hoặc lộ trong log, rotate/revoke trước; chỉ xóa khỏi file không đủ.
 

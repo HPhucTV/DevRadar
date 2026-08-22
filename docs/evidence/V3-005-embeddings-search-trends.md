@@ -2,11 +2,13 @@
 
 ## 1. Kết quả
 
-**Status:** `complete` cho task V3-005 ngày 2026-08-22. Phase V3 vẫn `in_progress`; evidence này không thay thế V3-006 dataset/evaluation/scale gate.
+**Status:** `complete` cho task V3-005 ngày 2026-08-22. Phase V3 đã `complete` sau [V3-006 closeout](V3-006-v3-closeout.md); evidence này ghi contract/runtime của embedding/search/trend layer.
 
-Implementation theo [ADR-009](../decisions/0009-accept-local-multilingual-e5-and-pgvector.md) đã thêm:
+Các số liệu runtime trong bảng bên dưới là baseline của lần V3-005 ban đầu với E5; model identity hiện hành và semantic remediation được kiểm chứng riêng tại [V3-006 closeout evidence](V3-006-v3-closeout.md) theo ADR-010.
 
-- fixed-revision local `intfloat/multilingual-e5-small` qua FastEmbed `0.8.0`, dimension 384, `query:`/`passage:` prefix và artifact SHA-256 validation;
+Implementation ban đầu theo [ADR-009](../decisions/0009-accept-local-multilingual-e5-and-pgvector.md), sau đó được cập nhật theo [ADR-010](../decisions/0010-accept-fastembed-minilm-semantic-remediation.md), đã thêm:
+
+- fixed-revision local `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` qua FastEmbed `0.8.0`, dimension 384, không prefix và artifact SHA-256 validation;
 - `job_embeddings` derived table trên pgvector `0.8.6`, logical model/hash identity và exact cosine query;
 - explicit `download-embedding-model` cùng bounded `embed-jobs --max-items 1..1000` operator commands;
 - additive `query`, `searchMode`, `skill` và nullable `relevanceScore` trên `GET /api/v1/jobs`;
@@ -21,9 +23,10 @@ Fixed identity:
 
 ```text
 provider             local_fastembed
-model                intfloat/multilingual-e5-small
-revision             614241f622f53c4eeff9890bdc4f31cfecc418b3
-input schema         job-embedding-input-v1
+model                sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+artifact source      qdrant/paraphrase-multilingual-MiniLM-L12-v2-onnx-Q
+revision             faf4aa4225822f3bc6376869cb1164e8e3feedd0
+input schema         job-embedding-input-v2
 dimension            384
 database             pgvector 0.8.6 / PostgreSQL 18
 search               exact cosine, no HNSW
@@ -31,7 +34,7 @@ search               exact cosine, no HNSW
 
 Operator download lấy đúng năm required artifact từ revision trên. Loader kiểm SHA-256 trước khi khởi tạo ONNX Runtime; inference không download trong API request. Query tối đa 300 ký tự, canonical Job input tối đa 12.000 ký tự. Vector sai dimension/non-finite, artifact thiếu/sai hash hoặc model lỗi đều fail closed; semantic API trả safe `503` và không fallback external.
 
-Raw query, JD, vector, model path và artifact content không nằm trong API/log/evidence. Docker image đặt `ORT_DISABLE_TELEMETRY=1`; smoke dưới read-only filesystem không tạo telemetry identifier hoặc warning. Official behavior được đối chiếu từ [FastEmbed 0.8.0](https://pypi.org/project/fastembed/0.8.0/), [E5 model card](https://huggingface.co/intfloat/multilingual-e5-small), [pgvector](https://github.com/pgvector/pgvector), [pgvector-python SQLAlchemy](https://github.com/pgvector/pgvector-python#sqlalchemy) và [ONNX Runtime privacy](https://github.com/microsoft/onnxruntime/blob/main/docs/Privacy.md#disabling-telemetry).
+Raw query, JD, vector, model path và artifact content không nằm trong API/log/evidence. Docker image đặt `ORT_DISABLE_TELEMETRY=1`; smoke dưới read-only filesystem không tạo telemetry identifier hoặc warning. Official behavior được đối chiếu từ [FastEmbed 0.8.0](https://pypi.org/project/fastembed/0.8.0/), [FastEmbed supported models](https://qdrant.github.io/fastembed/examples/Supported_Models/), [MiniLM model card](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2), [pgvector](https://github.com/pgvector/pgvector), [pgvector-python SQLAlchemy](https://github.com/pgvector/pgvector-python#sqlalchemy) và [ONNX Runtime privacy](https://github.com/microsoft/onnxruntime/blob/main/docs/Privacy.md#disabling-telemetry).
 
 ## 3. Persistence và API contract
 
@@ -58,7 +61,7 @@ Các command dưới đây chạy trên Windows PowerShell, Python `3.13.14`, Do
 | Full suite với `DEVRADAR_TEST_DATABASE_URL` | `191 passed in 49.91s`; PostgreSQL-marked tests không skip |
 | PostgreSQL schema | extension `0.8.6`, column `vector(384)`, logical uniqueness/current-hash/idempotency/rollback tests pass |
 | Alembic | `upgrade head`, `current=c82f4a7d901e`, `check` không có operation mới; offline SQL sinh extension/table/index đúng thứ tự |
-| Fixed model download | 5 artifact tải từ exact revision; application integrity check pass |
+| Fixed model download | 5 artifact tải từ exact ONNX revision; application integrity check pass |
 | Local model smoke | cold integrity/load `6.402s`; hai synthetic embeddings `0.063s`; dimension 384 và finite |
 | Local backfill smoke | `selected=1`, `created=1`, `cache_hits=0`, `stale_skipped=0` |
 | Local API smoke | semantic Job `200`, 2 current embedded result có score; skills `200` |
@@ -71,22 +74,14 @@ Các command dưới đây chạy trên Windows PowerShell, Python `3.13.14`, Do
 
 Hash-locked runtime thêm đúng `fastembed==0.8.0` và `pgvector==0.5.0`; clean install từ `requirements-dev.lock` đã được kiểm trước final gates. `.dockerignore` loại model cache/local artifacts khỏi build context; model chỉ nằm trong ignored local data hoặc fixed image layer.
 
-## 5. Live-data boundary và V3-006 handoff
+## 5. Live-data boundary và V3 handoff
 
-Local project database hiện có 78 canonical Job từ ba approved complete V1 runs. Semantic API chỉ rank Job đã backfill compatible embedding; smoke không tuyên bố full 78-job vector coverage. Skill API trả đúng boundary hiện tại:
+Local project database hiện có 3339 canonical Job từ approved complete runs. Semantic API chỉ rank Job đã backfill compatible embedding; current coverage là `3339/3339`. Skill/trend API trả đúng denominator và analyzed coverage:
 
 ```text
-cohortSize      78
-analyzedJobs     0
-coverage       0.0
+cohortSize      3339
+analyzedJobs    1003
+coverage        0.3004
 ```
 
-Đây là honest empty-analysis state, không phải trend result đạt scale. V3-006 vẫn cần:
-
-1. tối thiểu 500 canonical Job từ approved/reproducible complete runs, không dùng fixture hoặc partial bounded smoke;
-2. extraction/backfill coverage và fixed semantic held-out evaluation trên dataset đủ quy mô;
-3. latency p50/p95, model/image footprint và provider/model failure report;
-4. target accuracy/hallucination/review/cost đạt hoặc waiver có owner cùng review date;
-5. evidence ingestion vẫn hoạt động khi external generation provider và local embedding model unavailable.
-
-Không được hạ `>=500`, crawl source ngoài allow-list, dùng incomplete run làm completeness/removal signal hoặc đóng V3 chỉ từ synthetic/model smoke này.
+Đây là analyzed cohort có denominator; các job thiếu evidence vẫn giữ `needs_review` và không bị đưa vào skill count. Full phase gate, source/cohort boundary, semantic held-out và provider-independence nằm trong [V3-006 closeout](V3-006-v3-closeout.md).

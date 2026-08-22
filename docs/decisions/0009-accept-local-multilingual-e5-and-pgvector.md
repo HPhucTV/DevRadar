@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted cho V3 local/private deployment. Public production-like exposure vẫn cần V6 capacity, supply-chain và abuse review.
+Superseded by ADR-010. Historical baseline decision for V3 local/private deployment; public production-like exposure vẫn cần V6 capacity, supply-chain và abuse review.
 
 ## Date
 

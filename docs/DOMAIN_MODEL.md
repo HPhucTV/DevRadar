@@ -86,7 +86,7 @@ One-shot worker chọn tối đa một run `pending` theo `requested_at, id`, d�
 | Field logic | Ý nghĩa |
 |---|---|
 | `id`, `crawl_run_id`, `source_id` | Provenance của observation. |
-| `source_url`, `external_id` | Identity lấy từ nguồn nếu có. |
+| `source_url`, `external_id` | Canonical identity/provenance của listing từ `ListingRef`; URL transport của feed có thể khác `source_url`. |
 | `fetched_at`, `http_status`, `content_type` | Fetch metadata. |
 | `raw_content_hash` | Hash của payload canonicalized đủ để cache/replay. |
 | `storage_ref` hoặc bounded raw content | Vị trí evidence; cách lưu vật lý được chọn trong V1 scaffold. |
@@ -170,8 +170,8 @@ Cache identity có thứ tự cố định `input_type + input_ref + input_hash 
 | Field logic | Ý nghĩa |
 |---|---|
 | `id`, `job_id` | UUID derived row và canonical Job owner; xóa Job sẽ cascade vector. |
-| `input_hash`, `input_schema_version` | `Job.job_content_hash` cùng canonical input schema `job-embedding-input-v1`. |
-| `provider`, `model`, `model_revision`, `dimension` | Compatibility identity cố định theo ADR-009: `local_fastembed`, `intfloat/multilingual-e5-small`, revision đã khóa và 384 dimensions. |
+| `input_hash`, `input_schema_version` | `Job.job_content_hash` cùng canonical input schema `job-embedding-input-v2`. |
+| `provider`, `model`, `model_revision`, `dimension` | Compatibility identity cố định theo ADR-010: `local_fastembed`, `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`, artifact revision đã khóa và 384 dimensions. |
 | `embedding` | Local `vector(384)`; không xuất hiện trong API/log. |
 | `latency_ms`, `created_at` | Metric bounded và UTC creation time; không chứa query/JD. |
 

@@ -104,12 +104,13 @@ def test_persist_raw_snapshot_enforces_policy_provenance_and_transaction_ownersh
                 source_config=config,
                 listing_ref=listing_ref,
                 fetch_result=fetch_result,
+                provenance_url=listing_ref.canonical_url,
             )
 
             assert snapshot.id is not None
             assert snapshot.crawl_run_id == snapshot_run.id
             assert snapshot.source_id == snapshot_run.source_id
-            assert snapshot.source_url == fetch_result.final_url
+            assert snapshot.source_url == listing_ref.canonical_url
             assert snapshot.external_id == listing_ref.external_id
             assert snapshot.fetched_at == fetch_result.fetched_at
             assert snapshot.raw_content == payload.decode("utf-8")
@@ -158,6 +159,24 @@ def test_persist_raw_snapshot_enforces_policy_provenance_and_transaction_ownersh
                     fetch_result=fetch_result,
                 )
             assert captured.value.code == "source_not_approved"
+
+            untrusted_listing = ListingRef(
+                external_id="123",
+                canonical_url="https://evil.example.test/jobs/123",
+            )
+            with pytest.raises(
+                SnapshotPersistenceError,
+                match="approved source boundary",
+            ) as captured:
+                persist_raw_snapshot(
+                    session,
+                    crawl_run=validation_run,
+                    source_config=config,
+                    listing_ref=untrusted_listing,
+                    fetch_result=fetch_result,
+                    provenance_url=untrusted_listing.canonical_url,
+                )
+            assert captured.value.code == "provenance_url_outside_policy"
 
             invalid_encoding = _fetch_result(
                 b"\xff",

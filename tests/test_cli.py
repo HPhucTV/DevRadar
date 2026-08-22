@@ -71,8 +71,8 @@ def test_download_embedding_model_uses_fixed_boundary_without_database(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert json.loads(captured.out) == {
-        "model": "intfloat/multilingual-e5-small",
-        "revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+        "model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        "revision": "faf4aa4225822f3bc6376869cb1164e8e3feedd0",
         "ready": True,
     }
     assert captured.err == ""

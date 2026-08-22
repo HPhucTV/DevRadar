@@ -124,6 +124,7 @@ class SourceConfig:
     countries: tuple[str, ...] = ("VN",)
     reference_hosts: tuple[str, ...] = ()
     adapter_settings: Mapping[str, str | tuple[str, ...]] = field(default_factory=dict)
+    cohort: str = "vietnam_it"
 
     def __post_init__(self) -> None:
         if not _SOURCE_KEY_PATTERN.fullmatch(self.source_key):
@@ -146,7 +147,9 @@ class SourceConfig:
             raise ValueError("base_url must be a bounded HTTPS URL on an allowed host")
         for host in self.reference_hosts:
             _validate_host(host)
-        if not self.countries or any(
+        if not self.cohort.strip():
+            raise ValueError("cohort must not be blank")
+        if self.countries and any(
             len(country) != 2
             or not country.isascii()
             or not country.isalpha()
@@ -154,6 +157,8 @@ class SourceConfig:
             for country in self.countries
         ):
             raise ValueError("countries must use uppercase alpha-2 codes")
+        if not self.countries and self.cohort == "vietnam_it":
+            raise ValueError("vietnam_it cohort must declare countries")
         if (
             self.approval_status is SourceApprovalStatus.APPROVED
             and self.policy_review.scope is not PolicyScope.APPROVED_LOCAL_NONCOMMERCIAL_SPIKE
@@ -239,6 +244,13 @@ _APPROVED_POLICY_REVIEW = PolicyReview(
     robots_reviewed_at=_REVIEWED_AT,
     terms_reviewed_at=_REVIEWED_AT,
     next_review_at=_NEXT_REVIEW_AT,
+)
+
+_REMOTEJOBS_POLICY_REVIEW = PolicyReview(
+    scope=PolicyScope.APPROVED_LOCAL_NONCOMMERCIAL_SPIKE,
+    robots_reviewed_at=date(2026, 8, 22),
+    terms_reviewed_at=date(2026, 8, 22),
+    next_review_at=date(2026, 11, 22),
 )
 
 VNG_CAREERS = SourceConfig(
@@ -339,5 +351,43 @@ MOMO_CAREERS = SourceConfig(
     },
 )
 
+REMOTEJOBS_ORG = SourceConfig(
+    source_key="remotejobs-org",
+    name="RemoteJobs.org API (global_remote_it_secondary)",
+    approval_status=SourceApprovalStatus.APPROVED,
+    base_url="https://remotejobs.org/api/v1/jobs",
+    adapter_key="remotejobs_api",
+    discovery_mode=DiscoveryMode.PUBLIC_JSON_API,
+    identity_strategy=IdentityStrategy.EXTERNAL_ID,
+    external_id_field="id",
+    expected_pagination="category_limit_offset_until_has_more_false",
+    fetch_policy=FetchPolicy(
+        allowed_hosts=("remotejobs.org",),
+        allowed_path_prefixes=("/api/v1/jobs",),
+        content_types=("application/json",),
+        timeout_seconds=20,
+        redirect_limit=3,
+        max_response_bytes=2_000_000,
+        requests_per_minute=2,
+    ),
+    policy_review=_REMOTEJOBS_POLICY_REVIEW,
+    config_version="2026-08-22.1",
+    countries=(),
+    cohort="global_remote_it_secondary",
+    reference_hosts=("remotejobs.org",),
+    adapter_settings={
+        "categories": (
+            "programming",
+            "data-science",
+            "devops",
+            "product-management",
+            "design",
+        ),
+        "page_size": "50",
+    },
+)
+
 V1_SOURCE_CONFIGS = (VNG_CAREERS, NAVER_VIETNAM_GREENHOUSE, MOMO_CAREERS)
 V1_SOURCE_REGISTRY = SourceRegistry(V1_SOURCE_CONFIGS)
+V3_SOURCE_CONFIGS = (*V1_SOURCE_CONFIGS, REMOTEJOBS_ORG)
+V3_SOURCE_REGISTRY = SourceRegistry(V3_SOURCE_CONFIGS)

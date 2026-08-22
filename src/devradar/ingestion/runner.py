@@ -18,6 +18,7 @@ from devradar.catalog.job_changes import apply_absence_lifecycle
 from devradar.catalog.job_upsert import upsert_parsed_job
 from devradar.ingestion.adapters.greenhouse import GreenhouseJobBoardAdapter
 from devradar.ingestion.adapters.momo import MomoCareersAdapter
+from devradar.ingestion.adapters.remotejobs import RemoteJobsApiAdapter
 from devradar.ingestion.adapters.vng import VngCareersAdapter
 from devradar.ingestion.contracts import (
     JobSourceAdapter,
@@ -39,6 +40,7 @@ from devradar.ingestion.models import (
 from devradar.ingestion.snapshot_persistence import persist_raw_snapshot
 from devradar.ingestion.source_registry import (
     V1_SOURCE_REGISTRY,
+    V3_SOURCE_REGISTRY,
     AdapterRegistry,
     ResolvedSource,
     SourceConfig,
@@ -92,6 +94,18 @@ def resolve_v1_source(source_key: str) -> ResolvedSource:
         )
     )
     return V1_SOURCE_REGISTRY.resolve(source_key, adapters)
+
+
+def resolve_approved_source(source_key: str) -> ResolvedSource:
+    adapters = AdapterRegistry(
+        (
+            GreenhouseJobBoardAdapter(),
+            VngCareersAdapter(),
+            MomoCareersAdapter(),
+            RemoteJobsApiAdapter(),
+        )
+    )
+    return V3_SOURCE_REGISTRY.resolve(source_key, adapters)
 
 
 def _review_timestamp(value: date) -> datetime:
@@ -659,6 +673,7 @@ def run_approved_source(
                 source_config=config,
                 listing_ref=listing,
                 fetch_result=fetch_result,
+                provenance_url=listing.canonical_url,
             )
             raw_snapshot = _snapshot_contract(snapshot, config.source_key)
             snapshot_id = snapshot.id
