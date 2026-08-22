@@ -141,7 +141,7 @@ PostgreSQL test hiện dùng `DEVRADAR_TEST_DATABASE_URL`, tạo database tên n
 - Browser crawler áp cùng scheme/host/IP policy cho navigation, iframe, subresource và WebSocket; dùng fresh ephemeral context, chặn service worker/download/popup/external protocol, không cấp camera/microphone/geolocation/clipboard/file access và không dùng persistent cookie/storage. V1 Compose tách browser vào opt-in `crawler` profile, chạy UID 999 với read-only filesystem, `no-new-privileges`, drop toàn bộ capability rồi chỉ add `SYS_CHROOT`, bật Chromium sandbox và pin official Playwright `1.62.0` seccomp profile. `init: true` và host IPC theo upstream recommendation cho Chromium local; không diễn giải application allow-list thành network-level egress enforcement.
 - HTML hiển thị bằng framework escaping; không render raw source/model HTML.
 - File upload kiểm tra extension, MIME và signature; bounded size/page/decompression; parser không thực thi macro/script và chạy với least privilege.
-- Authenticated deployment dùng HTTPS, restricted CORS, security headers, secure/httpOnly/sameSite session cookie nếu chọn session strategy.
+- Authenticated deployment dùng HTTPS, restricted CORS, security headers và session cookie secure/HttpOnly/SameSite theo [ADR-015](decisions/0015-accept-v6-authentication-strategy.md); V6-002 phải cung cấp runtime evidence.
 - Authorization kiểm tra owner/operator ở server trên mọi protected resource.
 - V2 local write API chỉ nhận `sourceId` + custom idempotency header, enqueue DB và không nhận URL/outbound option; default-disabled gate cùng loopback Compose binding giảm accidental exposure nhưng không thay authentication.
 - Error public generic; detail nội bộ được sanitize và correlation bằng request ID.

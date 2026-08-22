@@ -1,0 +1,36 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'background': '#ffffff', 'primaryColor': '#ffffff', 'lineColor': '#666666' }}}%%
+flowchart LR
+    classDef process fill:#6baed6,stroke:#2171b5,stroke-width:2px,color:#000000
+    classDef external fill:#fdae61,stroke:#d94701,stroke-width:2px,color:#000000
+    classDef datastore fill:#74c476,stroke:#238b45,stroke-width:2px,color:#000000
+
+    Browser["Browser"]:::external
+    Operator["Operator"]:::external
+    ApprovedSources["Approved public sources"]:::external
+    Discord["Discord webhook"]:::external
+    DeepSeek["DeepSeek synthetic spike"]:::external
+
+    subgraph Application["Application / loopback Compose"]
+        NextJS(("NextJS dashboard/BFF")):::process
+        FastAPI(("FastAPI")):::process
+        PostgreSQL[("PostgreSQL")]:::datastore
+        FastEmbed(("FastEmbed local model")):::process
+    end
+    subgraph CrawlerSandbox["Optional crawler sandbox"]
+        CLI(("CLI crawler/worker")):::process
+    end
+
+    Browser <-->|"DF01: loopback HTTP UI/BFF"| NextJS
+    NextJS <-->|"DF02: loopback HTTP REST JSON"| FastAPI
+    FastAPI <-->|"DF03: SQL/pgvector persistence"| PostgreSQL
+    FastAPI <-->|"DF04: local embedding inference"| FastEmbed
+    Operator <-->|"DF05: local CLI control"| CLI
+    CLI <-->|"DF06: HTTPS approved source fetch"| ApprovedSources
+    CLI <-->|"DF07: SQL run/job persistence"| PostgreSQL
+    CLI <-->|"DF08: HTTPS synthetic-only provider spike"| DeepSeek
+    FastAPI <-->|"DF09: HTTPS Discord delivery"| Discord
+
+    style Application fill:none,stroke:#e31a1c,stroke-width:3px,stroke-dasharray: 5 5
+    style CrawlerSandbox fill:none,stroke:#e31a1c,stroke-width:3px,stroke-dasharray: 5 5
+
+    linkStyle default stroke:#666666,stroke-width:2px

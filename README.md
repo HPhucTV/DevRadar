@@ -7,12 +7,12 @@
 | Thuộc tính | Giá trị |
 |---|---|
 | Trạng thái | `implementation` |
-| Phase hiện tại | `v6` — Production-like hardening (`in_progress`); V1–V5 đã hoàn tất, V6-001 sẵn sàng |
+| Phase hiện tại | `v6` — Production-like hardening (`in_progress`); V1–V5 đã hoàn tất, V6-001 đã đóng, V6-002 kế tiếp |
 | Mô hình sử dụng ban đầu | Portfolio cá nhân, single-operator |
 | Thị trường ưu tiên | Job IT Việt Nam, nội dung Việt/Anh, lương VND |
 | Code chạy được | Có — V1/V2 data pipeline và V3 intelligence; không có agent runtime hiện hành |
 
-V1 đã hoàn tất safe fetch/snapshot pipeline, ba concrete source adapters, PostgreSQL persistence và REST API. V2 đã hoàn tất direct schedule/retry, JobChange lifecycle, source health/quarantine, operator enqueue và one-shot worker. V3 đã đóng với `3339` canonical jobs từ approved complete runs, semantic held-out gate đạt, `1003/3339` accepted deterministic extraction results, `3339/3339` current embeddings và analytics denominator/coverage có evidence. ADR-010 chấp nhận local `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` 384d cùng exact pgvector; RemoteJobs.org là cohort remote thứ cấp, không đại diện cho claim thị trường Việt Nam. V4 đã đánh giá typed planner/validator/analyst proposal paths và LangGraph, nhưng cả ba reasoning path bị loại theo ADR-013 vì safe facts đã xác định outcome và không có measurable usefulness gain. V5 hiện có Next.js dashboard kết nối FastAPI thật, local-gated PDF/DOCX upload tạo `ResumeProfile` 24 giờ không lưu file/raw text, owner-scoped JobMatch generation/read với local MiniLM, top 100, stale-hash filtering và cascade delete, cùng một Discord alert connector local/protected với AlertRule/AlertDelivery idempotent. Authentication và browser alert/demo closeout vẫn là các slice kế tiếp; runtime không có agent/model call cho CV.
+V1 đã hoàn tất safe fetch/snapshot pipeline, ba concrete source adapters, PostgreSQL persistence và REST API. V2 đã hoàn tất direct schedule/retry, JobChange lifecycle, source health/quarantine, operator enqueue và one-shot worker. V3 đã đóng với `3339` canonical jobs từ approved complete runs, semantic held-out gate đạt, `1003/3339` accepted deterministic extraction results, `3339/3339` current embeddings và analytics denominator/coverage có evidence. ADR-010 chấp nhận local `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` 384d cùng exact pgvector; RemoteJobs.org là cohort remote thứ cấp, không đại diện cho claim thị trường Việt Nam. V4 đã đánh giá typed planner/validator/analyst proposal paths và LangGraph, nhưng cả ba reasoning path bị loại theo ADR-013 vì safe facts đã xác định outcome và không có measurable usefulness gain. V5 hiện có Next.js dashboard kết nối FastAPI thật, local-gated PDF/DOCX upload tạo `ResumeProfile` 24 giờ không lưu file/raw text, owner-scoped JobMatch generation/read với local MiniLM, top 100, stale-hash filtering và cascade delete, cùng một Discord alert connector local/protected với AlertRule/AlertDelivery idempotent. V6-001 đã hoàn tất threat model public exposure và chấp nhận session-based auth strategy; runtime auth chưa được triển khai và không có agent/model call cho CV.
 
 ## Mục tiêu
 
@@ -88,6 +88,7 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [V5-005 CV matching UI evidence](docs/evidence/V5-005-cv-matching-ui.md): same-origin proxy, protected upload/match/delete UI và browser smoke.
 - [V5-006 alert evidence](docs/evidence/V5-006-alert-connector.md): Discord webhook allow-list, AlertRule/AlertDelivery, retry/idempotency và PostgreSQL integration.
 - [V5-007 closeout evidence](docs/evidence/V5-007-v5-closeout.md): browser E2E, accessibility baseline, `3339` jobs và privacy/delete boundaries.
+- [V6-001 threat model](docs/threat-model-20260822-202257/0-assessment.md): LOCALHOST_SERVICE exposure, 35 STRIDE-A threats, 18 findings và coverage inventory.
 - [Operations](docs/OPERATIONS.md): test, security, observability, retention, CI/CD và deployment gates.
 - [Source discovery](docs/sources/SHORTLIST.md): evidence và approval outcome; VNG, NAVER Vietnam/Greenhouse và MoMo đã được duyệt cho bounded Vietnam scope, RemoteJobs.org được duyệt riêng cho V3 remote cohort có attribution, GeoComply/Lever vẫn `permission_required`.
 - [Pre-V1 local evidence](docs/evidence/PRE-007-local-prerequisites.md): Docker/PostgreSQL capability và constraint đã xác minh.
@@ -120,6 +121,7 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [DeepSeek V3 spike module](src/devradar/intelligence/deepseek_spike.py): synthetic-only, fail-closed JSON extraction spike; không phải production provider adapter.
 - [Roadmap](docs/ROADMAP.md): kế hoạch V1–V6 và definition of done.
 - [Architecture Decision Records](docs/decisions/README.md): quyết định đã chấp nhận và quyết định còn đề xuất.
+- [V6-001 auth ADR](docs/decisions/0015-accept-v6-authentication-strategy.md): session-based authentication, CSRF, role và owner-header migration boundary.
 - [Ý tưởng ban đầu](DevRadar_Agentic_Job_Market_Intelligence.md): tài liệu tham khảo gốc, không phải bằng chứng trạng thái triển khai.
 
 ## Quick Start

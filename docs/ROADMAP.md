@@ -329,6 +329,10 @@ Kubernetes, Kafka, microservice hoặc multi-region nếu không có measured re
 - restore drill và operational dashboard;
 - measured rationale nếu Redis/worker được thêm hoặc evidence cho quyết định không thêm.
 
+### V6-001 evidence
+
+V6-001 đã hoàn tất ở mức documentation gate: [threat model và assessment](threat-model-20260822-202257/0-assessment.md) khóa deployment classification `LOCALHOST_SERVICE`, 10 elements, 3 boundaries, 35 threats, 18 findings và threat coverage inventory. [ADR-015](decisions/0015-accept-v6-authentication-strategy.md) chấp nhận server-side session-based authentication với PostgreSQL session record, CSRF và owner-header migration boundary. Chưa có claim rằng auth runtime hoặc public deployment đã sẵn sàng; V6-002 là task kế tiếp.
+
 ## 9. Quy tắc cập nhật roadmap
 
 - Chỉ đổi status khi kiểm tra exit criteria và link evidence cụ thể.

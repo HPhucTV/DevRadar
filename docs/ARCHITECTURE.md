@@ -147,16 +147,17 @@ flowchart LR
 | V3 | V2 + extraction/taxonomy; local FastEmbed multilingual MiniLM artifact, pgvector `vector(384)`, exact semantic search và bounded analytics | Complete; ADR-010 Accepted cho local/private |
 | V4 | Không thêm runtime vào V3; đánh giá rồi loại planner/validator/analyst reasoning path; LangGraph deferred | Complete; ADR-013 Accepted |
 | V5 | V3 runtime baseline + Next.js App Router/BFF + local-gated ResumeProfile/JobMatch + bounded Discord alert connector | Complete; V5-001–V5-007 evidence |
-| V6 | Public ingress, auth, managed secrets, backup/monitoring; Redis/worker pool nếu metric yêu cầu | In progress; V6-001 ready |
+| V6 | Public ingress, auth, managed secrets, backup/monitoring; Redis/worker pool nếu metric yêu cầu | In progress; V6-001 complete, V6-002 next |
 
 Crawler/one-shot worker CLI và API dùng cùng code nhưng là entrypoint/process khác nhau. Điều này giữ network work ngoài HTTP request mà không tách service sớm.
 
 `web/` là presentation boundary của V5. App Router dùng Server Components mặc định
 và gọi FastAPI trực tiếp khi view cần data; CV matching có same-origin Route
-Handler proxy để giữ owner token trong client memory và tránh mở CORS. Alert CRUD
-chưa có UI, chỉ dùng protected FastAPI contract. `DEVRADAR_API_BASE_URL` là
-server-only configuration. Client interactivity chỉ được thêm ở leaf component
-khi filter/upload/auth thật sự cần.
+Handler proxy. Trong V5 proxy chỉ chuyển owner header tạm thời; sau ADR-015 nó phải
+chuyển tiếp session subject do server đã xác thực và strip identity header do
+browser tự gửi. Alert CRUD chưa có UI, chỉ dùng protected FastAPI contract.
+`DEVRADAR_API_BASE_URL` là server-only configuration. Client interactivity chỉ
+được thêm ở leaf component khi filter/upload/auth thật sự cần.
 
 ## 7. Trust boundaries và controls
 

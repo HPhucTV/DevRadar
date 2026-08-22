@@ -31,7 +31,8 @@ Proposed → Accepted → Superseded | Deprecated
 | [ADR-012](0012-accept-direct-v4-agent-workflow-defer-langgraph.md) | Superseded in part | Historical direct V4 workflow spike; quyết định defer LangGraph vẫn còn hiệu lực |
 | [ADR-013](0013-remove-unretained-v4-agent-runtime.md) | Accepted | Loại V4 agent runtime không có measurable usefulness; giữ deterministic paths |
 | [ADR-014](0014-accept-discord-webhook-alert-connector.md) | Accepted | Discord webhook là connector alert V5 đầu tiên |
+| [ADR-015](0015-accept-v6-authentication-strategy.md) | Accepted | V6 dùng server-side session-based authentication với PostgreSQL session record |
 
 ## Candidate technology chưa được chấp nhận
 
-Prefect đã được đánh giá và defer theo ADR-006; chỉ đánh giá lại khi có measured need. ADR-007 được giữ để truy vết nhưng đã `Superseded` bởi ADR-008. ADR-010 hiện hành chấp nhận local multilingual MiniLM + exact pgvector cho V3 private deployment. ADR-012 vẫn hoãn LangGraph; ADR-013 loại direct V4 agent runtime vì không có measurable usefulness gain, nên hiện không có agent runtime được chấp nhận. External embedding provider, HNSW và mọi công nghệ V5–V6 vẫn cần phase gate/evidence riêng. Quyết định khó đảo ngược cần ADR mới hoặc amendment qua ADR kế tiếp, không âm thầm sửa lịch sử.
+Prefect đã được đánh giá và defer theo ADR-006; chỉ đánh giá lại khi có measured need. ADR-007 được giữ để truy vết nhưng đã `Superseded` bởi ADR-008. ADR-010 hiện hành chấp nhận local multilingual MiniLM + exact pgvector cho V3 private deployment. ADR-012 vẫn hoãn LangGraph; ADR-013 loại direct V4 agent runtime vì không có measurable usefulness gain, nên hiện không có agent runtime được chấp nhận. ADR-015 khóa auth strategy cho V6-002 nhưng chưa phải implementation evidence. External embedding provider, HNSW và mọi công nghệ V5–V6 vẫn cần phase gate/evidence riêng. Quyết định khó đảo ngược cần ADR mới hoặc amendment qua ADR kế tiếp, không âm thầm sửa lịch sử.

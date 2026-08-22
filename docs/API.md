@@ -319,7 +319,7 @@ hay provider body. Thiếu/sai connector trả `503` safe.
 - CORS dùng explicit origin allow-list; không dùng wildcard với credential.
 - Error `404` có thể được dùng thay `403` cho owner resource để tránh resource enumeration.
 
-Auth mechanism cụ thể cần ADR khi V6 bắt đầu; tài liệu này không giả định JWT, session hay provider trước khi có quyết định.
+Auth mechanism được khóa tại [ADR-015](decisions/0015-accept-v6-authentication-strategy.md): server-side session với PostgreSQL record, HttpOnly/SameSite/Secure cookie và CSRF. V6-002 mới triển khai runtime; trước đó V5 owner header chỉ là local/protected compatibility gate và không phải public authentication.
 
 ## 9. Compatibility và versioning
 
