@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from devradar.agents.application import (
     ApplicationContext,
     ApplicationFailure,
@@ -10,6 +12,9 @@ from devradar.agents.application import (
     fallback_for_failure,
 )
 from devradar.agents.decisions import (
+    AnalystCaveatCode,
+    AnalystClaimCode,
+    AnalystTrendDirection,
     DecisionEnvelope,
     DecisionRef,
     DecisionRefKind,
@@ -67,11 +72,25 @@ def _analyst_envelope() -> DecisionEnvelope:
             "reasonCode": "evidence_supported",
             "confidence": 0.9,
             "decisionData": {
-                "claimCode": "skill_frequency",
+                "claimCode": "skill_trend",
+                "trendDirection": "increased",
                 "supportingMetricRefs": [metric],
                 "caveatCodes": ["low_coverage"],
             },
         }
+    )
+
+
+def _analyst_context(envelope: DecisionEnvelope) -> ApplicationContext:
+    metric = next(ref for ref in envelope.input_refs if ref.kind is DecisionRefKind.METRIC)
+    return ApplicationContext(
+        input_refs=envelope.input_refs,
+        aggregate_has_denominator=True,
+        aggregate_has_query_reference=True,
+        supported_metric_refs=(metric,),
+        expected_analyst_claim_code=AnalystClaimCode.SKILL_TREND,
+        expected_analyst_trend_direction=AnalystTrendDirection.INCREASED,
+        required_analyst_caveat_codes=(AnalystCaveatCode.LOW_COVERAGE,),
     )
 
 
@@ -187,35 +206,84 @@ def test_validator_accept_requires_deterministic_schema_and_evidence_gate() -> N
         "aggregate_has_denominator",
         "aggregate_has_query_reference",
         "supported_metric_refs",
+        "expected_analyst_claim_code",
+        "expected_analyst_trend_direction",
+        "required_analyst_caveat_codes",
     }
 
 
-def test_analyst_publish_requires_denominator_query_and_supported_metrics() -> None:
+def test_analyst_publish_requires_exact_query_metric_direction_and_caveat() -> None:
     envelope = _analyst_envelope()
-    metric = next(ref for ref in envelope.input_refs if ref.kind is DecisionRefKind.METRIC)
+    accepted = apply_decision(envelope, _analyst_context(envelope))
 
-    missing_denominator = apply_decision(
-        envelope,
-        ApplicationContext(
-            input_refs=envelope.input_refs,
-            aggregate_has_query_reference=True,
-            supported_metric_refs=(metric,),
-        ),
-    )
-    accepted = apply_decision(
-        envelope,
-        ApplicationContext(
-            input_refs=envelope.input_refs,
-            aggregate_has_denominator=True,
-            aggregate_has_query_reference=True,
-            supported_metric_refs=(metric,),
-        ),
-    )
-
-    assert missing_denominator.status is ApplicationStatus.REJECTED
-    assert missing_denominator.reason_code is ApplicationReason.AGGREGATE_EVIDENCE_INVALID
     assert accepted.status is ApplicationStatus.ACCEPTED
     assert accepted.action is DeterministicAction.PUBLISH_INSIGHT
+
+    invalid_payloads: list[dict[str, object]] = []
+    for field, value in (
+        ("claimCode", "skill_frequency"),
+        ("trendDirection", "decreased"),
+        ("caveatCodes", []),
+        ("caveatCodes", ["low_coverage", "secondary_cohort"]),
+    ):
+        changed = envelope.model_dump(mode="json", by_alias=True)
+        changed["decisionData"][field] = value
+        invalid_payloads.append(changed)
+
+    for invalid_payload in invalid_payloads:
+        decision = DecisionEnvelope.model_validate(invalid_payload)
+        result = apply_decision(decision, _analyst_context(envelope))
+        assert result.status is ApplicationStatus.REJECTED
+        assert result.action is DeterministicAction.REVIEW
+        assert result.reason_code is ApplicationReason.AGGREGATE_EVIDENCE_INVALID
+
+    wrong_metric = DecisionRef(
+        kind=DecisionRefKind.METRIC,
+        id="metric-other",
+        content_hash="f" * 64,
+        version="skill-trend-comparison-v1",
+    )
+    unsupported_context = _analyst_context(envelope).model_copy(
+        update={"supported_metric_refs": (wrong_metric,)}
+    )
+    unsupported = apply_decision(envelope, unsupported_context)
+    assert unsupported.status is ApplicationStatus.REJECTED
+    assert unsupported.reason_code is ApplicationReason.AGGREGATE_EVIDENCE_INVALID
+
+
+def test_analyst_publish_requires_query_ref_in_evidence() -> None:
+    envelope = _analyst_envelope()
+    payload = envelope.model_dump(mode="json", by_alias=True)
+    payload["evidenceRefs"] = [payload["evidenceRefs"][1]]
+    decision = DecisionEnvelope.model_validate(payload)
+
+    result = apply_decision(decision, _analyst_context(envelope))
+
+    assert result.status is ApplicationStatus.REJECTED
+    assert result.reason_code is ApplicationReason.AGGREGATE_EVIDENCE_INVALID
+
+
+@pytest.mark.parametrize(
+    ("decision", "expected_action"),
+    [
+        ("reject_claim", DeterministicAction.REJECT),
+        ("needs_review", DeterministicAction.REVIEW),
+    ],
+)
+def test_analyst_non_publish_remains_typed_and_accepted(
+    decision: str,
+    expected_action: DeterministicAction,
+) -> None:
+    payload = _analyst_envelope().model_dump(mode="json", by_alias=True)
+    payload["decision"] = decision
+    payload["reasonCode"] = "ambiguous_claim"
+    payload["decisionData"] = {}
+    envelope = DecisionEnvelope.model_validate(payload)
+
+    result = apply_decision(envelope, ApplicationContext(input_refs=envelope.input_refs))
+
+    assert result.status is ApplicationStatus.ACCEPTED
+    assert result.action is expected_action
 
 
 def test_application_rejects_envelope_references_not_supplied_by_context() -> None:

@@ -8,10 +8,14 @@ from pydantic import Field
 
 from devradar.agents.decisions import (
     AgentModel,
+    AnalystCaveatCode,
+    AnalystClaimCode,
     AnalystDecision,
     AnalystDecisionData,
+    AnalystTrendDirection,
     DecisionEnvelope,
     DecisionRef,
+    DecisionRefKind,
     PlannerDecision,
     Responsibility,
     ValidatorDecision,
@@ -70,6 +74,12 @@ class ApplicationContext(AgentModel):
     aggregate_has_denominator: bool = False
     aggregate_has_query_reference: bool = False
     supported_metric_refs: tuple[DecisionRef, ...] = Field(default=(), max_length=16)
+    expected_analyst_claim_code: AnalystClaimCode | None = None
+    expected_analyst_trend_direction: AnalystTrendDirection | None = None
+    required_analyst_caveat_codes: tuple[AnalystCaveatCode, ...] = Field(
+        default=(),
+        max_length=3,
+    )
 
 
 class ApplicationResult(AgentModel):
@@ -196,11 +206,24 @@ def apply_decision(
     if envelope.decision is AnalystDecision.PUBLISH_INSIGHT:
         metric_keys = _ref_keys(envelope.decision_data.supporting_metric_refs)
         supported_keys = _ref_keys(context.supported_metric_refs)
+        evidence_keys = _ref_keys(envelope.evidence_refs)
+        aggregate_query_keys = {
+            ref.key() for ref in context.input_refs if ref.kind is DecisionRefKind.AGGREGATE_QUERY
+        }
         if (
             not context.aggregate_has_denominator
             or not context.aggregate_has_query_reference
-            or not metric_keys
-            or not metric_keys.issubset(supported_keys)
+            or len(aggregate_query_keys) != 1
+            or not aggregate_query_keys.issubset(evidence_keys)
+            or context.expected_analyst_claim_code is None
+            or envelope.decision_data.claim_code is not context.expected_analyst_claim_code
+            or context.expected_analyst_trend_direction is None
+            or envelope.decision_data.trend_direction
+            is not context.expected_analyst_trend_direction
+            or len(metric_keys) != 1
+            or metric_keys != supported_keys
+            or not metric_keys.issubset(evidence_keys)
+            or envelope.decision_data.caveat_codes != context.required_analyst_caveat_codes
         ):
             return _result(
                 ApplicationStatus.REJECTED,
