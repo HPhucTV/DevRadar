@@ -5,7 +5,7 @@
 | Thuộc tính | Giá trị |
 |---|---|
 | Project status | `implementation` |
-| Active phase | `v5` (`proposed`) |
+| Active phase | `v5` (`in_progress`) |
 | Code scaffold | Có — FastAPI health + read-only domain API, PostgreSQL schema/migration, test/static gates và Compose local |
 | Source approved | `3` Vietnam V1 sources + `1` V3 secondary remote API source; mỗi source có scope riêng |
 | Runtime/test evidence | V1 [complete](evidence/V1-closeout.md); V2 [complete](evidence/V2-006-v2-closeout.md); V3 [complete](evidence/V3-006-v3-closeout.md); V4 historical safety evidence nằm ở [V4-001](evidence/V4-001-deterministic-agent-policy.md)–[V4-005](evidence/V4-005-analyst-skill-trend.md); [V4-006 closeout](evidence/V4-006-agent-usefulness-closeout.md) loại cả ba reasoning path theo ADR-013 |
@@ -235,7 +235,7 @@ Sáu microservice agent, autonomous source onboarding, autonomous data mutation,
 
 ## 7. V5 — Dashboard, CV matching và alerts
 
-**Status:** `proposed`
+**Status:** `in_progress`
 
 ### Mục tiêu
 
@@ -255,6 +255,8 @@ Biến dataset/capability thành trải nghiệm portfolio trực quan, giải t
 - matched/missing skills, component score và evidence explanation;
 - AlertRule/Delivery với Telegram hoặc Discord connector đầu tiên;
 - accessibility, browser E2E, retention/delete và idempotency.
+
+V5-001 đã chốt `web/` App Router với sáu route truthful, exact package pins và build/HTTP evidence. V5-002 đã nối Server Component views tới FastAPI thật cho jobs, detail/change history, skill analytics và crawler health; API failure/empty/loading states được render fail-closed. CV upload/matching, alert và auth vẫn chưa mở.
 
 ### Non-goals
 

@@ -1,0 +1,1 @@
+export default function Loading() { return <section className="route-panel loading-state" aria-busy="true"><p className="eyebrow">Loading evidence</p><h1>Fetching current data…</h1><p>DevRadar is asking the API for the latest safe response.</p></section>; }

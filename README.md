@@ -80,6 +80,8 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [V4-004 historical planner/validator evidence](docs/evidence/V4-004-planner-validator-direct-workflow.md): safe responsibility facts, direct proposal/validation/application và failure gates của runtime thử nghiệm.
 - [V4-005 historical analyst evidence](docs/evidence/V4-005-analyst-skill-trend.md): safe aggregate projection, exact publication gates và PostgreSQL integration của runtime thử nghiệm.
 - [V4-006 closeout evidence](docs/evidence/V4-006-agent-usefulness-closeout.md): responsibility comparison, explicit removal, migration round-trip và V4 exit-criteria mapping.
+- [V5-001 Next.js scaffold evidence](docs/evidence/V5-001-nextjs-ux-slice-scaffold.md): six-route App Router scaffold, exact package pins, TDD and route smoke.
+- [V5-002 dashboard evidence](docs/evidence/V5-002-dashboard-job-analytics.md): direct FastAPI server fetch, job/analytics/source views, safe states and real API smoke.
 - [Operations](docs/OPERATIONS.md): test, security, observability, retention, CI/CD và deployment gates.
 - [Source discovery](docs/sources/SHORTLIST.md): evidence và approval outcome; VNG, NAVER Vietnam/Greenhouse và MoMo đã được duyệt cho bounded Vietnam scope, RemoteJobs.org được duyệt riêng cho V3 remote cohort có attribution, GeoComply/Lever vẫn `permission_required`.
 - [Pre-V1 local evidence](docs/evidence/PRE-007-local-prerequisites.md): Docker/PostgreSQL capability và constraint đã xác minh.
