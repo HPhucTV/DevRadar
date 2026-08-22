@@ -30,6 +30,7 @@ class ApplicationStatus(StrEnum):
 class ApplicationReason(StrEnum):
     DECISION_VALID = "decision_valid"
     INPUT_REFERENCE_MISMATCH = "input_reference_mismatch"
+    SCHEDULE_NOT_ALLOWED = "schedule_not_allowed"
     RETRY_NOT_ALLOWED = "retry_not_allowed"
     ACCEPT_NOT_ALLOWED = "accept_not_allowed"
     AGGREGATE_EVIDENCE_INVALID = "aggregate_evidence_invalid"
@@ -60,6 +61,7 @@ class ApplicationContext(AgentModel):
     """Policy facts supplied by deterministic code, never by the model."""
 
     input_refs: tuple[DecisionRef, ...] = Field(min_length=1, max_length=16)
+    scheduled_action_allowed: bool = False
     source_quarantined: bool = False
     retry_eligible: bool = False
     retry_attempt_number: int = Field(default=1, ge=1, le=3)
@@ -115,6 +117,16 @@ def apply_decision(
 
     if envelope.responsibility is Responsibility.PLANNER:
         assert isinstance(envelope.decision, PlannerDecision)
+        if (
+            envelope.decision is PlannerDecision.KEEP_SCHEDULE
+            and not context.scheduled_action_allowed
+        ):
+            return _result(
+                ApplicationStatus.REJECTED,
+                DeterministicAction.REVIEW,
+                ApplicationReason.SCHEDULE_NOT_ALLOWED,
+                "schedule_not_allowed",
+            )
         if envelope.decision is PlannerDecision.RECOMMEND_RETRY:
             if (
                 not context.retry_eligible

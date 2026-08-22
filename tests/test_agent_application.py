@@ -123,6 +123,25 @@ def test_planner_retry_requires_deterministic_eligibility() -> None:
     assert allowed.action is DeterministicAction.RETRY
 
 
+def test_planner_keep_schedule_requires_deterministic_permission() -> None:
+    envelope = _planner_envelope("keep_schedule")
+
+    denied = apply_decision(envelope, ApplicationContext(input_refs=envelope.input_refs))
+    allowed = apply_decision(
+        envelope,
+        ApplicationContext(
+            input_refs=envelope.input_refs,
+            scheduled_action_allowed=True,
+        ),
+    )
+
+    assert denied.status is ApplicationStatus.REJECTED
+    assert denied.reason_code is ApplicationReason.SCHEDULE_NOT_ALLOWED
+    assert denied.action is DeterministicAction.REVIEW
+    assert allowed.status is ApplicationStatus.ACCEPTED
+    assert allowed.action is DeterministicAction.KEEP_SCHEDULE
+
+
 def test_validator_retry_requires_strategy_supplied_by_application() -> None:
     envelope = _validator_envelope()
 
@@ -159,6 +178,7 @@ def test_validator_accept_requires_deterministic_schema_and_evidence_gate() -> N
     assert result.action is DeterministicAction.ACCEPT
     assert set(ApplicationContext.model_fields) == {
         "input_refs",
+        "scheduled_action_allowed",
         "source_quarantined",
         "retry_eligible",
         "retry_attempt_number",
