@@ -4,5 +4,7 @@ fastembed==0.8.0
 pgvector==0.5.0
 playwright==1.62.0
 psycopg[binary]==3.3.4
+pypdf==6.16.1
+python-multipart==0.0.32
 sqlalchemy==2.0.52
 uvicorn==0.52.4

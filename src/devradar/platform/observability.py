@@ -63,6 +63,14 @@ _EVENT_FIELDS: Final[dict[str, frozenset[str]]] = {
             "transaction_state",
         }
     ),
+    "resume_profile_processed": frozenset(
+        {
+            "profile_id",
+            "source_format",
+            "extraction_status",
+            "outcome",
+        }
+    ),
 }
 
 
@@ -177,6 +185,22 @@ def record_job_observation(
         job_id=str(job_id),
         outcome=outcome,
         transaction_state="caller_owned_uncommitted",
+    )
+
+
+def record_resume_profile_processed(
+    *,
+    profile_id: UUID,
+    source_format: str,
+    extraction_status: str,
+    outcome: str,
+) -> None:
+    _emit(
+        "resume_profile_processed",
+        profile_id=str(profile_id),
+        source_format=source_format,
+        extraction_status=extraction_status,
+        outcome=outcome,
     )
 
 

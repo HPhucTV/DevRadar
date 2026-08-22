@@ -65,6 +65,7 @@ Không âm thầm chọn một phía khi hai nguồn cùng cấp mâu thuẫn. G
 - API phải dùng domain term và enum trong `docs/DOMAIN_MODEL.md`.
 - Sau khi FastAPI được scaffold, OpenAPI sinh từ code là wire contract chính. Thay đổi endpoint, schema, error hoặc pagination phải cập nhật test contract và `docs/API.md` trong cùng change.
 - Endpoint mutation hoặc dữ liệu nhạy cảm không được public trước khi có authentication/authorization phù hợp.
+- V5 `ResumeProfile` chỉ được bật local/protected bằng `DEVRADAR_CV_LOCAL_ENABLED=true`; mọi POST/GET/DELETE cần owner token 32–128 ký tự qua `X-DevRadar-Owner`. Chỉ hash token, không ghi token/raw CV vào log hoặc response; boundary này không được mô tả như authentication V6.
 - Không xóa hoặc đổi nghĩa field đã phát hành mà không có migration/deprecation plan.
 
 ## 7. Verification và Definition of Done

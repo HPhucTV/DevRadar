@@ -4,7 +4,7 @@
 
 DevRadar cung cấp REST JSON dưới `/api/v1`. OpenAPI tại `/api/v1/openapi.json` là wire contract chính cho endpoint đã triển khai; tài liệu này giữ intent, quyền truy cập và phase availability cho cả phần đã có và phần còn planned.
 
-V3-005 hiện có process health, Job/JobChange/Source/CrawlRun resources, một local-gated CrawlRun mutation, additive keyword/semantic Job search và hai skill analytics endpoint trong bảng dưới. OpenAPI và PostgreSQL contract test là nguồn bằng chứng wire behavior.
+V5-003 hiện có process health, Job/JobChange/Source/CrawlRun resources, một local-gated CrawlRun mutation, keyword/semantic Job search, skill analytics và local-gated ResumeProfile upload/read/delete. OpenAPI và PostgreSQL contract test là nguồn bằng chứng wire behavior.
 
 ## 2. Quy ước
 
@@ -100,9 +100,9 @@ V1 dùng page-based pagination vì dataset portfolio còn bounded và UI cần t
 | `POST /api/v1/crawl-runs` | Tạo pending run cho source approved | V2 — implemented | local/operator write gate |
 | `GET /api/v1/skills` | Taxonomy và frequency có denominator/coverage | V3 — implemented | local/read |
 | `GET /api/v1/skill-trends` | Bounded cohort/time-window trend | V3 — implemented | local/read |
-| `POST /api/v1/resume-profiles` | Upload và tạo profile | V5 | owner/write; local-only nếu chưa auth |
-| `GET /api/v1/resume-profiles/{profileId}` | Profile đã sanitize | V5 | owner/read |
-| `DELETE /api/v1/resume-profiles/{profileId}` | Xóa profile và dữ liệu liên quan theo policy | V5 | owner/write |
+| `POST /api/v1/resume-profiles` | Idempotent upload/tạo profile | V5-003 — implemented | owner/write; local-only trước auth |
+| `GET /api/v1/resume-profiles/{profileId}` | Profile đã sanitize, còn hạn | V5-003 — implemented | owner/read; local-only trước auth |
+| `DELETE /api/v1/resume-profiles/{profileId}` | Soft-delete profile theo owner | V5-003 — implemented | owner/write; local-only trước auth |
 | `GET /api/v1/resume-profiles/{profileId}/matches` | List match có component score | V5 | owner/read |
 | `GET /api/v1/alert-rules` | List rule của owner | V5 | owner/read |
 | `POST /api/v1/alert-rules` | Tạo rule | V5 | owner/write |
@@ -219,11 +219,14 @@ Write endpoint chỉ hoạt động khi local deployment đặt `DEVRADAR_OPERAT
 
 ### 6.4. ResumeProfile upload
 
-- Request dùng `multipart/form-data` với đúng một file và optional preference fields đã allow-list.
-- MIME header, extension và magic bytes đều được kiểm tra; parser không tin tên file.
-- Giới hạn size/page/type được khóa khi V5 bắt đầu dựa trên parser đã chọn và threat model; trước đó endpoint không tồn tại.
-- Response không trả raw text, absolute path, embedding hoặc provider payload.
-- `DELETE` phải xóa/expire profile, embeddings, matches và retained artifacts theo documented retention policy; audit record không chứa content.
+- Cả ba endpoint fail closed nếu `DEVRADAR_CV_LOCAL_ENABLED` khác `true`; đây là protected-local gate, không phải authentication.
+- Header `X-DevRadar-Owner` bắt buộc là opaque token 32–128 ký tự theo allow-list. Server chỉ persist SHA-256; invalid/missing token trả `403 resume_owner_invalid`, owner khác nhận `404`.
+- `POST` dùng `multipart/form-data` với đúng một part tên `file`; không nhận preference, URL, raw text, parser option hoặc provider. Local gate/owner dependency chạy trước body read; application stream-cap toàn request ở `5 MiB + 64 KiB` framing để cả chunked body không được spool không giới hạn. Success/replay trả `200` và cùng resource khi logical key còn hạn.
+- Chấp nhận `.pdf` + `application/pdf` + `%PDF-`, hoặc `.docx` + OOXML MIME + ZIP signature. Max file `5 MiB`, PDF `10` pages và decoded stream/array `10 MiB/page`; DOCX `100` entries và `20 MiB` tổng uncompressed; extracted text tối đa `100,000` ký tự. Pypdf decoder limits được hạ trước decode và library diagnostics bị chặn khỏi application/root log vì có thể chứa raw PDF bytes.
+- DOCX path traversal, symlink, duplicate entry, macro/embedded object, external relationship, DTD/entity và malformed XML bị reject. PDF malformed/encrypted/oversized hoặc empty extraction bị reject; không có OCR/LLM fallback ở V5-003.
+- `ResumeProfile` response gồm `id`, `fileName`, `sourceFormat`, `parserVersion`, `extractionStatus`, `skills`, `roles`, `locations`, `experienceYears`, `retentionMode`, `createdAt`, `expiresAt`. Không trả raw text/file, hash owner/content, `deletedAt`, embedding hoặc provider payload.
+- TTL cố định 24 giờ. GET của row deleted/expired trả `404`; DELETE đúng owner idempotent `204`. V5-003 chưa có embedding/match để cascade; V5-004/V5-005 phải thêm deletion test khi các artifact đó xuất hiện.
+- Safe error code: `cv_local_disabled`, `resume_owner_invalid`, `resume_multipart_invalid`, `resume_upload_too_large`, các `resume_*` parser code và envelope chung; exception/parser payload không được echo.
 
 ### 6.5. JobMatch
 
@@ -307,5 +310,5 @@ Auth mechanism cụ thể cần ADR khi V6 bắt đầu; tài liệu này không
 - Source chưa approved và arbitrary URL không thể tạo crawl run.
 - Idempotency key retry không tạo hai run.
 - ResumeProfile/Match của owner khác trả `404/403` theo policy.
-- Upload sai magic bytes, quá lớn, parser timeout hoặc malformed bị reject/cleanup.
+- Upload sai magic bytes, vượt request/file/decode/archive limit hoặc malformed bị reject/cleanup. V5-003 chưa có hard CPU timeout/process sandbox nên endpoint vẫn local/protected.
 - Field addition giữ backward compatibility; breaking fixture phải fail contract test.

@@ -9,6 +9,7 @@ x-app-base: &app-base
     DEVRADAR_DATABASE_URL: >-
       postgresql+psycopg://${POSTGRES_USER:-devradar}:${POSTGRES_PASSWORD:-devradar_local_only}@database:5432/${POSTGRES_DB:-devradar}
     DEVRADAR_OPERATOR_WRITE_ENABLED: ${DEVRADAR_OPERATOR_WRITE_ENABLED:-false}
+    DEVRADAR_CV_LOCAL_ENABLED: ${DEVRADAR_CV_LOCAL_ENABLED:-false}
   read_only: true
   tmpfs:
     - /tmp

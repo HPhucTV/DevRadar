@@ -182,13 +182,12 @@ Logical uniqueness là `job_id + input_hash + input_schema_version + provider + 
 
 | Field logic | Ý nghĩa |
 |---|---|
-| `id`, optional owner reference | Identity và ownership khi auth tồn tại. |
-| `file_name_sanitized`, `content_hash` | Audit mà không dùng path/tên tùy ý. |
-| structured profile | skill, experience, role preference, location preference. |
-| `embedding`/reference | Chỉ từ V5 cho ResumeProfile và luôn có model version; JobEmbedding V3 là entity derived riêng. |
-| `retention_mode`, `expires_at` | Mặc định ephemeral/short-lived. |
+| `id`, `owner_hash` | UUID identity và SHA-256 của local owner token; raw token không được persist. |
+| `file_name_sanitized`, `content_hash`, `source_format`, `parser_version` | Audit/replay identity mà không giữ path, file hoặc raw text. |
+| `skills`, `roles`, `locations`, `experience_years`, `extraction_status` | Structured deterministic profile; unknown fact bị omit hoặc profile ở `needs_review`. |
+| `retention_mode`, `created_at`, `expires_at`, `deleted_at` | V5-003 chỉ hỗ trợ `ephemeral`, TTL 24 giờ và soft tombstone. |
 
-File CV gốc không phải entity lưu trữ lâu dài mặc định. Raw text không được ghi vào log, tracing hoặc audit output.
+Logical replay key hiện là `owner_hash + content_hash + parser_version` với unique partial index cho row chưa tombstone. Replay còn hạn trả cùng identity; replay đã hết hạn tombstone row cũ rồi tạo profile mới. `GET` chỉ thấy profile đúng owner, chưa xóa và chưa hết hạn; `DELETE` cùng owner idempotent. File CV gốc và extracted raw text không phải field/entity lưu trữ. Resume embedding và `JobMatch` chỉ xuất hiện từ V5-004, không được ngầm gắn vào V5-003.
 
 ### 4.9. JobMatch
 

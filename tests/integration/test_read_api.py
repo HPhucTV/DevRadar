@@ -818,6 +818,8 @@ def test_openapi_exposes_v3_contract_with_camel_case_parameters() -> None:
         "/api/v1/crawl-runs/{runId}",
         "/api/v1/skills",
         "/api/v1/skill-trends",
+        "/api/v1/resume-profiles",
+        "/api/v1/resume-profiles/{profileId}",
     }
     assert set(openapi["paths"]) == expected_paths
     assert set(openapi["paths"]["/api/v1/crawl-runs"]) == {"get", "post"}

@@ -61,6 +61,8 @@ Chạy nhanh, deterministic, không network:
 
 Test được gọi “PostgreSQL integration” chỉ khi thực sự chạy PostgreSQL, không phải SQLite/mock. Test AI live không được thay thế evaluation trên fixed dataset.
 
+V5-003 có hai lớp kiểm chứng: parser unit fixture không chạm network/database và PostgreSQL API integration trên database tạm. Integration phải chứng minh migration round-trip/`alembic check`, active replay, expiry tombstone, cross-owner `404`, delete idempotent, default-disabled gate trước multipart parse, chunked total-body cap, decoded-PDF bomb/error mapping, parser-log sentinel, multipart negative cases và không có raw file/text/token trong database/response/event.
+
 V3-003 PostgreSQL gate phải chạy migration trên database mới, kiểm tra partial unique index
 `uq_extraction_results_accepted_cache`, read-after-write cho accepted cache, audit rows cho
 `rejected/needs_review`, rollback không để lại half-result và savepoint re-read khi duplicate
@@ -106,7 +108,7 @@ PostgreSQL test hiện dùng `DEVRADAR_TEST_DATABASE_URL`, tạo database tên n
 | Analytics thiếu accepted extraction | Giữ Job trong denominator, giảm `analyzedJobs`/coverage; không bịa zero coverage thành full coverage. |
 | Prompt injection trong JD/CV | Không đổi tool/policy, không gọi arbitrary action. |
 | Upload sai type/magic/size | Reject, cleanup temporary file, không tạo profile dở dang. |
-| Upload parser timeout/bomb | Giới hạn tài nguyên, cleanup và safe error. |
+| Upload parser malformed/bomb | Request/file/page/decode/archive limit, cleanup và safe error; hard CPU timeout/process sandbox chưa có ở V5-003 local. |
 | Owner khác đọc CV/match | Bị authorization chặn, không lộ resource existence theo policy. |
 | Log/error/trace | Không chứa raw CV, secret, auth header, raw embedding hoặc full payload. |
 | Alert retry | Không gửi trùng cùng idempotency key. |
@@ -186,6 +188,7 @@ V1 hiện ghi JSON line ra stderr bằng standard library, không thêm telemetr
 - `api_error`: request ID, status, safe error code và exception class; không ghi exception message/stack/SQL;
 - `job_observation_processed`: run/source/snapshot/job ID, outcome và `transaction_state=caller_owned_uncommitted`; không được diễn giải event này thành commit thành công;
 - `crawl_run_summary`: run/source ID, status, coverage, duration, bounded counters và safe error code; runner chỉ emit summary cuối sau transaction outcome rõ.
+- `resume_profile_processed`: profile ID, source format, extraction status và `created|reused`; không ghi filename, owner/content hash, skill/location, token hoặc raw CV.
 
 API request count/latency/status và run/job outcome được tính bằng cách aggregate event name + bounded numeric/enum field. Opaque correlation ID chỉ dùng trace lookup, không dùng làm metric label. Persisted run counters và source failure vẫn đọc qua `/api/v1/crawl-runs`; V1 chưa cần Prometheus client hoặc in-process metrics registry.
 
