@@ -100,8 +100,6 @@ V1 dùng page-based pagination vì dataset portfolio còn bounded và UI cần t
 | `POST /api/v1/crawl-runs` | Tạo pending run cho source approved | V2 — implemented | local/operator write gate |
 | `GET /api/v1/skills` | Taxonomy và frequency có denominator/coverage | V3 — implemented | local/read |
 | `GET /api/v1/skill-trends` | Bounded cohort/time-window trend | V3 — implemented | local/read |
-| `GET /api/v1/agent-runs` | Audit run đã redact | V4 | operator/read |
-| `GET /api/v1/agent-runs/{runId}` | Agent decision và provenance an toàn | V4 | operator/read |
 | `POST /api/v1/resume-profiles` | Upload và tạo profile | V5 | owner/write; local-only nếu chưa auth |
 | `GET /api/v1/resume-profiles/{profileId}` | Profile đã sanitize | V5 | owner/read |
 | `DELETE /api/v1/resume-profiles/{profileId}` | Xóa profile và dữ liệu liên quan theo policy | V5 | owner/write |
@@ -112,6 +110,8 @@ V1 dùng page-based pagination vì dataset portfolio còn bounded và UI cần t
 | `DELETE /api/v1/alert-rules/{ruleId}` | Xóa rule idempotent | V5 | owner/write |
 
 Endpoint V5 chứa CV/owner data phải bị disable trên public deployment cho tới khi V6 có authentication và authorization. Không coi UUID khó đoán là access control.
+
+Hai endpoint `agent-runs` từng được đề xuất cho V4 nhưng chưa implement và đã bị loại cùng runtime/schema theo [ADR-013](decisions/0013-remove-unretained-v4-agent-runtime.md). Không giữ route placeholder hoặc reserved contract cho feature đã reject.
 
 V2 Source summary bổ sung `consecutiveFailures` và safe `healthReasonCode`; Source detail bổ sung `baselineItemsFound` và `quarantinedAt`. Response không trả rate policy, allowed hosts nội bộ, request payload hoặc raw error. `healthStatus=quarantined` luôn có `quarantinedAt`; các status khác trả `null`.
 
@@ -280,9 +280,9 @@ Trong V1:
 ## 8. Authentication, authorization và exposure
 
 - V1–V4 mặc định bind local/private network; mutation chỉ dành cho operator được cấu hình ngoài request.
-- Có thể public read-only job/skill data trước V6 chỉ sau security/deployment review; crawler run, source config, agent audit và raw evidence vẫn protected.
+- Có thể public read-only job/skill data trước V6 chỉ sau security/deployment review; crawler run, source config và raw evidence vẫn protected.
 - V5 CV/alert feature chạy local-only nếu auth chưa có.
-- V6 phải có owner check trên mọi ResumeProfile, JobMatch và AlertRule; operator role riêng cho crawl/agent/source operations.
+- V6 phải có owner check trên mọi ResumeProfile, JobMatch và AlertRule; operator role riêng cho crawl/source operations.
 - CORS dùng explicit origin allow-list; không dùng wildcard với credential.
 - Error `404` có thể được dùng thay `403` cho owner resource để tránh resource enumeration.
 

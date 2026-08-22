@@ -60,9 +60,9 @@ Chạy trên Windows PowerShell, Python `3.13.14`, PostgreSQL Compose thật:
 | Alembic local upgrade | `f4a6c2d8e901 → a1d4e7f9b203` applied |
 | Alembic drift check | `No new upgrade operations detected` |
 | Compose crawler profile config | exit `0` |
-| Markdown internal links | `85 files`, `220 links`, `0 invalid` |
+| Markdown internal links | `85 files`, `221 links`, `0 invalid` |
 
-Source scan không còn import/symbol `devradar.agents`, `AgentRun`, `execute_responsibility` hoặc `evaluate_responsibility`. Chuỗi `agent_runs` chỉ còn trong hai historical migration revision, migration regression, ADR/spec/plan/evidence lịch sử. Dependency `.in`/lock và `docs/API.md` không đổi trong V4-006; không có public contract hoặc provider runtime mới.
+Source scan không còn import/symbol `devradar.agents`, `AgentRun`, `execute_responsibility` hoặc `evaluate_responsibility`. Chuỗi `agent_runs` chỉ còn trong hai historical migration revision, migration regression, ADR/spec/plan/evidence lịch sử. Dependency `.in`/lock không đổi. Hai planned `agent-runs` endpoint chưa từng implement đã được xóa khỏi `docs/API.md`; không có public contract hoặc provider runtime mới.
 
 ## Exit criteria mapping
 

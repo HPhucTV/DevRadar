@@ -50,7 +50,7 @@ Recruiter, HR analytics, multi-tenant team và commercial data product không th
 | Skill extraction bằng LLM fallback | Biến JD phi cấu trúc thành dữ liệu có schema | V3 |
 | Job classification và bounded AI summary | Phân loại role/level và tóm tắt có evidence | V3 |
 | Skill trends và semantic search | Hiểu nhu cầu kỹ năng và tìm job gần nghĩa | V3 |
-| Planner/validator/analyst agent | Tự điều chỉnh hoặc review ở điểm cần reasoning | V4 |
+| Planner/validator/analyst evaluation | Đánh giá reasoning path so với deterministic baseline; cả ba bị loại vì không có measurable gain | V4 — complete/removed |
 | Dashboard | Khám phá dữ liệu bằng giao diện web | V5 |
 | CV matching | Xem match, missing skill và giải thích | V5 |
 | Alert cá nhân | Nhận job mới thỏa tiêu chí | V5 |
@@ -108,12 +108,12 @@ Các mục `Candidate` không phải deliverable hoặc acceptance criterion cho
 - Match score gồm các thành phần được công bố; giải thích phải dựa trên evidence từ CV/JD.
 - Người dùng thấy matched skill, missing skill và lý do, không chỉ một phần trăm tổng hợp.
 
-### UC-06 — Agentic decision
+### UC-06 — Agentic decision evaluation (V4 closed)
 
-- Planner có thể đề xuất ưu tiên crawl dựa trên metric thực, trong giới hạn policy xác định.
-- Validator có thể accept, reject, retry hoặc yêu cầu review đối với extraction không chắc chắn.
-- Analyst sinh insight từ aggregate/query result đã tính trước, không tự bịa số liệu.
-- Mọi quyết định agent có input reference, output có schema, version, latency, cost và status.
+- Planner, validator và analyst được so sánh với deterministic V2/V3 baseline bằng safety/usefulness gate đặt trước.
+- Scripted workflow chứng minh schema/policy/failure boundary nhưng không chứng minh model usefulness.
+- Cả ba reasoning path bị loại theo ADR-013 vì input facts đã xác định outcome và không có labeled measurable gain.
+- Future agent use case cần frozen labeled dataset, improvement target, privacy boundary và ADR mới; không có current agent runtime.
 
 ### UC-07 — Alert
 
@@ -129,8 +129,8 @@ Các mục `Candidate` không phải deliverable hoặc acceptance criterion cho
 | NFR-02 | Mọi normalized field quan trọng phải có provenance hoặc raw value tương ứng. |
 | NFR-03 | Source lỗi không được gây false removal hoặc làm hỏng dữ liệu đã có. |
 | NFR-04 | Outbound crawler chỉ truy cập allow-list; timeout, redirect và response size phải bị giới hạn. |
-| NFR-05 | Raw CV, secrets và token không xuất hiện trong application log, trace hoặc agent prompt log. |
-| NFR-06 | LLM/agent output phải có schema validation, evaluation và fallback/review path. |
+| NFR-05 | Raw CV, secrets và token không xuất hiện trong application log, trace hoặc model prompt log. |
+| NFR-06 | LLM output phải có schema validation, evaluation và fallback/review path. Future agent output phải đạt thêm gate ADR-013. |
 | NFR-07 | Metric đủ để trả lời mỗi run đã làm gì, thành công hay thất bại ở đâu và tốn bao nhiêu. |
 | NFR-08 | Public mutation hoặc dữ liệu cá nhân phải có authentication/authorization trước khi deploy. |
 | NFR-09 | Contract API đã phát hành không được phá vỡ nếu thiếu versioning hoặc migration plan. |

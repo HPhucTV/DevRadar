@@ -83,7 +83,7 @@ PostgreSQL test hiện dùng `DEVRADAR_TEST_DATABASE_URL`, tạo database tên n
 - V1: trigger approved adapter qua operator path, ingest dataset và query qua API.
 - V2: nhiều scheduled fixture cycles phát hiện new/update/missing/removed/reactivated, duplicate slot không process lại, partial/anomaly không false removal và quarantine recovery đúng policy.
 - V3: deterministic extraction + LLM fallback trên labeled suite; fixed local model backfill; keyword/semantic comparison và skill trend có denominator/coverage.
-- V4: invalid extraction đi qua bounded validator decision, retry/review và audit.
+- V4: historical planner/validator/analyst safety suite và migration regression chứng minh runtime bị loại ở current head.
 - V5: upload CV hợp lệ, xem match/evidence, xóa profile và xác nhận artifact hết hiệu lực.
 - V6: public auth, authorization, rate limiting, backup restore và deploy rollback.
 
@@ -118,7 +118,7 @@ PostgreSQL test hiện dùng `DEVRADAR_TEST_DATABASE_URL`, tạo database tên n
 - source/database/LLM/notification credentials;
 - raw job evidence và dataset integrity;
 - CV, ResumeProfile, embedding và match result;
-- operator action, agent decision và audit trail;
+- operator action, AI evaluation và audit trail;
 - compute/budget cho crawler và model.
 
 ### 6.2. Controls theo trust boundary
@@ -144,16 +144,16 @@ PostgreSQL test hiện dùng `DEVRADAR_TEST_DATABASE_URL`, tạo database tên n
 - JavaScript page dùng iframe/subresource/WebSocket để truy cập private host, tải file hoặc giữ state qua browser run;
 - JD chứa prompt yêu cầu model tiết lộ secret hoặc gọi tool;
 - file PDF/DOCX giả mạo, zip bomb hoặc parser exploit;
-- anonymous user enumerate ResumeProfile/AgentRun;
+- anonymous user enumerate ResumeProfile/JobMatch;
 - query/filter tạo SQL injection hoặc expensive unbounded query;
 - alert rule gây spam/cost amplification;
-- crafted dataset làm loop agent hoặc tăng token vô hạn.
+- crafted model input gây prompt injection hoặc tăng token/cost ngoài budget.
 
 ## 7. Observability
 
 ### 7.1. Correlation
 
-Mỗi request/run/extraction/agent/delivery có opaque ID. Log dùng structured fields và liên kết bằng ID/reference, không copy raw payload.
+Mỗi request/crawl run/extraction/delivery có opaque ID. Log dùng structured fields và liên kết bằng ID/reference, không copy raw payload.
 
 ### 7.2. Metric tối thiểu
 
@@ -163,7 +163,6 @@ Mỗi request/run/extraction/agent/delivery có opaque ID. Log dùng structured 
 | Data | `jobs_new_total`, `jobs_updated_total`, `jobs_missing_total`, `jobs_removed_total`, `jobs_reactivated_total`, `duplicates_candidate_total`, `parse_failures_total` |
 | Source | `source_last_success_age`, `source_failure_rate`, `source_coverage_anomalies_total`, health state |
 | AI | `ai_requests_total`, `ai_cache_hits_total`, extraction/classification/summary accepted/rejected/needs-review counts, provider attempts, embedding selected/created/cache-hit/stale counts, model unavailable, `ai_validation_failures_total`, `ai_latency_seconds`, input/output tokens, estimated cost |
-| Agent | `agent_runs_total`, decision/retry/review count, step-limit hit, failure rate |
 | API | request count, latency, status code, validation/rate-limit failures |
 | CV/alert | upload reject/cleanup, match duration, deletion completion, delivery success/duplicate prevented |
 
@@ -231,7 +230,7 @@ Backup:
 | V1 | format/lint/type check, unit, PostgreSQL integration, migration check, OpenAPI contract, image/config smoke |
 | V2 | scheduler/retry/state-transition tests và orchestration smoke |
 | V3 | fixed AI evaluation suite, fixed model integrity/inference smoke, pgvector migration/query integration, OpenAPI/search/analytics contract và cost/latency report |
-| V4 | agent step/tool/policy safety tests và graph regression |
+| V4 | historical agent safety evaluation, explicit removal decision và `agent_runs` migration round-trip |
 | V5 | frontend build, accessibility baseline, browser E2E, upload/delete/authorization tests |
 | V6 | dependency/container scan, secret scan, auth/rate-limit/security header tests, deploy/rollback và restore drill |
 
