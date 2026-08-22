@@ -41,7 +41,7 @@ External actors và trust level:
 | `api` | `/api/v1`, validation, pagination, auth boundary | V1 | crawler parsing, scoring logic |
 | `automation` | schedule, retry policy, run orchestration, health | V2 | source-specific extraction |
 | `intelligence` | LLM extraction, embeddings, trend queries/evaluation | V3 | authoritative raw data |
-| `agents` | typed planner/validator/analyst proposal, read-only tool authorization và deterministic application validation | V4 | persistence transaction, deterministic retry engine, model/graph runtime |
+| `agents` | typed proposal/run state, read-only tool authorization, deterministic application validation và caller-owned AgentRun persistence operations | V4 | transaction commit/rollback, deterministic retry engine, model/graph runtime |
 | `matching` | resume profile, score components, explanation evidence | V5 | file transport/security policy |
 | `presentation` | Next.js UI, charts, upload experience | V5 | domain rules hoặc data correction |
 | `alerts` | rule evaluation, idempotent delivery, delivery history | V5 | source crawling |
@@ -114,18 +114,23 @@ Embedding model call chạy ngoài database transaction; persistence re-check Jo
 
 ### 5.4. Agent decision boundary
 
-V4-001 thêm internal decision boundary; V4-002 khóa direct runtime direction nhưng chưa thêm model/provider:
+V4-001 thêm internal decision boundary; V4-002 khóa direct runtime direction; V4-003 thêm bounded run/audit nhưng chưa thêm model/provider:
 
 ```mermaid
 flowchart LR
-    I["Bounded read-only input refs"] --> D["Typed decision envelope"]
+    I["Bounded read-only input refs"] --> S["Short caller tx: AgentRun running"]
+    S --> D["Future direct proposal outside DB tx"]
     D --> V["Deterministic schema, policy and evidence validation"]
     V --> A["Normalized action token"]
     V --> F["Baseline or needs_review fallback"]
+    A --> T["Short caller tx: finalize AgentRun"]
+    F --> T
     A --> W["Existing application use case owns mutation"]
 ```
 
-Tool authorization là default deny và responsibility-specific. `agents` không nhận database session, arbitrary argument/URL/SQL/shell hoặc mutation handle. Retry eligibility/quarantine/cap, validator accept gate và analyst denominator/query/metric support đều do deterministic context cấp. V4-003 thêm typed run state/`AgentRun` trực tiếp; không dùng graph checkpoint làm audit state. Xem [V4-001 evidence](evidence/V4-001-deterministic-agent-policy.md) và [V4-002 decision evidence](evidence/V4-002-langgraph-direct-workflow-spike.md).
+Tool authorization là default deny và responsibility-specific. Proposal/application boundary không nhận database session, arbitrary argument/URL/SQL/shell hoặc mutation handle. Retry eligibility/quarantine/cap, validator accept gate và analyst denominator/query/metric support đều do deterministic context cấp.
+
+`agents.persistence` chỉ add/lock/flush trong caller-owned transaction. Transaction 1 insert `running` và commit trước external work; transaction 2 lock đúng row, revalidate typed outcome/usage và finalize terminal. Functions không commit/rollback, không giữ transaction qua network/model call và không biến AgentRun thành graph checkpoint. Unique `active_slot` khóa một global running run; retry parent lock + unique child khóa đúng một direct attempt 2. Xem [V4-001 evidence](evidence/V4-001-deterministic-agent-policy.md), [V4-002 decision evidence](evidence/V4-002-langgraph-direct-workflow-spike.md) và [V4-003 design](superpowers/specs/2026-08-22-v4-003-agent-run-state-safety-design.md).
 
 ### 5.5. CV matching
 
@@ -151,6 +156,7 @@ Crawler/one-shot worker CLI và API dùng cùng code nhưng là entrypoint/proce
 | Source URL/browser subrequest → fetcher | SSRF, redirect escape, oversized/slow response | source allow-list trên mọi request, DNS/IP/redirect re-validation, egress control, timeout, byte limit |
 | HTML/JSON-LD → parser | malformed content, injection, parser bomb | content type/size limit, safe parser, no script execution ở HTTP path, fixtures |
 | Raw content → LLM | prompt injection, PII leak, cost abuse | treat as data, minimal fields, tool deny-by-default, budget, redaction |
+| Model output → AgentRun/application | schema bypass, excessive agency, secret/raw disclosure | strict DecisionEnvelope, deterministic policy/application, hard usage caps, typed redacted audit only |
 | Model artifact/query → local embedding | supply-chain tampering, unbounded CPU/input, vector mismatch, query disclosure | fixed revision + artifact SHA-256, local-files-only, length/dimension/finite checks, no raw query/vector logging |
 | CV upload → parser | malware/polyglot, decompression bomb, PII | type/signature/size/page limits, isolated parse, no macro execution, short retention |
 | API → mutation | unauthorized crawl/data access | local/operator-only trước auth; authenticated role sau V6 |
@@ -167,6 +173,7 @@ Chi tiết vận hành nằm trong [OPERATIONS.md](OPERATIONS.md).
 - Reprocessing tạo kết quả extraction/version mới và giữ reference tới input cũ.
 - Job embedding là derived row có logical model/hash identity; canonical Job/PostgreSQL vẫn authoritative và stale vector không được rank như current.
 - Analytics đọc current Job cohort cùng latest compatible accepted extraction, luôn công bố denominator/coverage; partial run không được làm sai Job lifecycle hoặc cohort.
+- AgentRun start/finalize là hai transaction ngắn; external work không giữ row lock, terminal row bất biến và one-running-slot fail closed khi race.
 - Delivery alert dùng idempotency key để retry an toàn.
 
 ## 9. Quy tắc thay đổi kiến trúc

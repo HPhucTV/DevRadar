@@ -8,7 +8,7 @@
 | Active phase | `v4` (`in_progress`) |
 | Code scaffold | Có — FastAPI health + read-only domain API, PostgreSQL schema/migration, test/static gates và Compose local |
 | Source approved | `3` Vietnam V1 sources + `1` V3 secondary remote API source; mỗi source có scope riêng |
-| Runtime/test evidence | V1 [complete](evidence/V1-closeout.md); V2 [complete](evidence/V2-006-v2-closeout.md); V3 [complete](evidence/V3-006-v3-closeout.md); V4-001 [complete](evidence/V4-001-deterministic-agent-policy.md); V4-002 [complete](evidence/V4-002-langgraph-direct-workflow-spike.md) và ADR-012 chọn direct workflow; V4-003 Ready |
+| Runtime/test evidence | V1 [complete](evidence/V1-closeout.md); V2 [complete](evidence/V2-006-v2-closeout.md); V3 [complete](evidence/V3-006-v3-closeout.md); V4-001 [complete](evidence/V4-001-deterministic-agent-policy.md); V4-002 [complete](evidence/V4-002-langgraph-direct-workflow-spike.md) và ADR-012 chọn direct workflow; V4-003 [complete](evidence/V4-003-agent-run-state-safety.md); V4-004 Ready |
 
 Task-level status có thể được theo dõi bằng `TASK_BOARD.md` cục bộ. File này bị Git ignore và không thay đổi phase gate hoặc exit criteria của roadmap.
 

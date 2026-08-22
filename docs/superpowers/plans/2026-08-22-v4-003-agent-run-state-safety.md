@@ -29,7 +29,7 @@
 - Create: `tests/test_agent_run_state.py`
 - Reference: `src/devradar/agents/decisions.py`
 
-- [ ] **Step 1: Viết failing tests cho strict input/hash/state**
+- [x] **Step 1: Viết failing tests cho strict input/hash/state**
 
 Tạo helpers `_ref()`, `_decision()` và tests với contract mong muốn:
 
@@ -80,7 +80,7 @@ def test_run_state_rejects_duplicate_refs_and_extra_payload() -> None:
         AgentRunLimits.model_validate(payload)
 ```
 
-- [ ] **Step 2: Viết parameterized tests cho mọi hard limit**
+- [x] **Step 2: Viết parameterized tests cho mọi hard limit**
 
 Mỗi case cộng đúng boundary phải pass; cộng thêm một đơn vị phải raise `AgentRunLimitExceeded` với `str(error) == "limit_exceeded"`:
 
@@ -113,7 +113,7 @@ def test_each_usage_dimension_accepts_boundary_then_rejects_overflow(
         add_usage(state, AgentRunUsage.model_validate(overflow))
 ```
 
-- [ ] **Step 3: Viết transition/redaction tests**
+- [x] **Step 3: Viết transition/redaction tests**
 
 Khóa `running → terminal`, decision responsibility/input match, terminal immutable, negative delta reject và exception không echo raw secret:
 
@@ -141,7 +141,7 @@ def test_safe_errors_never_include_untrusted_text() -> None:
     assert error.code == "run_not_running"
 ```
 
-- [ ] **Step 4: Chạy RED và xác nhận failure đúng nguyên nhân**
+- [x] **Step 4: Chạy RED và xác nhận failure đúng nguyên nhân**
 
 Run:
 
@@ -157,7 +157,7 @@ Expected: collection fails với `ModuleNotFoundError: No module named 'devradar
 - Create: `src/devradar/agents/run_state.py`
 - Test: `tests/test_agent_run_state.py`
 
-- [ ] **Step 1: Implement strict enums/models và canonical hash**
+- [x] **Step 1: Implement strict enums/models và canonical hash**
 
 Implement trực tiếp, không thêm dependency/abstraction:
 
@@ -206,7 +206,7 @@ class AgentRunUsage(AgentModel):
 
 `AgentRunLimits` thêm validator khóa cost đúng `Decimal("0.05000000")`; `AgentRunState` dùng `AgentModel`, `input_refs` 1..16, safe name/version patterns, lowercase SHA-256 và model validator để reject duplicate refs cùng invalid lifecycle. `canonical_input_hash()` sort `DecisionRef.key()`, dump camelCase JSON với `sort_keys=True`, compact separators, UTF-8 rồi SHA-256.
 
-- [ ] **Step 2: Implement pure start/usage/finish transitions**
+- [x] **Step 2: Implement pure start/usage/finish transitions**
 
 Public signatures và safe errors phải đúng:
 
@@ -216,7 +216,7 @@ Public signatures và safe errors phải đúng:
 
 `add_usage()` cộng từng field bằng `model_copy(update=updated_usage_fields)`, kiểm sáu ceiling trước khi trả state mới và raise `AgentRunLimitExceeded(AgentRunTransitionCode.LIMIT_EXCEEDED)` nếu overflow. `finish_run()` chỉ nhận terminal status; `succeeded|rejected` bắt buộc decision cùng responsibility, exact input-ref set; `failed` bắt buộc safe failure; mọi terminal state reject transition sau đó.
 
-- [ ] **Step 3: Chạy GREEN và static narrow gates**
+- [x] **Step 3: Chạy GREEN và static narrow gates**
 
 Run:
 
@@ -228,7 +228,7 @@ Run:
 
 Expected: all tests pass; Ruff và mypy exit `0`.
 
-- [ ] **Step 4: Commit pure contract**
+- [x] **Step 4: Commit pure contract**
 
 ```powershell
 git add src/devradar/agents/run_state.py tests/test_agent_run_state.py
@@ -241,13 +241,18 @@ git commit -m "feat: add bounded agent run state"
 - Create: `tests/integration/test_agent_runs.py`
 - Reference: `tests/integration/conftest.py`
 
-- [ ] **Step 1: Viết fresh-migration schema test**
+- [x] **Step 1: Viết fresh-migration schema test**
 
 Reuse `_alembic_config()`/fresh database pattern. Test `command.upgrade(alembic_config, "head")` hai lần, `command.check(alembic_config)`, rồi assert table, no raw columns, required check names và unique indexes:
 
 ```python
 for forbidden in {
-    "raw_content", "prompt", "provider_output", "error_summary", "tool_arguments", "embedding"
+    "raw_content",
+    "prompt",
+    "provider_output",
+    "error_summary",
+    "tool_arguments",
+    "embedding",
 }:
     assert forbidden not in column_names
 assert {
@@ -264,7 +269,7 @@ assert {
 assert {"uq_agent_runs_active_slot", "uq_agent_runs_retry_of"} <= index_names
 ```
 
-- [ ] **Step 2: Viết start/concurrency/rollback tests**
+- [x] **Step 2: Viết start/concurrency/rollback tests**
 
 Expected API:
 
@@ -286,7 +291,7 @@ assert session.scalar(select(AgentRun)) is None
 
 Commit one first run, then a second session start must raise `AgentRunPersistenceError` code `concurrent_run`; test message contains neither raw input nor injected secret.
 
-- [ ] **Step 3: Viết finalize/retry/DB-negative tests**
+- [x] **Step 3: Viết finalize/retry/DB-negative tests**
 
 Cover:
 
@@ -298,13 +303,14 @@ Cover:
 - only `failed|needs_review` attempt 1 can create retry attempt 2; succeeded/rejected, retry-of-retry and second child reject;
 - caller rollback after finalize restores `running` row with no half terminal fields.
 
-- [ ] **Step 4: Chạy RED trên PostgreSQL thật**
+- [x] **Step 4: Chạy RED trên PostgreSQL thật**
 
 ```powershell
 docker compose --env-file .env.example up database --wait
 $env:DEVRADAR_TEST_DATABASE_URL = 'postgresql+psycopg://devradar:devradar_local_only@127.0.0.1:55432/postgres'
 try {
     .venv\Scripts\python -m pytest tests/integration/test_agent_runs.py -q
+    if ($LASTEXITCODE -ne 0) { throw "agent run PostgreSQL RED test failed" }
 } finally {
     Remove-Item Env:\DEVRADAR_TEST_DATABASE_URL -ErrorAction SilentlyContinue
 }
@@ -321,7 +327,7 @@ Expected: collection fails vì `devradar.agents.models`/`persistence` và migrat
 - Modify: `migrations/env.py`
 - Test: `tests/integration/test_agent_runs.py`
 
-- [ ] **Step 1: Implement `AgentRun` ORM mapping**
+- [x] **Step 1: Implement `AgentRun` ORM mapping**
 
 Mapping dùng UUID PK, JSONB cho typed snapshots, `Numeric(14, 8)` cho cost, timezone timestamps và exact constraints của spec. Lifecycle expression phải khóa:
 
@@ -334,7 +340,7 @@ OR
 
 Decision pair expression: schema/data cùng null hoặc cùng non-null; `succeeded|rejected` cần pair và không failure; `failed` cần failure và không decision; `needs_review` cho phép validated pair hoặc null. Tạo unique index nullable `uq_agent_runs_active_slot` và unique `uq_agent_runs_retry_of`; không tạo relation/table khác.
 
-- [ ] **Step 2: Implement migration từ current head**
+- [x] **Step 2: Implement migration từ current head**
 
 Migration revision `f4a6c2d8e901`, `down_revision = "c82f4a7d901e"`; `upgrade()` tạo đúng một bảng `agent_runs`, self-FK `retry_of_run_id ON DELETE RESTRICT`, constraints/index giống ORM. `downgrade()` drop hai index rồi drop table. Modify `migrations/env.py`:
 
@@ -349,7 +355,7 @@ _MODEL_MODULES = (
 )
 ```
 
-- [ ] **Step 3: Implement caller-owned persistence**
+- [x] **Step 3: Implement caller-owned persistence**
 
 Public API:
 
@@ -358,17 +364,22 @@ Public API:
 
 `start_agent_run()` validate qua `start_run_state()`, lock retry parent nếu có, enforce parent `failed|needs_review` + attempt 1 + no child, add/flush trong nested savepoint để race thành safe `concurrent_run`/`retry_not_allowed`. `finalize_agent_run()` lock row, reconstruct/validate typed refs + limits, call `add_usage()` rồi `finish_run()`, assign exact typed dumps và flush. Hai function không gọi `commit()`/`rollback()`; không log refs/decision; safe exception chỉ nhận allow-listed code/summary.
 
-- [ ] **Step 4: Chạy GREEN PostgreSQL + migration round trip**
+- [x] **Step 4: Chạy GREEN PostgreSQL + migration round trip**
 
 ```powershell
 $env:DEVRADAR_TEST_DATABASE_URL = 'postgresql+psycopg://devradar:devradar_local_only@127.0.0.1:55432/postgres'
 $env:DEVRADAR_DATABASE_URL = 'postgresql+psycopg://devradar:devradar_local_only@127.0.0.1:55432/postgres'
 try {
     .venv\Scripts\python -m pytest tests/integration/test_agent_runs.py -q
+    if ($LASTEXITCODE -ne 0) { throw "agent run PostgreSQL test failed" }
     .venv\Scripts\python -m alembic upgrade head
+    if ($LASTEXITCODE -ne 0) { throw "Alembic upgrade failed" }
     .venv\Scripts\python -m alembic check
+    if ($LASTEXITCODE -ne 0) { throw "Alembic check failed" }
     .venv\Scripts\python -m alembic downgrade c82f4a7d901e
+    if ($LASTEXITCODE -ne 0) { throw "Alembic downgrade failed" }
     .venv\Scripts\python -m alembic upgrade head
+    if ($LASTEXITCODE -ne 0) { throw "Alembic re-upgrade failed" }
 } finally {
     Remove-Item Env:\DEVRADAR_TEST_DATABASE_URL -ErrorAction SilentlyContinue
     Remove-Item Env:\DEVRADAR_DATABASE_URL -ErrorAction SilentlyContinue
@@ -377,7 +388,7 @@ try {
 
 Expected: tests and all Alembic commands exit `0`; downgrade/upgrade changes only `agent_runs`.
 
-- [ ] **Step 5: Chạy narrow static gates và commit persistence**
+- [x] **Step 5: Chạy narrow static gates và commit persistence**
 
 ```powershell
 .venv\Scripts\python -m ruff check src/devradar/agents tests/integration/test_agent_runs.py migrations
@@ -396,17 +407,18 @@ git commit -m "feat: persist bounded agent runs"
 - Create: `docs/evidence/V4-003-agent-run-state-safety.md`
 - Modify local ignored: `TASK_BOARD.md`
 
-- [ ] **Step 1: Đồng bộ docs authoritative**
+- [x] **Step 1: Đồng bộ docs authoritative**
 
 Ghi exact fields/status/retry/active-slot ở `DOMAIN_MODEL`; six fixed limits, allowed/forbidden audit và safe failure ở `AI`; sequence `short start tx → external work → short finalize tx` ở `ARCHITECTURE`. Không thêm API endpoint hoặc sửa `docs/API.md`.
 
-- [ ] **Step 2: Chạy full verification trước khi đổi trạng thái**
+- [x] **Step 2: Chạy full verification trước khi đổi trạng thái**
 
 ```powershell
 .venv\Scripts\python -m pytest
 $env:DEVRADAR_TEST_DATABASE_URL = 'postgresql+psycopg://devradar:devradar_local_only@127.0.0.1:55432/postgres'
 try {
     .venv\Scripts\python -m pytest
+    if ($LASTEXITCODE -ne 0) { throw "PostgreSQL full test gate failed" }
 } finally {
     Remove-Item Env:\DEVRADAR_TEST_DATABASE_URL -ErrorAction SilentlyContinue
 }
@@ -422,11 +434,11 @@ Run fresh migration/check trên random integration database qua test suite; ch�
 git diff 615e43f -- requirements.in requirements-dev.in requirements.lock requirements-dev.lock
 ```
 
-- [ ] **Step 3: Viết evidence bằng output thật và cập nhật trạng thái**
+- [x] **Step 3: Viết evidence bằng output thật và cập nhật trạng thái**
 
 Evidence phải ghi RED failure, GREEN counts, PostgreSQL/Alembic/static/Markdown results, dependency diff rỗng, transaction/concurrency/retry/redaction scenarios và boundary chưa có provider/workflow/API. Chỉ sau khi mọi result pass: ROADMAP V4-003 `complete`, V4-004 `Ready`; local board V4-003 `Done`, V4-004 `Ready`, V4 vẫn `in_progress`.
 
-- [ ] **Step 4: Final diff/security review**
+- [x] **Step 4: Final diff/security review**
 
 ```powershell
 git status --short --branch
@@ -438,7 +450,7 @@ git diff 615e43f -- requirements.in requirements-dev.in requirements.lock requir
 
 Xác nhận không có secret/raw persistence column, không có commit/rollback trong `agents.persistence`, không có dependency/framework/provider/API ngoài scope và `TASK_BOARD.md` vẫn ignored.
 
-- [ ] **Step 5: Commit V4-003 local, không push**
+- [x] **Step 5: Commit V4-003 local, không push**
 
 ```powershell
 git add docs/DOMAIN_MODEL.md docs/AI.md docs/ARCHITECTURE.md docs/ROADMAP.md docs/evidence/V4-003-agent-run-state-safety.md

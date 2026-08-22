@@ -231,9 +231,28 @@ Input là aggregate query result có cohort, date range, denominator và provena
 
 V4-001 đã cài internal `agent-decision-v1` và deterministic validation boundary trong module `agents`. Envelope dùng responsibility-specific enum/data, bounded opaque reference, finite confidence và reject extra field/reference ngoài input. Tool policy hiện chỉ authorize read-only `read_source_health`/`read_run_health`, `read_extraction_result`/`read_evidence_reference` hoặc `read_aggregate` theo đúng responsibility; không có executor cho shell, SQL, HTTP hoặc mutation.
 
-Application context deterministic phải cấp explicit retry eligibility/cap/quarantine, validator accept gate và analyst denominator/query/metric support. Thiếu fact luôn fail closed. Boundary chỉ trả normalized action token, chưa có model/graph runtime, database session, `AgentRun` hoặc public API. Test/evidence chi tiết nằm tại [V4-001 deterministic agent policy](evidence/V4-001-deterministic-agent-policy.md).
+Application context deterministic phải cấp explicit retry eligibility/cap/quarantine, validator accept gate và analyst denominator/query/metric support. Thiếu fact luôn fail closed. Boundary chỉ trả normalized action token; chưa có model/graph runtime hoặc public API. Test/evidence chi tiết nằm tại [V4-001 deterministic agent policy](evidence/V4-001-deterministic-agent-policy.md).
 
 [ADR-012](decisions/0012-accept-direct-v4-agent-workflow-defer-langgraph.md) chấp nhận direct bounded workflow sau isolated LangGraph `1.2.10` spike. Graph đạt same-process checkpoint recovery nhưng current responsibility chưa cần durable multi-step pause/resume/replay; V4 không thêm LangGraph/checkpointer/LangSmith dependency. V4-003 dùng typed run state + `AgentRun`; chỉ đánh giá lại graph runtime khi có measured durable-workflow need. [V4-002 evidence](evidence/V4-002-langgraph-direct-workflow-spike.md) ghi exact footprint, scenario, recovery và timing boundary.
+
+### 10.1. V4 AgentRun safety boundary
+
+Mỗi direct run dùng frozen `agent-run-limits-v1`; request, model output và environment variable không được override:
+
+| Limit | Giá trị |
+|---|---:|
+| step | `4` |
+| model attempt | `2` |
+| tool call | `4` |
+| latency | `180000 ms` |
+| prompt + completion token | `8000` |
+| estimated cost | `0.05000000 USD` |
+
+Pure `agent-run-state-v1` kiểm usage delta trước khi nhận. Exact boundary được chấp nhận; increment vượt một đơn vị raise typed `limit_exceeded` và không truncate counter. Caller chuyển outcome đó thành `needs_review` bằng last accepted usage. Terminal state không nhận thêm usage/decision transition.
+
+`AgentRun` chỉ audit opaque refs/hash/version, strict decision envelope, safe failure code (`timeout`, `provider_unavailable`, `invalid_output`, `limit_exceeded`, `ambiguous_input`, `internal_error`), bounded usage, correlation ID, model identity và timestamp. Database/log/error không giữ raw JD/CV/HTML, prompt/system message/chain-of-thought, free-form provider body, secret/header, vector hoặc arbitrary tool arguments. Persistence error cũng chỉ có allow-listed code/summary và không echo rejected input.
+
+PostgreSQL khóa one-global-running slot, exact hard ceilings, terminal decision/failure invariants và one-direct-retry. Start/finalize chạy trong hai caller-owned transaction ngắn; model/tool work tương lai nằm giữa hai transaction và ngoài row lock. V4-003 chưa gọi provider, chưa implement planner/validator/analyst workflow và chưa mở AgentRun API.
 
 ## 11. Privacy và retention
 
