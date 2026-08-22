@@ -212,7 +212,9 @@ Allowed output: `accept`, `reject`, `retry_with_strategy`, `needs_review`, kèm 
 
 ### 9.3. Analyst
 
-Input là aggregate query result có cohort, date range, denominator và provenance. Output là structured insight gồm claim, supporting metrics, caveat và query reference. Không được tự query arbitrary SQL hoặc dùng raw CV.
+Input V4-005 là `analyst-trend-evidence-v1` cho đúng một canonical skill: exact query window/filter/granularity/top-skill/version metadata và toàn bộ response bucket đã validate. Projection không copy float `coverage`/`share`; nó recompute integer basis points bằng half-up từ `denominator`, `analyzed_jobs` và `job_count`. Builder chỉ đưa first/last bucket, exact query/metric refs, deterministic `increased | decreased | unchanged` và exact `low_coverage` caveat vào `analyst-facts-v1`.
+
+Output chỉ là typed `publish_insight | reject_claim | needs_review`. Publish phải khớp exact `skill_trend` claim, aggregate-query evidence, một supported metric, deterministic direction và expected caveat tuple. Analyst không tự query SQL, không nhận Session/query handle/tool, không viết prose và không dùng raw Job/JD/CV/HTML hoặc `ExtractionResult.output_data`.
 
 ### 9.4. Matcher, Trend và Alert
 
@@ -273,6 +275,14 @@ Direct flow là `build → propose → validate → apply/fallback`. Proposal ca
 - usage overflow → `needs_review/limit_exceeded` bằng last accepted usage.
 
 Transaction 1 commit row `running` trước proposal; proposal/validation/application chạy không Session; transaction 2 finalize terminal row. Finalize failure rollback transaction 2 và giữ row `running`/active slot để operator điều tra. Scripted callable chỉ chứng minh workflow correctness; V4-004 không có live model/provider, không gửi JD/CV ra ngoài và không tuyên bố usefulness cao hơn deterministic baseline. Test và boundary evidence nằm tại [V4-004 planner/validator workflow](evidence/V4-004-planner-validator-direct-workflow.md).
+
+### 10.3. V4-005 analyst trend boundary
+
+Current PostgreSQL analytics tiếp tục sở hữu query, cohort, denominator, coverage, bucket và top-skill ordering. Caller truyền cùng validated `SkillTrendQuery`/`SkillTrendResponse` vào deterministic projection; query/response meta mismatch, dưới hai bucket, bucket reorder/duplicate/outside window, missing/duplicate selected skill, unsafe version/skill hoặc arithmetic mismatch đều fail trước khi tạo `AgentRun`.
+
+`aggregate_query_ref` hash exact window/filter/granularity/top-skills/version JSON. `trend_metric_ref` hash full query hash, canonical skill, two endpoint buckets, delta, direction và required caveat. `ApplicationContext` reconstruct exact expected claim/direction/caveat và chỉ support đúng metric ref; model không thể invent hoặc thay query, metric hay coverage caveat mà vẫn publish.
+
+Analyst dùng nguyên direct flow `build → propose → validate → apply/fallback`, tối đa hai proposal attempts, bốn logical stages, `0` tools và hai transaction ngắn. Valid publish/reject/review, malformed/injection, timeout, limit, internal error, application reject và finalize failure đều giữ terminal/redaction semantics V4-004. Scripted proposal và PostgreSQL integration chỉ chứng minh contract/workflow correctness; V4-006 chịu trách nhiệm đo usefulness so với deterministic baseline và loại reasoning path nếu không cải thiện. [Evidence](evidence/V4-005-analyst-skill-trend.md).
 
 ## 11. Privacy và retention
 
