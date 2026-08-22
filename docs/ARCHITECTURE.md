@@ -41,7 +41,7 @@ External actors và trust level:
 | `api` | `/api/v1`, validation, pagination, auth boundary | V1 | crawler parsing, scoring logic |
 | `automation` | schedule, retry policy, run orchestration, health | V2 | source-specific extraction |
 | `intelligence` | LLM extraction, embeddings, trend queries/evaluation | V3 | authoritative raw data |
-| `agents` | bounded planner/validator/analyst decisions | V4 | persistence transaction, deterministic retry engine |
+| `agents` | typed planner/validator/analyst proposal, read-only tool authorization và deterministic application validation | V4 | persistence transaction, deterministic retry engine, model/graph runtime |
 | `matching` | resume profile, score components, explanation evidence | V5 | file transport/security policy |
 | `presentation` | Next.js UI, charts, upload experience | V5 | domain rules hoặc data correction |
 | `alerts` | rule evaluation, idempotent delivery, delivery history | V5 | source crawling |
@@ -112,7 +112,22 @@ flowchart LR
 
 Embedding model call chạy ngoài database transaction; persistence re-check Job hash trước insert. Row cũ được giữ làm audit derived data nhưng semantic query chỉ join đúng current hash/input schema/provider/model/revision/dimension. V3 dùng exact cosine và application aggregation vì target chỉ 500–1.000 Job; chưa có HNSW, materialized `JobSkill`, cache hoặc distributed worker.
 
-### 5.4. CV matching
+### 5.4. Agent decision boundary
+
+V4-001 thêm internal decision boundary nhưng chưa thêm agent runtime:
+
+```mermaid
+flowchart LR
+    I["Bounded read-only input refs"] --> D["Typed decision envelope"]
+    D --> V["Deterministic schema, policy and evidence validation"]
+    V --> A["Normalized action token"]
+    V --> F["Baseline or needs_review fallback"]
+    A --> W["Existing application use case owns mutation"]
+```
+
+Tool authorization là default deny và responsibility-specific. `agents` không nhận database session, arbitrary argument/URL/SQL/shell hoặc mutation handle. Retry eligibility/quarantine/cap, validator accept gate và analyst denominator/query/metric support đều do deterministic context cấp. Xem [V4-001 evidence](evidence/V4-001-deterministic-agent-policy.md).
+
+### 5.5. CV matching
 
 Upload validation và text extraction chạy trước. File gốc được xóa sau khi tạo `ResumeProfile` trừ khi người dùng chủ động chọn retention được hỗ trợ. Match engine lưu component score và evidence; LLM chỉ diễn đạt từ evidence đó.
 
@@ -122,8 +137,8 @@ Upload validation và text extraction chạy trước. File gốc được xóa 
 |---|---|---|
 | V1 | PostgreSQL, FastAPI process, on-demand crawler/CLI từ cùng codebase | Accepted |
 | V2 | V1 + deterministic scheduler/runner từ cùng codebase, PostgreSQL coordination | Accepted theo ADR-006 |
-| V3 | V2 + extraction/taxonomy; local FastEmbed multilingual MiniLM artifact, pgvector `vector(384)`, exact semantic search và bounded analytics | In progress; ADR-010 Accepted cho local/private |
-| V4 | V3 + LangGraph chạy trong worker/application process | Proposed |
+| V3 | V2 + extraction/taxonomy; local FastEmbed multilingual MiniLM artifact, pgvector `vector(384)`, exact semantic search và bounded analytics | Complete; ADR-010 Accepted cho local/private |
+| V4 | V3 + internal typed decision/tool/application boundary; LangGraph hoặc direct runtime chờ V4-002 decision | In progress; graph runtime Proposed |
 | V5 | V4 + Next.js và optional alert connector | Proposed |
 | V6 | Public ingress, auth, managed secrets, backup/monitoring; Redis/worker pool nếu metric yêu cầu | Proposed |
 

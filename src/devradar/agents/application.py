@@ -31,6 +31,7 @@ class ApplicationReason(StrEnum):
     DECISION_VALID = "decision_valid"
     INPUT_REFERENCE_MISMATCH = "input_reference_mismatch"
     RETRY_NOT_ALLOWED = "retry_not_allowed"
+    ACCEPT_NOT_ALLOWED = "accept_not_allowed"
     AGGREGATE_EVIDENCE_INVALID = "aggregate_evidence_invalid"
     DETERMINISTIC_FALLBACK = "deterministic_fallback"
     INVALID_DECISION = "invalid_decision"
@@ -60,8 +61,10 @@ class ApplicationContext(AgentModel):
 
     input_refs: tuple[DecisionRef, ...] = Field(min_length=1, max_length=16)
     source_quarantined: bool = False
+    retry_eligible: bool = False
     retry_attempt_number: int = Field(default=1, ge=1, le=3)
     allowed_retry_strategies: tuple[ValidatorRetryStrategy, ...] = Field(default=(), max_length=8)
+    validator_accept_allowed: bool = False
     aggregate_has_denominator: bool = False
     aggregate_has_query_reference: bool = False
     supported_metric_refs: tuple[DecisionRef, ...] = Field(default=(), max_length=16)
@@ -113,7 +116,11 @@ def apply_decision(
     if envelope.responsibility is Responsibility.PLANNER:
         assert isinstance(envelope.decision, PlannerDecision)
         if envelope.decision is PlannerDecision.RECOMMEND_RETRY:
-            if context.source_quarantined or context.retry_attempt_number >= 3:
+            if (
+                not context.retry_eligible
+                or context.source_quarantined
+                or context.retry_attempt_number >= 3
+            ):
                 return _result(
                     ApplicationStatus.REJECTED,
                     DeterministicAction.REVIEW,
@@ -138,6 +145,13 @@ def apply_decision(
     if envelope.responsibility is Responsibility.VALIDATOR:
         assert isinstance(envelope.decision, ValidatorDecision)
         assert isinstance(envelope.decision_data, ValidatorDecisionData)
+        if envelope.decision is ValidatorDecision.ACCEPT and not context.validator_accept_allowed:
+            return _result(
+                ApplicationStatus.REJECTED,
+                DeterministicAction.REVIEW,
+                ApplicationReason.ACCEPT_NOT_ALLOWED,
+                "accept_not_allowed",
+            )
         if envelope.decision is ValidatorDecision.RETRY_WITH_STRATEGY:
             strategy = envelope.decision_data.retry_strategy
             if (

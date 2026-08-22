@@ -17,7 +17,7 @@
 - Create: `src/devradar/agents/decisions.py`
 - Create: `tests/test_agent_decisions.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Viết test cho `DecisionRef`, exact `agent-decision-v1`, planner/validator/analyst enums và payload; test thêm unknown field, confidence `NaN`, evidence ref ngoài input, decision/payload mismatch và invalid reference token đều phải raise `pydantic.ValidationError`.
 
@@ -51,13 +51,13 @@ def test_decision_rejects_unknown_field_and_untrusted_evidence() -> None:
         DecisionEnvelope.model_validate(payload)
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `.venv\Scripts\python -m pytest tests/test_agent_decisions.py -q`
 
 Expected: FAIL because `devradar.agents.decisions` and its models do not exist.
 
-- [ ] **Step 3: Implement the minimal typed models**
+- [x] **Step 3: Implement the minimal typed models**
 
 Use `ConfigDict(extra="forbid", frozen=True)` for every model. Define `DecisionRefKind`, `Responsibility`, three decision enums, three reason-code enums, `PlannerDecisionData`, `ValidatorDecisionData`, `AnalystDecisionData`, `DecisionRef` and `DecisionEnvelope`. Use a literal schema version, bounded references, safe token patterns, finite confidence and a model validator that checks responsibility/decision/reason/payload compatibility and `evidence_refs ⊆ input_refs`.
 
@@ -80,13 +80,13 @@ class DecisionEnvelope(AgentModel):
         return self
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `.venv\Scripts\python -m pytest tests/test_agent_decisions.py -q`
 
 Expected: all decision contract tests pass with no warnings.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add src/devradar/agents tests/test_agent_decisions.py
@@ -99,17 +99,20 @@ git commit -m "feat: add typed v4 agent decisions"
 - Create: `src/devradar/agents/policy.py`
 - Create: `tests/test_agent_policy.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Test exact allow-list access for planner/validator/analyst, reject unknown tool, cross-responsibility tool, non-empty arbitrary arguments, missing reference and mutation-like names. Assert the exception exposes only a safe `PolicyViolationCode`, never the raw argument value.
 
 ```python
 def test_each_responsibility_can_read_only_its_allowlisted_resource() -> None:
     source = DecisionRef(kind=DecisionRefKind.SOURCE, id="vng-careers")
-    assert authorize_tool(
-        Responsibility.PLANNER,
-        ToolCall(name="read_source_health", refs=(source,)),
-    ).name == ToolName.READ_SOURCE_HEALTH
+    assert (
+        authorize_tool(
+            Responsibility.PLANNER,
+            ToolCall(name="read_source_health", refs=(source,)),
+        ).name
+        == ToolName.READ_SOURCE_HEALTH
+    )
 
 
 @pytest.mark.parametrize("name", ["shell", "arbitrary_sql", "fetch_url", "persist_job"])
@@ -121,13 +124,13 @@ def test_unknown_or_mutating_tools_are_default_deny(name: str) -> None:
     assert name not in str(error.value)
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `.venv\Scripts\python -m pytest tests/test_agent_policy.py -q`
 
 Expected: FAIL because the policy module and authorization function do not exist.
 
-- [ ] **Step 3: Implement exact allow-list authorization**
+- [x] **Step 3: Implement exact allow-list authorization**
 
 Define `ToolName`, `PolicyViolationCode`, `ToolCall`, `AuthorizedTool` and `ToolDeniedError`. Map only `read_source_health/read_run_health` to planner, `read_extraction_result/read_evidence_reference` to validator and `read_aggregate` to analyst. Require one or more opaque refs and empty arguments. Never perform HTTP, SQL, filesystem, shell or persistence work.
 
@@ -145,13 +148,13 @@ def authorize_tool(responsibility: Responsibility, call: ToolCall) -> Authorized
     return AuthorizedTool(responsibility=responsibility, name=tool, refs=call.refs)
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `.venv\Scripts\python -m pytest tests/test_agent_policy.py -q`
 
 Expected: all policy negative/positive tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add src/devradar/agents/policy.py tests/test_agent_policy.py
@@ -165,7 +168,7 @@ git commit -m "feat: enforce v4 default deny tool policy"
 - Create: `tests/test_agent_application.py`
 - Modify: `src/devradar/agents/__init__.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Test input-reference closure, planner retry blocked by quarantine/cap, validator retry allowed only by supplied strategy and remaining attempts, analyst publish requiring metric evidence, and deterministic fallback for timeout/provider unavailable/invalid output. Assert no outcome contains raw content and no function requires a database session.
 
@@ -189,13 +192,13 @@ def test_provider_unavailable_returns_deterministic_fallback() -> None:
     assert result.safe_message == "deterministic_baseline"
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `.venv\Scripts\python -m pytest tests/test_agent_application.py -q`
 
 Expected: FAIL because the application boundary does not exist.
 
-- [ ] **Step 3: Implement pure deterministic application**
+- [x] **Step 3: Implement pure deterministic application**
 
 Define bounded `ApplicationContext`, `ApplicationStatus`, `ApplicationReason`, `ApplicationFailure`, `DeterministicAction`, `ApplicationResult` and `apply_decision`. The function must validate envelope input refs against context, enforce retry caps/quarantine and analyst evidence closure, then return a normalized proposal only; it must not mutate ORM objects or call tools. Add `fallback_for_failure` mapping every failure to baseline/review without echoing payload.
 
@@ -216,13 +219,13 @@ def fallback_for_failure(failure: ApplicationFailure) -> ApplicationResult:
     )
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `.venv\Scripts\python -m pytest tests/test_agent_application.py -q`
 
 Expected: all boundary, cap, evidence and fallback tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add src/devradar/agents tests/test_agent_application.py
@@ -237,7 +240,7 @@ git commit -m "feat: add deterministic agent application boundary"
 - Modify: `docs/ARCHITECTURE.md`
 - Modify: `TASK_BOARD.md` (ignored local tracker only)
 
-- [ ] **Step 1: Run narrow and static gates**
+- [x] **Step 1: Run narrow and static gates**
 
 ```powershell
 .venv\Scripts\python -m pytest tests/test_agent_decisions.py tests/test_agent_policy.py tests/test_agent_application.py -q
@@ -248,11 +251,11 @@ git commit -m "feat: add deterministic agent application boundary"
 
 Expected: targeted tests pass; Ruff format/check and mypy exit `0`.
 
-- [ ] **Step 2: Write evidence and align contracts**
+- [x] **Step 2: Write evidence and align contracts**
 
 Evidence must list exact test counts, policy matrix, failure scenarios, no-dependency result and boundaries not tested (no model/provider/runtime graph). Add links from AI/architecture to the implementation/evidence without claiming LangGraph or AgentRun exists. Keep roadmap V4 `in_progress` and set only `V4-001` to `Done` after all checks.
 
-- [ ] **Step 3: Run broader gates and inspect final diff**
+- [x] **Step 3: Run broader gates and inspect final diff**
 
 ```powershell
 .venv\Scripts\python -m pytest
@@ -263,15 +266,14 @@ git status --short --branch --ignored
 
 Expected: default suite has no new failures, pip check exits `0`, diff has no whitespace errors, `TASK_BOARD.md` remains ignored and no secret/data artifact is tracked.
 
-- [ ] **Step 4: Commit and push the completed V4-001 task**
+- [x] **Step 4: Commit the completed V4-001 task**
 
 ```powershell
 git add src tests docs/AI.md docs/ARCHITECTURE.md docs/evidence/V4-001-deterministic-agent-policy.md
 git commit -m "feat: close v4-001 deterministic agent policy"
-git push origin main
 ```
 
-Only push after the fresh verification output confirms the V4-001 DoD. Do not add `TASK_BOARD.md`, `.env.local`, model artifacts or runtime data.
+Giữ commit local tới V4 phase closeout theo yêu cầu push sau khi hoàn tất phase. Không thêm `TASK_BOARD.md`, `.env.local`, model artifacts hoặc runtime data.
 
 ## Self-review
 

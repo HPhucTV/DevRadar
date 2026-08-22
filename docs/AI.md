@@ -229,6 +229,10 @@ Input là aggregate query result có cohort, date range, denominator và provena
 - Decision quan trọng có correlation ID và audit record nhưng redact PII/prompt content.
 - Human/operator approval bắt buộc cho source policy change, external provider mới, retention mới hoặc alert channel mới chứa user data.
 
+V4-001 đã cài internal `agent-decision-v1` và deterministic validation boundary trong module `agents`. Envelope dùng responsibility-specific enum/data, bounded opaque reference, finite confidence và reject extra field/reference ngoài input. Tool policy hiện chỉ authorize read-only `read_source_health`/`read_run_health`, `read_extraction_result`/`read_evidence_reference` hoặc `read_aggregate` theo đúng responsibility; không có executor cho shell, SQL, HTTP hoặc mutation.
+
+Application context deterministic phải cấp explicit retry eligibility/cap/quarantine, validator accept gate và analyst denominator/query/metric support. Thiếu fact luôn fail closed. Boundary chỉ trả normalized action token, chưa có model/graph runtime, database session, `AgentRun` hoặc public API. Test/evidence chi tiết nằm tại [V4-001 deterministic agent policy](evidence/V4-001-deterministic-agent-policy.md).
+
 ## 11. Privacy và retention
 
 - Chỉ gửi minimum necessary content tới external model.

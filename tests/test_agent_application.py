@@ -80,7 +80,11 @@ def test_planner_retry_is_rejected_when_source_is_quarantined() -> None:
 
     result = apply_decision(
         envelope,
-        ApplicationContext(input_refs=envelope.input_refs, source_quarantined=True),
+        ApplicationContext(
+            input_refs=envelope.input_refs,
+            source_quarantined=True,
+            retry_eligible=True,
+        ),
     )
 
     assert result.status is ApplicationStatus.REJECTED
@@ -93,11 +97,30 @@ def test_planner_retry_is_rejected_at_deterministic_attempt_cap() -> None:
 
     result = apply_decision(
         envelope,
-        ApplicationContext(input_refs=envelope.input_refs, retry_attempt_number=3),
+        ApplicationContext(
+            input_refs=envelope.input_refs,
+            retry_attempt_number=3,
+            retry_eligible=True,
+        ),
     )
 
     assert result.status is ApplicationStatus.REJECTED
     assert result.reason_code is ApplicationReason.RETRY_NOT_ALLOWED
+
+
+def test_planner_retry_requires_deterministic_eligibility() -> None:
+    envelope = _planner_envelope()
+
+    denied = apply_decision(envelope, ApplicationContext(input_refs=envelope.input_refs))
+    allowed = apply_decision(
+        envelope,
+        ApplicationContext(input_refs=envelope.input_refs, retry_eligible=True),
+    )
+
+    assert denied.status is ApplicationStatus.REJECTED
+    assert denied.reason_code is ApplicationReason.RETRY_NOT_ALLOWED
+    assert allowed.status is ApplicationStatus.ACCEPTED
+    assert allowed.action is DeterministicAction.RETRY
 
 
 def test_validator_retry_requires_strategy_supplied_by_application() -> None:
@@ -118,18 +141,29 @@ def test_validator_retry_requires_strategy_supplied_by_application() -> None:
     assert allowed.action is DeterministicAction.RETRY
 
 
-def test_validator_accept_is_a_proposal_without_persistence_handle() -> None:
+def test_validator_accept_requires_deterministic_schema_and_evidence_gate() -> None:
     envelope = _validator_envelope("accept")
 
-    result = apply_decision(envelope, ApplicationContext(input_refs=envelope.input_refs))
+    denied = apply_decision(envelope, ApplicationContext(input_refs=envelope.input_refs))
+    result = apply_decision(
+        envelope,
+        ApplicationContext(
+            input_refs=envelope.input_refs,
+            validator_accept_allowed=True,
+        ),
+    )
 
+    assert denied.status is ApplicationStatus.REJECTED
+    assert denied.reason_code is ApplicationReason.ACCEPT_NOT_ALLOWED
     assert result.status is ApplicationStatus.ACCEPTED
     assert result.action is DeterministicAction.ACCEPT
     assert set(ApplicationContext.model_fields) == {
         "input_refs",
         "source_quarantined",
+        "retry_eligible",
         "retry_attempt_number",
         "allowed_retry_strategies",
+        "validator_accept_allowed",
         "aggregate_has_denominator",
         "aggregate_has_query_reference",
         "supported_metric_refs",
