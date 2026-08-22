@@ -40,7 +40,9 @@ class EvaluationLanguage(StrEnum):
 
 class RequirementType(StrEnum):
     REQUIRED = "required"
+    PREFERRED = "preferred"
     OPTIONAL = "optional"
+    MENTIONED = "mentioned"
 
 
 class EvaluationModel(BaseModel):

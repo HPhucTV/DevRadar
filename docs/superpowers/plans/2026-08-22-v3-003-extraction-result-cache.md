@@ -1428,7 +1428,7 @@ Change `TASK_BOARD.md`:
 
 ```text
 Ready: `V3-004` — Cài taxonomy, classification và bounded summary
-`V3-003` | Cài ExtractionResult, deterministic fallback và cache | Done | `V3-002` | [Evidence](docs/evidence/V3-003-extraction-result-cache.md): unit, PostgreSQL integration, migration and static gates recorded
+`V3-003` | Cài ExtractionResult, deterministic fallback và cache | Done | `V3-002` | [Evidence](../../evidence/V3-003-extraction-result-cache.md): unit, PostgreSQL integration, migration and static gates recorded
 ```
 
 The `Done when / evidence` cell must link the new evidence and state the real test/static results. Keep `docs/ROADMAP.md` at V3 `in_progress`; this task does not satisfy the V3 `>=500` semantic/trend gate.

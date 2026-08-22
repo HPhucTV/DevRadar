@@ -17,8 +17,8 @@ AI là lớp bổ sung có giới hạn, không phải nguồn sự thật hoặ
 |---|---|---|
 | Deterministic extraction | V1 | Required |
 | LLM structured extraction fallback | V3 | V3-003 boundary implemented; production provider chưa có |
-| Job classification và bounded summary | V3 | Proposed, evidence-validated |
-| Skill taxonomy assisted mapping | V3 | Proposed, human/eval governed |
+| Job classification và bounded summary | V3 | V3-004 deterministic boundary implemented; evidence-validated |
+| Skill taxonomy assisted mapping | V3 | V3-004 versioned deterministic map; unknown cần review |
 | Embedding và pgvector | V3 | Proposed |
 | Planner/validator/analyst graph | V4 | Proposed |
 | Resume extraction/matching | V5 | Proposed |
@@ -62,6 +62,14 @@ Schema thực tế phải giới hạn enum, collection size, string length và 
 V3-003 lưu `ExtractionResult` trong PostgreSQL với `input_type=job`, `input_ref=Job.id`, `input_hash=Job.job_content_hash`, `extractor_version`, `schema_version`, `prompt_version`, `model` và `canonicalization_version`. `output_data` chỉ là `ExtractionPayload` đã validate; `validation_errors` chỉ có safe `code/path/type`. Deterministic-complete result được persist `rule/accepted` và không gọi provider. Provider boundary là callable được inject cho test/spike, không phải DeepSeek adapter production; request không có URL, credential, tool capability hoặc CV.
 
 Job classification dùng taxonomy/version và trả evidence giống extraction field. AI summary phải ngắn, chỉ tổng hợp claim được hỗ trợ bởi canonical JD và bị reject nếu thêm salary, skill, benefit hoặc requirement không có evidence.
+
+### 3.1. V3-004 taxonomy/classification/summary boundary
+
+`job-taxonomy-v1`, `job-role-classification-v1` và `job-bounded-summary-v1` là version identity của boundary hiện tại. `TaxonomySkill` dùng lại alias map của deterministic extraction; category known có confidence `1`, unknown giữ `other` và chuyển `needs_review`. Requirement type không bị đổi khi map category.
+
+Role classifier chỉ chấp nhận role family có marker deterministic. Marker trong title có trọng số cao hơn description; tie hoặc không có marker trả `needs_review`, không suy đoán role. `levels` luôn lấy từ canonical Job.
+
+Bounded summary là một dòng tối đa 420 ký tự với tối đa 8 evidence claims. Builder không thêm claim ngoài role/skill/level evidence đã kiểm chứng. Candidate validator dùng `extra=forbid`, kiểm tra version, evidence substring, control character và yêu cầu text khớp renderer deterministic sinh từ role/skill evidence; mọi phần prose/claim thêm bị `rejected`. Không có summary provider hoặc DeepSeek call trong V3-004.
 
 ## 4. Validation và retry
 
@@ -111,7 +119,7 @@ Contract hiện hành là `job-extraction-eval-v1` / `job-extraction-eval-schema
 
 Không đặt accuracy/cost threshold chỉ dựa vào mong muốn. V3 entry spike tạo baseline; target release được ghi vào evaluation artifact và roadmap trước khi model output ảnh hưởng canonical data.
 
-Baseline held-out `deterministic-keyword-v1`: skill F1 `0.9545`, unsupported skill `0.0455`, deterministic complete `0.6250`. Gate extraction V3 trên cùng dataset là skill F1 `>=0.9700`, unsupported skill/hallucination `0`, accepted schema/evidence `1.0` và complete accepted result `>=0.8750`; deterministic level/salary/location không được regression. Cost/latency baseline đã được đo trong V3-002; role/summary target vẫn chờ taxonomy contract ở V3-004.
+Baseline held-out `deterministic-keyword-v1`: skill F1 `0.9545`, unsupported skill `0.0455`, deterministic complete `0.6250`. Gate extraction V3 trên cùng dataset là skill F1 `>=0.9700`, unsupported skill/hallucination `0`, accepted schema/evidence `1.0` và complete accepted result `>=0.8750`; deterministic level/salary/location không được regression. Cost/latency baseline đã được đo trong V3-002. Role/summary contract đã có ở V3-004, còn aggregate accuracy/hallucination target phải được ghi cùng evaluation artifact trước khi provider output ảnh hưởng canonical data.
 
 ### 5.3. Release gate
 
@@ -241,6 +249,8 @@ needs-review, cache hit và estimated cost. Khi provider unavailable, rate-limit
 - Structured parser đủ schema: không có LLM call.
 - Model trả malformed JSON, enum lạ hoặc evidence không tồn tại: reject/retry bounded.
 - JD chứa “ignore previous instructions” hoặc URL/tool instruction: nội dung được coi là data, không có tool/action.
+- Role marker không có hoặc bị tie: classification/summary là `needs_review`, không auto-claim.
+- Summary evidence ngoài canonical input, extra field, control character hoặc claim salary/benefit/skill không được hỗ trợ: `rejected`.
 - Provider timeout/rate limit: canonical ingestion vẫn thành công và trạng thái extraction rõ ràng.
 - Cùng cache key: không gọi model lần hai.
 - Đổi model/prompt/taxonomy: không reuse cache sai version.

@@ -40,6 +40,7 @@ Chạy nhanh, deterministic, không network:
 - API schema/error/pagination helpers;
 - match component/scoring version;
 - AI output validator, evidence check, cost/step limit;
+- V3 taxonomy/category, role ambiguity và bounded summary evidence/length validator;
 - redaction và security policy helpers.
 
 ### 4.2. Integration tests
@@ -95,6 +96,8 @@ PostgreSQL test hiện dùng `DEVRADAR_TEST_DATABASE_URL`, tạo database tên n
 | Empty/anomalous source response | Coverage không được coi complete nếu invariant chưa đạt. |
 | HTML/JD malformed | Snapshot còn để replay; parser fail có taxonomy. |
 | LLM malformed/hallucinated output | Schema/evidence gate reject hoặc bounded retry/review. |
+| Taxonomy unknown/role ambiguous | Giữ evidence, trả `needs_review`; không auto-merge hoặc tự suy đoán. |
+| Summary unsupported claim/extra field/control char | Candidate validator reject; không đưa vào canonical data hoặc log. |
 | Prompt injection trong JD/CV | Không đổi tool/policy, không gọi arbitrary action. |
 | Upload sai type/magic/size | Reject, cleanup temporary file, không tạo profile dở dang. |
 | Upload parser timeout/bomb | Giới hạn tài nguyên, cleanup và safe error. |
@@ -152,7 +155,7 @@ Mỗi request/run/extraction/agent/delivery có opaque ID. Log dùng structured 
 | Crawler | `crawl_runs_total`, `crawl_success_rate`, `crawl_duration_seconds`, `pages_fetched_total`, `response_bytes_total` |
 | Data | `jobs_new_total`, `jobs_updated_total`, `jobs_missing_total`, `jobs_removed_total`, `jobs_reactivated_total`, `duplicates_candidate_total`, `parse_failures_total` |
 | Source | `source_last_success_age`, `source_failure_rate`, `source_coverage_anomalies_total`, health state |
-| AI | `ai_requests_total`, `ai_cache_hits_total`, accepted/rejected/needs-review counts, provider attempts, `ai_validation_failures_total`, `ai_latency_seconds`, input/output tokens, estimated cost |
+| AI | `ai_requests_total`, `ai_cache_hits_total`, extraction/classification/summary accepted/rejected/needs-review counts, provider attempts, `ai_validation_failures_total`, `ai_latency_seconds`, input/output tokens, estimated cost |
 | Agent | `agent_runs_total`, decision/retry/review count, step-limit hit, failure rate |
 | API | request count, latency, status code, validation/rate-limit failures |
 | CV/alert | upload reject/cleanup, match duration, deletion completion, delivery success/duplicate prevented |

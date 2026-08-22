@@ -126,7 +126,7 @@ Thay đổi markup, tracking parameter hoặc thứ tự không có nghĩa khôn
 
 ### 4.6. Skill và JobSkill
 
-`Skill` gồm `name`, `normalized_name`, `category`, aliases và `taxonomy_version`. Category ban đầu: `language`, `framework`, `database`, `cloud`, `devops`, `messaging`, `testing`, `ai`, `tool`, `other`.
+`Skill` gồm `name`, `normalized_name`, `category`, aliases và `taxonomy_version`. Taxonomy V3-004 khóa version `job-taxonomy-v1`; category ban đầu: `language`, `framework`, `database`, `cloud`, `devops`, `messaging`, `testing`, `ai`, `tool`, `other`. Alias map dùng chung với deterministic extraction, không tạo alias thứ hai.
 
 `JobSkill` liên kết Job–Skill với:
 
@@ -136,6 +136,14 @@ Thay đổi markup, tracking parameter hoặc thứ tự không có nghĩa khôn
 - `extraction_result_id` và extractor/model version.
 
 Alias mới không được merge skill lịch sử âm thầm; taxonomy change cần version và reprocessing plan.
+
+V3-004 có `TaxonomySkill` typed boundary để map canonical skill sang category. Skill chưa có category được giữ raw name/evidence với `category=other` nhưng outcome là `needs_review`, không tự trở thành canonical mapping.
+
+### 4.6A. RoleClassification và BoundedSummary
+
+`RoleClassification` là kết quả role family deterministic có version, gồm `role` (`backend`, `frontend`, `mobile`, `data`, `devops`, `qa`, `security`, `product`, `design`), canonical `levels`, confidence và evidence claims. Marker duy nhất trong title/description có thể `accepted`; không có marker hoặc nhiều role cùng điểm là `needs_review`. Classification không override `Job.levels`.
+
+`BoundedSummary` gồm text một dòng tối đa 420 ký tự và tối đa 8 evidence claims. Builder chỉ dùng classification/skill outcome `accepted`; mỗi evidence phải xuất hiện trong canonical title/description/level input. Unsupported salary, benefit, requirement, role hoặc skill claim bị reject. Classification/summary chưa có bảng persistence hay public endpoint ở V3-004; ingestion và canonical Job không phụ thuộc chúng.
 
 ### 4.7. ExtractionResult
 
