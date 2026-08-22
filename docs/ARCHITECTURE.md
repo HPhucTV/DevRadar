@@ -2,7 +2,7 @@
 
 ## 1. Trạng thái và phạm vi
 
-Kiến trúc nền tảng là **modular monolith, phase-gated stack** theo [ADR-001](decisions/0001-modular-monolith-and-phase-gated-stack.md). V1 khóa Python, FastAPI, PostgreSQL và Docker Compose; [ADR-005](decisions/0005-sqlalchemy-alembic-and-psycopg.md) khóa SQLAlchemy/Alembic/Psycopg cho persistence V1. V2 đã hoàn tất PostgreSQL-backed direct orchestration theo [ADR-006](decisions/0006-defer-prefect-use-direct-v2-orchestration.md). V3 đã chấp nhận DeepSeek cho synthetic generation boundary theo ADR-008 và fixed-revision local multilingual MiniLM + exact pgvector cho private deployment theo [ADR-010](decisions/0010-accept-fastembed-minilm-semantic-remediation.md). [ADR-012](decisions/0012-accept-direct-v4-agent-workflow-defer-langgraph.md) chấp nhận direct bounded workflow và hoãn LangGraph tới khi có measured durable-workflow need. Production DeepSeek adapter, external embedding, HNSW, Next.js và Redis vẫn bị phase/evidence gate.
+Kiến trúc nền tảng là **modular monolith, phase-gated stack** theo [ADR-001](decisions/0001-modular-monolith-and-phase-gated-stack.md). V1 khóa Python, FastAPI, PostgreSQL và Docker Compose; [ADR-005](decisions/0005-sqlalchemy-alembic-and-psycopg.md) khóa SQLAlchemy/Alembic/Psycopg cho persistence V1. V2 đã hoàn tất PostgreSQL-backed direct orchestration theo [ADR-006](decisions/0006-defer-prefect-use-direct-v2-orchestration.md). V3 đã chấp nhận DeepSeek cho synthetic generation boundary theo ADR-008 và fixed-revision local multilingual MiniLM + exact pgvector cho private deployment theo [ADR-010](decisions/0010-accept-fastembed-minilm-semantic-remediation.md). [ADR-012](decisions/0012-accept-direct-v4-agent-workflow-defer-langgraph.md) chấp nhận direct bounded workflow và hoãn LangGraph tới khi có measured durable-workflow need; V4-004 đã implement provider-neutral planner/validator facts và direct executor. Production model adapter, analyst workflow, HNSW, Next.js và Redis vẫn bị phase/evidence gate.
 
 Tài liệu này mô tả boundary và data flow. Nó không quy định folder/class chi tiết trước khi scaffold và không biến module logic thành microservice.
 
@@ -41,7 +41,7 @@ External actors và trust level:
 | `api` | `/api/v1`, validation, pagination, auth boundary | V1 | crawler parsing, scoring logic |
 | `automation` | schedule, retry policy, run orchestration, health | V2 | source-specific extraction |
 | `intelligence` | LLM extraction, embeddings, trend queries/evaluation | V3 | authoritative raw data |
-| `agents` | typed proposal/run state, read-only tool authorization, deterministic application validation và caller-owned AgentRun persistence operations | V4 | transaction commit/rollback, deterministic retry engine, model/graph runtime |
+| `agents` | safe responsibility facts, typed proposal/run state, direct planner/validator workflow, read-only tool authorization, deterministic application validation và caller-owned AgentRun persistence operations | V4 | domain mutation, production provider, analyst aggregate query, graph runtime |
 | `matching` | resume profile, score components, explanation evidence | V5 | file transport/security policy |
 | `presentation` | Next.js UI, charts, upload experience | V5 | domain rules hoặc data correction |
 | `alerts` | rule evaluation, idempotent delivery, delivery history | V5 | source crawling |
@@ -114,12 +114,13 @@ Embedding model call chạy ngoài database transaction; persistence re-check Jo
 
 ### 5.4. Agent decision boundary
 
-V4-001 thêm internal decision boundary; V4-002 khóa direct runtime direction; V4-003 thêm bounded run/audit nhưng chưa thêm model/provider:
+V4-001 thêm internal decision boundary; V4-002 khóa direct runtime direction; V4-003 thêm bounded run/audit; V4-004 implement provider-neutral planner/validator workflow nhưng chưa thêm live model/provider:
 
 ```mermaid
 flowchart LR
-    I["Bounded read-only input refs"] --> S["Short caller tx: AgentRun running"]
-    S --> D["Future direct proposal outside DB tx"]
+    I["Persisted rows"] --> B["Deterministic safe facts + opaque refs"]
+    B --> S["Short caller tx: AgentRun running"]
+    S --> D["Injected proposal outside DB tx"]
     D --> V["Deterministic schema, policy and evidence validation"]
     V --> A["Normalized action token"]
     V --> F["Baseline or needs_review fallback"]
@@ -128,9 +129,9 @@ flowchart LR
     A --> W["Existing application use case owns mutation"]
 ```
 
-Tool authorization là default deny và responsibility-specific. Proposal/application boundary không nhận database session, arbitrary argument/URL/SQL/shell hoặc mutation handle. Retry eligibility/quarantine/cap, validator accept gate và analyst denominator/query/metric support đều do deterministic context cấp.
+Tool authorization là default deny và responsibility-specific. Proposal/application boundary không nhận database session, raw JD/CV/HTML/ExtractionResult output, arbitrary argument/URL/SQL/shell hoặc mutation handle. Schedule/retry eligibility, quarantine/cap và validator accept/reparse gate đều do deterministic builder/context cấp. V4-004 không gọi tool; `tool_call_count` luôn `0`.
 
-`agents.persistence` chỉ add/lock/flush trong caller-owned transaction. Transaction 1 insert `running` và commit trước external work; transaction 2 lock đúng row, revalidate typed outcome/usage và finalize terminal. Functions không commit/rollback, không giữ transaction qua network/model call và không biến AgentRun thành graph checkpoint. Unique `active_slot` khóa một global running run; retry parent lock + unique child khóa đúng một direct attempt 2. Xem [V4-001 evidence](evidence/V4-001-deterministic-agent-policy.md), [V4-002 decision evidence](evidence/V4-002-langgraph-direct-workflow-spike.md) và [V4-003 design](superpowers/specs/2026-08-22-v4-003-agent-run-state-safety-design.md).
+`agents.persistence` chỉ add/lock/flush trong caller-owned transaction. Direct executor dùng transaction 1 insert/commit `running`, chạy proposal/validation/application không giữ Session, rồi transaction 2 lock đúng row, revalidate typed outcome/usage và finalize terminal. Functions persistence không commit/rollback và AgentRun không phải graph checkpoint. Finalize rollback giữ row `running` cùng global `active_slot`; workflow không bypass/reset trạng thái audit. Retry parent lock + unique child tiếp tục khóa đúng một direct attempt 2, khác với hai proposal attempts nội bộ cùng run. Xem [V4-001 evidence](evidence/V4-001-deterministic-agent-policy.md), [V4-002 decision evidence](evidence/V4-002-langgraph-direct-workflow-spike.md), [V4-003 evidence](evidence/V4-003-agent-run-state-safety.md) và [V4-004 evidence](evidence/V4-004-planner-validator-direct-workflow.md).
 
 ### 5.5. CV matching
 
@@ -143,7 +144,7 @@ Upload validation và text extraction chạy trước. File gốc được xóa 
 | V1 | PostgreSQL, FastAPI process, on-demand crawler/CLI từ cùng codebase | Accepted |
 | V2 | V1 + deterministic scheduler/runner từ cùng codebase, PostgreSQL coordination | Accepted theo ADR-006 |
 | V3 | V2 + extraction/taxonomy; local FastEmbed multilingual MiniLM artifact, pgvector `vector(384)`, exact semantic search và bounded analytics | Complete; ADR-010 Accepted cho local/private |
-| V4 | V3 + direct typed decision/tool/application/run-state boundary; LangGraph deferred | In progress; ADR-012 Accepted |
+| V4 | V3 + direct typed decision/application/run-state; planner/validator provider-neutral workflow; LangGraph deferred | In progress; V4-004 implemented, analyst/evaluation pending |
 | V5 | V4 + Next.js và optional alert connector | Proposed |
 | V6 | Public ingress, auth, managed secrets, backup/monitoring; Redis/worker pool nếu metric yêu cầu | Proposed |
 

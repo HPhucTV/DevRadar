@@ -33,7 +33,7 @@ No change is permitted in dependency `.in`/lock files, migrations, `docs/API.md`
 - Modify: `tests/test_agent_application.py`
 - Modify: `src/devradar/agents/application.py`
 
-- [ ] **Step 1: Write the failing schedule-policy tests**
+- [x] **Step 1: Write the failing schedule-policy tests**
 
 Add a planner helper call for `keep_schedule`, then add these assertions:
 
@@ -59,7 +59,7 @@ def test_planner_keep_schedule_requires_deterministic_permission() -> None:
 
 Update the exact field-set assertion to include `scheduled_action_allowed`; do not loosen it to a subset assertion.
 
-- [ ] **Step 2: Run RED and verify the missing contract**
+- [x] **Step 2: Run RED and verify the missing contract**
 
 ```powershell
 .venv\Scripts\python -m pytest tests/test_agent_application.py -q
@@ -67,7 +67,7 @@ Update the exact field-set assertion to include `scheduled_action_allowed`; do n
 
 Expected: failure because `ApplicationReason.SCHEDULE_NOT_ALLOWED` and/or `ApplicationContext.scheduled_action_allowed` do not exist; all pre-existing application cases still collect.
 
-- [ ] **Step 3: Implement the minimal deterministic gate**
+- [x] **Step 3: Implement the minimal deterministic gate**
 
 In `ApplicationReason`, add:
 
@@ -84,10 +84,7 @@ scheduled_action_allowed: bool = False
 In the planner branch of `apply_decision()`, before the retry branch, add:
 
 ```python
-if (
-    envelope.decision is PlannerDecision.KEEP_SCHEDULE
-    and not context.scheduled_action_allowed
-):
+if envelope.decision is PlannerDecision.KEEP_SCHEDULE and not context.scheduled_action_allowed:
     return _result(
         ApplicationStatus.REJECTED,
         DeterministicAction.REVIEW,
@@ -98,7 +95,7 @@ if (
 
 Do not add a schedule mutation or move policy into workflow code.
 
-- [ ] **Step 4: Run GREEN and narrow static gates**
+- [x] **Step 4: Run GREEN and narrow static gates**
 
 ```powershell
 .venv\Scripts\python -m pytest tests/test_agent_application.py -q
@@ -108,7 +105,7 @@ Do not add a schedule mutation or move policy into workflow code.
 
 Expected: application tests pass and both static commands exit `0`.
 
-- [ ] **Step 5: Commit the policy gate**
+- [x] **Step 5: Commit the policy gate**
 
 ```powershell
 git add src/devradar/agents/application.py tests/test_agent_application.py
@@ -121,7 +118,7 @@ git commit -m "feat: gate planner schedule decisions"
 - Create: `tests/test_agent_responsibilities.py`
 - Create: `src/devradar/agents/responsibilities.py`
 
-- [ ] **Step 1: Write planner fact/builder RED tests**
+- [x] **Step 1: Write planner fact/builder RED tests**
 
 Create ORM fixtures with explicit UUIDs. A healthy approved source plus a due transient failed run must produce exactly two refs and these facts/context:
 
@@ -155,7 +152,7 @@ Add cases proving:
 - negative source counters and missing UUID identity fail closed;
 - serialized facts contain none of `base_url`, `allowed_hosts`, raw body, prompt, secret or tool fields.
 
-- [ ] **Step 2: Write validator fact/builder RED tests**
+- [x] **Step 2: Write validator fact/builder RED tests**
 
 Build `Job`, `RawJobSnapshot` and `ExtractionResult` fixtures with matching explicit UUIDs and `ExtractionPayload`-shaped `output_data`. Assert:
 
@@ -182,7 +179,7 @@ assert result.application_context.allowed_retry_strategies == ()
 
 Add cases for mismatched extraction/job, mismatched current snapshot/source, stale hash/schema, malformed `output_data`, unsupported skill evidence, duplicate skill evidence key, attempt cap and rejected/needs-review statuses. Unsafe persisted validation issue fields must fail closed; safe issue output contains only `code`, `path`, `type` and never the rejected value. Assert serialized facts/request never contain `output_data`, job title/description, raw snapshot content/URL, prompt, secret or embedding.
 
-- [ ] **Step 3: Run RED and verify the missing module**
+- [x] **Step 3: Run RED and verify the missing module**
 
 ```powershell
 .venv\Scripts\python -m pytest tests/test_agent_responsibilities.py -q
@@ -190,7 +187,7 @@ Add cases for mismatched extraction/job, mismatched current snapshot/source, sta
 
 Expected: collection fails with `ModuleNotFoundError: No module named 'devradar.agents.responsibilities'`.
 
-- [ ] **Step 4: Implement strict fact and input contracts**
+- [x] **Step 4: Implement strict fact and input contracts**
 
 Create `src/devradar/agents/responsibilities.py` with these public types:
 
@@ -232,15 +229,11 @@ class ValidatorFacts(AgentModel):
     validation_issues: tuple[ValidationIssue, ...] = Field(default=(), max_length=16)
     retry_eligible: bool
     retry_attempt_number: int = Field(ge=1, le=3)
-    allowed_retry_strategies: tuple[ValidatorRetryStrategy, ...] = Field(
-        default=(), max_length=1
-    )
+    allowed_retry_strategies: tuple[ValidatorRetryStrategy, ...] = Field(default=(), max_length=1)
 
 
 class ResponsibilityInput(AgentModel):
-    schema_version: Literal["agent-responsibility-input-v1"] = (
-        "agent-responsibility-input-v1"
-    )
+    schema_version: Literal["agent-responsibility-input-v1"] = "agent-responsibility-input-v1"
     responsibility: Responsibility
     input_refs: tuple[DecisionRef, ...] = Field(min_length=1, max_length=2)
     facts: PlannerFacts | ValidatorFacts
@@ -256,7 +249,7 @@ Its model validator must enforce:
 
 Define allow-listed `ResponsibilityBuildCode`, `ResponsibilityBuildError` and constant safe summaries; the exception constructor accepts only an enum and never free-form persisted content.
 
-- [ ] **Step 5: Implement the planner builder**
+- [x] **Step 5: Implement the planner builder**
 
 Use this exact public signature:
 
@@ -280,7 +273,7 @@ The implementation must:
 
 Do not read or copy source URL, hosts, rate-limit payload or error summary.
 
-- [ ] **Step 6: Implement the validator builder**
+- [x] **Step 6: Implement the validator builder**
 
 Use this exact public signature:
 
@@ -307,14 +300,12 @@ validator_accept_allowed = (
     and evidence_valid
 )
 retry_eligible = not validator_accept_allowed and retry_attempt_number < 3
-allowed_retry_strategies = (
-    (ValidatorRetryStrategy.DETERMINISTIC_REPARSE,) if retry_eligible else ()
-)
+allowed_retry_strategies = (ValidatorRetryStrategy.DETERMINISTIC_REPARSE,) if retry_eligible else ()
 ```
 
 The extraction ref carries its input hash/schema version; the optional snapshot ref carries only UUID, raw content hash and a fixed safe version token. Neither facts nor refs include `output_data`, source URL or content.
 
-- [ ] **Step 7: Run GREEN and static gates**
+- [x] **Step 7: Run GREEN and static gates**
 
 ```powershell
 .venv\Scripts\python -m pytest tests/test_agent_responsibilities.py tests/test_agent_application.py -q
@@ -324,7 +315,7 @@ The extraction ref carries its input hash/schema version; the optional snapshot 
 
 Expected: all targeted tests pass; Ruff/mypy exit `0`.
 
-- [ ] **Step 8: Commit facts and builders**
+- [x] **Step 8: Commit facts and builders**
 
 ```powershell
 git add src/devradar/agents/responsibilities.py tests/test_agent_responsibilities.py
@@ -337,7 +328,7 @@ git commit -m "feat: build safe agent responsibility facts"
 - Create: `tests/test_agent_workflow.py`
 - Create: `src/devradar/agents/workflow.py`
 
-- [ ] **Step 1: Write RED tests for proposal contracts**
+- [x] **Step 1: Write RED tests for proposal contracts**
 
 Create a safe planner `ResponsibilityInput` fixture and test strict `ProposalRequest`/`ProposalAttempt` behavior. Required assertions:
 
@@ -346,7 +337,7 @@ Create a safe planner `ResponsibilityInput` fixture and test strict `ProposalReq
 - attempt requires a mapping candidate, safe model pattern/length, non-negative tokens and cost with at most 8 decimals;
 - attempt rejects prompt, provider body, chain-of-thought, tool calls and arbitrary metadata.
 
-- [ ] **Step 2: Write RED tests for all terminal mappings**
+- [x] **Step 2: Write RED tests for all terminal mappings**
 
 Using scripted callables only, cover:
 
@@ -363,7 +354,7 @@ Using scripted callables only, cover:
 
 Test that serialized evaluation/application output excludes injected strings and that `tool_call_count` is always `0`.
 
-- [ ] **Step 3: Run RED and verify the missing workflow module**
+- [x] **Step 3: Run RED and verify the missing workflow module**
 
 ```powershell
 .venv\Scripts\python -m pytest tests/test_agent_workflow.py -q
@@ -371,7 +362,7 @@ Test that serialized evaluation/application output excludes injected strings and
 
 Expected: collection fails with `ModuleNotFoundError: No module named 'devradar.agents.workflow'`.
 
-- [ ] **Step 4: Implement proposal and safe error contracts**
+- [x] **Step 4: Implement proposal and safe error contracts**
 
 Create these public contracts in `src/devradar/agents/workflow.py`:
 
@@ -413,7 +404,7 @@ ProposalCallable = Callable[[ProposalRequest], object]
 
 Define a strict internal `AgentWorkflowEvaluation` with terminal status, accepted usage, optional validated decision, application result, optional safe failure and optional safe model. It may contain only validated data.
 
-- [ ] **Step 5: Implement the pure four-stage evaluator**
+- [x] **Step 5: Implement the pure four-stage evaluator**
 
 Use a private evaluator accepting an already-created `AgentRunState`, plus a public testable function:
 
@@ -439,7 +430,7 @@ Required algorithm:
 
 The attempt delta that exceeds a limit is not partially accepted. A later safe fallback-step delta may still be counted if within the fixed four-step cap. Application rejection and valid review are terminal and are never retried.
 
-- [ ] **Step 6: Run GREEN and static gates**
+- [x] **Step 6: Run GREEN and static gates**
 
 ```powershell
 .venv\Scripts\python -m pytest tests/test_agent_workflow.py tests/test_agent_application.py tests/test_agent_run_state.py -q
@@ -449,7 +440,7 @@ The attempt delta that exceeds a limit is not partially accepted. A later safe f
 
 Expected: all targeted tests pass; Ruff/mypy exit `0`.
 
-- [ ] **Step 7: Commit the pure workflow**
+- [x] **Step 7: Commit the pure workflow**
 
 ```powershell
 git add src/devradar/agents/workflow.py tests/test_agent_workflow.py
@@ -463,11 +454,11 @@ git commit -m "feat: add bounded planner validator workflow"
 - Modify: `src/devradar/agents/workflow.py`
 - Modify: `src/devradar/agents/__init__.py`
 
-- [ ] **Step 1: Write PostgreSQL RED tests for real provenance builders**
+- [x] **Step 1: Write PostgreSQL RED tests for real provenance builders**
 
 Reuse the random fresh-database/migration fixture pattern. Seed one source/run/job/snapshot/extraction set and assert real ORM rows produce exact opaque refs/facts while serialized proposal request omits source URL, raw content, job description, `output_data`, validation rejected value and injected secret strings.
 
-- [ ] **Step 2: Write PostgreSQL RED tests for transaction lifecycle**
+- [x] **Step 2: Write PostgreSQL RED tests for transaction lifecycle**
 
 Required scenarios:
 
@@ -478,7 +469,7 @@ Required scenarios:
 - patched/forced finalize failure rolls back the second transaction, leaves one `running` row with zero usage and blocks a second start through the existing global active slot;
 - execution result contains only run ID, responsibility, terminal status, application result and safe failure code.
 
-- [ ] **Step 3: Run PostgreSQL RED**
+- [x] **Step 3: Run PostgreSQL RED**
 
 ```powershell
 docker compose --env-file .env.example up database --wait
@@ -493,7 +484,7 @@ try {
 
 Expected: tests fail because the executor/outcome contract is not implemented; database availability and fixture setup pass.
 
-- [ ] **Step 4: Implement the two-transaction executor**
+- [x] **Step 4: Implement the two-transaction executor**
 
 Add:
 
@@ -545,7 +536,7 @@ return AgentExecutionOutcome(...)
 
 `AgentWorkflowError` takes only an allow-listed workflow code. Do not catch/wrap `AgentRunPersistenceError` from the initial start because it is already safe and preserves exact concurrency/retry semantics. Never keep a Session or ORM row past its transaction. Do not auto-reset a stuck run after finalize failure.
 
-- [ ] **Step 5: Export only stable entry points**
+- [x] **Step 5: Export only stable entry points**
 
 Update `src/devradar/agents/__init__.py` to export:
 
@@ -560,7 +551,7 @@ from devradar.agents.workflow import AgentExecutionOutcome, execute_responsibili
 
 Keep existing decision/application exports. Do not export the scripted proposal fixture, private evaluator helper or provider implementation.
 
-- [ ] **Step 6: Run PostgreSQL GREEN and all V4-004 targeted tests**
+- [x] **Step 6: Run PostgreSQL GREEN and all V4-004 targeted tests**
 
 ```powershell
 $env:DEVRADAR_TEST_DATABASE_URL = 'postgresql+psycopg://devradar:devradar_local_only@127.0.0.1:55432/postgres'
@@ -577,7 +568,7 @@ try {
 
 Expected: targeted unit/PostgreSQL tests pass; Ruff/mypy exit `0`.
 
-- [ ] **Step 7: Commit the executor**
+- [x] **Step 7: Commit the executor**
 
 ```powershell
 git add src/devradar/agents/workflow.py src/devradar/agents/__init__.py tests/integration/test_agent_workflow.py
@@ -593,7 +584,7 @@ git commit -m "feat: audit direct agent workflow runs"
 - Create: `docs/evidence/V4-004-planner-validator-direct-workflow.md`
 - Modify local ignored: `TASK_BOARD.md`
 
-- [ ] **Step 1: Update authoritative documentation without widening scope**
+- [x] **Step 1: Update authoritative documentation without widening scope**
 
 Document in `docs/AI.md`:
 
@@ -604,7 +595,7 @@ Document in `docs/AI.md`:
 
 Document in `docs/ARCHITECTURE.md` the sequence `builder outside run → short start transaction → proposal/validation without Session → short finalize transaction`, caller-owned transaction behavior and stuck-running outcome on finalize failure. Do not change `docs/API.md` or add an entity/migration claim.
 
-- [ ] **Step 2: Run full default and PostgreSQL verification**
+- [x] **Step 2: Run full default and PostgreSQL verification**
 
 ```powershell
 .venv\Scripts\python -m pytest
@@ -623,7 +614,7 @@ try {
 
 Expected: both test modes and all static/dependency gates exit `0`.
 
-- [ ] **Step 3: Run schema, dependency, security and Markdown gates**
+- [x] **Step 3: Run schema, dependency, security and Markdown gates**
 
 With local PostgreSQL available, run `alembic upgrade head` and `alembic check` against the verified local URL. Then run:
 
@@ -637,7 +628,7 @@ git check-ignore TASK_BOARD.md .env.local
 
 Expected: dependency and migration diffs are empty; suspicious-text hits are only negative tests/local validation reads and are not present in proposal/audit serialization; ignored local files remain ignored. Run the repository Markdown internal-link scanner used by prior V4 evidence and record its exact file/link counts.
 
-- [ ] **Step 4: Write evidence from actual output and update status**
+- [x] **Step 4: Write evidence from actual output and update status**
 
 Evidence must record:
 
@@ -650,7 +641,7 @@ Evidence must record:
 
 Only after every gate passes: change `docs/ROADMAP.md` to V4-004 complete with the evidence link, update local `TASK_BOARD.md` to V4-004 Done and V4-005 Ready, and keep V4 `in_progress`.
 
-- [ ] **Step 5: Final diff review and closeout commit**
+- [x] **Step 5: Final diff review and closeout commit**
 
 ```powershell
 git status --short --branch
