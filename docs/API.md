@@ -4,7 +4,7 @@
 
 DevRadar cung cấp REST JSON dưới `/api/v1`. OpenAPI tại `/api/v1/openapi.json` là wire contract chính cho endpoint đã triển khai; tài liệu này giữ intent, quyền truy cập và phase availability cho cả phần đã có và phần còn planned.
 
-V2 hiện đã triển khai process health, bảy endpoint đọc Job/JobChange/Source/CrawlRun và một local-gated CrawlRun mutation trong bảng dưới. OpenAPI và PostgreSQL contract test là nguồn bằng chứng wire behavior.
+V3-005 hiện có process health, Job/JobChange/Source/CrawlRun resources, một local-gated CrawlRun mutation, additive keyword/semantic Job search và hai skill analytics endpoint trong bảng dưới. OpenAPI và PostgreSQL contract test là nguồn bằng chứng wire behavior.
 
 ## 2. Quy ước
 
@@ -98,8 +98,8 @@ V1 dùng page-based pagination vì dataset portfolio còn bounded và UI cần t
 | `GET /api/v1/crawl-runs/{runId}` | Run detail, metric và safe error | V1 — implemented | operator/read |
 | `GET /api/v1/jobs/{jobId}/changes` | Lịch sử thay đổi | V2 — implemented | local/read |
 | `POST /api/v1/crawl-runs` | Tạo pending run cho source approved | V2 — implemented | local/operator write gate |
-| `GET /api/v1/skills` | Taxonomy và frequency | V3 | local/read |
-| `GET /api/v1/skill-trends` | Cohort/time-window trend | V3 | local/read |
+| `GET /api/v1/skills` | Taxonomy và frequency có denominator/coverage | V3 — implemented | local/read |
+| `GET /api/v1/skill-trends` | Bounded cohort/time-window trend | V3 — implemented | local/read |
 | `GET /api/v1/agent-runs` | Audit run đã redact | V4 | operator/read |
 | `GET /api/v1/agent-runs/{runId}` | Agent decision và provenance an toàn | V4 | operator/read |
 | `POST /api/v1/resume-profiles` | Upload và tạo profile | V5 | owner/write; local-only nếu chưa auth |
@@ -145,11 +145,12 @@ V2 Source summary bổ sung `consecutiveFailures` và safe `healthReasonCode`; S
     "id": "source-id",
     "name": "Example",
     "url": "https://careers.example.test/jobs/123"
-  }
+  },
+  "relevanceScore": null
 }
 ```
 
-Job detail V1 thêm plaintext description và current snapshot metadata gồm ID, source URL, fetch time, HTTP/content type và parse status. Raw content, raw hash, HTML và internal snapshot error không được trả. Skill/provenance extraction summary chỉ xuất hiện từ V3 sau khi contract tương ứng được triển khai.
+`relevanceScore` chỉ có số trong semantic search; keyword/list/detail bình thường trả `null`. Giá trị là cosine similarity bounded để xếp hạng, không phải xác suất phù hợp. Job detail V1 thêm plaintext description và current snapshot metadata gồm ID, source URL, fetch time, HTTP/content type và parse status. Raw content, raw hash, HTML, vector, model path và internal snapshot error không được trả.
 
 Source response chỉ trả identity, adapter key, approval/health và review/last-run timestamps. `rateLimitPolicy`, `allowedHosts` cùng mọi credential/config nội bộ bị omit khỏi public schema.
 
@@ -192,7 +193,31 @@ Write endpoint chỉ hoạt động khi local deployment đặt `DEVRADAR_OPERAT
 
 `GET /jobs/{jobId}/changes` trả page envelope với `changeType`, `fieldName`, old/new JSON value, `crawlRunId`, from/to snapshot ID và `detectedAt`; order là `detectedAt desc, id asc`. Description change chỉ expose hash evidence đã persist, không trả raw snapshot/HTML.
 
-### 6.3. ResumeProfile upload
+### 6.3. Skill frequency và trend
+
+`GET /skills` nhận `page`, `pageSize`, `status` (default `active`), optional `sourceId`, `cohort=firstSeenAt|postedAt` và cặp optional `from`/`to`. Response page trên unique skill, order `jobCount desc, name asc`, cùng metadata:
+
+```json
+{
+  "data": [
+    {"name": "python", "category": "language", "jobCount": 42, "share": 0.35}
+  ],
+  "pagination": {"page": 1, "pageSize": 20, "totalItems": 1, "totalPages": 1},
+  "meta": {
+    "cohortSize": 120,
+    "analyzedJobs": 100,
+    "coverage": 0.8333,
+    "taxonomyVersion": "job-taxonomy-v1",
+    "extractionSchemaVersion": "job-extraction-schema-v1"
+  }
+}
+```
+
+`share = jobCount / cohortSize`, không chia cho riêng số Job đã analyze. Mỗi skill chỉ được đếm một lần cho mỗi Job. Analytics đọc latest accepted extraction đúng current Job hash/schema/canonicalization; missing/rejected/stale extraction làm coverage giảm chứ không bị loại khỏi denominator.
+
+`GET /skill-trends` bắt buộc `from` và `to`, window inclusive tối đa 366 ngày; hỗ trợ `cohort`, `granularity=day|week|month`, `topSkills=1..20`, `status` và `sourceId`. Mỗi bucket có `periodStart`, `denominator`, `analyzedJobs`, `coverage` và skill `jobCount/share`; không tạo bucket cho period không có Job. Top skill được chọn ổn định trên toàn filtered cohort. Raw extraction payload và evidence không được trả.
+
+### 6.4. ResumeProfile upload
 
 - Request dùng `multipart/form-data` với đúng một file và optional preference fields đã allow-list.
 - MIME header, extension và magic bytes đều được kiểm tra; parser không tin tên file.
@@ -200,7 +225,7 @@ Write endpoint chỉ hoạt động khi local deployment đặt `DEVRADAR_OPERAT
 - Response không trả raw text, absolute path, embedding hoặc provider payload.
 - `DELETE` phải xóa/expire profile, embeddings, matches và retained artifacts theo documented retention policy; audit record không chứa content.
 
-### 6.4. JobMatch
+### 6.5. JobMatch
 
 ```json
 {
@@ -233,6 +258,15 @@ Score là ranking heuristic, không phải xác suất được tuyển. Client 
 
 Unknown query parameter trả `422` để tránh client tưởng filter đang hoạt động. Sort field dùng allow-list; không chuyển trực tiếp tên field vào SQL.
 
+Trong V3-005:
+
+- `query` được trim và giới hạn 300 ký tự; `searchMode` mặc định `keyword`, còn `semantic` bắt buộc có `query`;
+- keyword là literal case-insensitive substring trên title/company/plaintext description; `%`, `_` và `\` từ client không trở thành wildcard;
+- `skill` được canonicalize bằng taxonomy hiện hành và chỉ match latest compatible accepted extraction của current Job;
+- semantic search chỉ join current `JobEmbedding` có đúng input schema/provider/model/revision/dimension, áp mọi status/source/skill filter trước exact cosine order rồi tie-break `id asc`;
+- `sortBy`/`sortOrder` không đổi semantic relevance ordering; pagination vẫn ổn định theo distance và Job ID;
+- local model thiếu, sai hash hoặc output invalid trả `503` với code safe; API không download model và không fallback external.
+
 Trong V1:
 
 - `company`, `title`, `location` là literal case-insensitive substring; wildcard do client gửi không được diễn giải như SQL wildcard;
@@ -241,7 +275,7 @@ Trong V1:
 - `sortBy` allow-list gồm `lastSeenAt`, `firstSeenAt`, `postedAt`, `title`, `companyName`, `salaryMin`; null luôn ở cuối và `id asc` là tie-break;
 - range sai thứ tự, text chỉ có whitespace, unknown parameter, enum/UUID sai hoặc vượt pagination limit trả `422` trong error envelope chuẩn.
 
-`GET /skill-trends` bắt buộc có hoặc áp dụng rõ default cho `from`, `to`, `cohort`, `granularity`; response luôn trả denominator/sample size để tránh insight gây hiểu nhầm.
+`GET /skill-trends` bắt buộc `from`/`to`, còn `cohort` và `granularity` có default được OpenAPI công bố; response luôn trả denominator/sample size để tránh insight gây hiểu nhầm.
 
 ## 8. Authentication, authorization và exposure
 
@@ -268,6 +302,8 @@ Auth mechanism cụ thể cần ADR khi V6 bắt đầu; tài liệu này không
 - List endpoint enforce pagination limit và stable ordering.
 - Unknown filter/sort field bị reject.
 - Không response nào lộ raw HTML, CV text, embedding, stack trace hoặc secret.
+- Semantic search giữ model/hash compatibility, status/source/skill filter và safe `503` khi local model unavailable.
+- Skill/trend response giữ cohort denominator, analyzed coverage, bounded window và stable ordering.
 - Source chưa approved và arbitrary URL không thể tạo crawl run.
 - Idempotency key retry không tạo hai run.
 - ResumeProfile/Match của owner khác trả `404/403` theo policy.

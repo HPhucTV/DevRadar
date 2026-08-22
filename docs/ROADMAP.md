@@ -8,7 +8,7 @@
 | Active phase | `v3` (`in_progress`) |
 | Code scaffold | Có — FastAPI health + read-only domain API, PostgreSQL schema/migration, test/static gates và Compose local |
 | Source approved | `3/3` cho bounded local non-commercial scope |
-| Runtime/test evidence | V1 [complete](evidence/V1-closeout.md); V2 [complete](evidence/V2-006-v2-closeout.md); V3 có [evaluation baseline](evidence/V3-001-evaluation-dataset-and-baseline.md) và [provider/pgvector spike](evidence/V3-002-provider-privacy-cost-pgvector-spike.md) đã complete cho synthetic generation, embedding vẫn là gate riêng |
+| Runtime/test evidence | V1 [complete](evidence/V1-closeout.md); V2 [complete](evidence/V2-006-v2-closeout.md); V3 có evaluation/provider/extraction/taxonomy evidence và [local embedding/search/trend gate](evidence/V3-005-embeddings-search-trends.md); V3-006 scale/closeout còn mở |
 
 Task-level status có thể được theo dõi bằng `TASK_BOARD.md` cục bộ. File này bị Git ignore và không thay đổi phase gate hoặc exit criteria của roadmap.
 
@@ -159,7 +159,7 @@ Bổ sung structured extraction và semantic capability có evaluation, trong kh
 
 ### Deliverables
 
-- provider-neutral LLM/embedding adapters;
+- versioned, bounded LLM/embedding provider-model boundaries;
 - versioned ExtractionResult và skill taxonomy;
 - versioned role/job classification và bounded AI summary có evidence;
 - schema/evidence validation, bounded retry/review và content-hash cache;

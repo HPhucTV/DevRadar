@@ -10,9 +10,9 @@
 | Phase hiện tại | `v3` — AI extraction, taxonomy và semantic search (`in_progress`) |
 | Mô hình sử dụng ban đầu | Portfolio cá nhân, single-operator |
 | Thị trường ưu tiên | Job IT Việt Nam, nội dung Việt/Anh, lương VND |
-| Code chạy được | Có — V1/V2 data pipeline, PostgreSQL one-shot worker, REST contract và V3 synthetic evaluation dataset + deterministic baseline |
+| Code chạy được | Có — V1/V2 data pipeline, PostgreSQL one-shot worker, REST contract và V3 extraction/taxonomy/local semantic capabilities |
 
-V1 đã hoàn tất safe fetch/snapshot pipeline, ba concrete source adapters, PostgreSQL persistence và REST API; 78 canonical jobs hiện có identity/provenance 1:1 và replay không tạo update giả. V2 đã hoàn tất direct schedule/retry, JobChange lifecycle, source health/quarantine, operator enqueue và one-shot worker. V3-001 đã khóa 12 synthetic evaluation case cùng deterministic baseline/target. V3-002 đã được `Accepted` cho DeepSeek synthetic generation sau khi thêm deterministic canonicalization; held-out v6 đạt schema/evidence, skill, level, salary và location `1.0`, experience/complete accepted `0.875`. Embedding/pgvector vẫn chưa được chọn provider. Mục tiêu `>=500` vẫn là gate trước khi tuyên bố semantic/trend analytics có quy mô.
+V1 đã hoàn tất safe fetch/snapshot pipeline, ba concrete source adapters, PostgreSQL persistence và REST API; 78 canonical jobs hiện có identity/provenance 1:1 và replay không tạo update giả. V2 đã hoàn tất direct schedule/retry, JobChange lifecycle, source health/quarantine, operator enqueue và one-shot worker. V3-001–V3-004 đã khóa evaluation, DeepSeek synthetic spike, `ExtractionResult` cache và taxonomy/classification/summary deterministic. ADR-009 chấp nhận local `intfloat/multilingual-e5-small` 384d cùng exact pgvector; V3-005 thêm model-version-safe embeddings, semantic job search và skill frequency/trend API có denominator. Mục tiêu `>=500` vẫn là gate trước khi đóng V3 hoặc tuyên bố analytics có quy mô.
 
 ## Mục tiêu
 
@@ -52,7 +52,7 @@ flowchart LR
     G --> X
 ```
 
-Các thành phần ghi kèm phiên bản chỉ được triển khai khi task/entry gate tương ứng đạt. V3 đang active không tự động chấp nhận LLM provider hoặc pgvector trước spike/evaluation.
+Các thành phần ghi kèm phiên bản chỉ được triển khai khi task/entry gate tương ứng đạt. ADR-009 chỉ chấp nhận local multilingual E5 + exact pgvector cho V3 private deployment; external embedding provider, HNSW và công nghệ phase sau vẫn chưa được mở.
 
 ## Roadmap tóm tắt
 
@@ -100,6 +100,9 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [V2 closeout evidence](docs/evidence/V2-006-v2-closeout.md): one-shot worker, five scheduled acceptance cycles, exit-criteria mapping và chuyển phase sang V3.
 - [V3 evaluation evidence](docs/evidence/V3-001-evaluation-dataset-and-baseline.md): versioned synthetic split, deterministic baseline, hallucination gap và release targets.
 - [V3 provider/pgvector spike](docs/evidence/V3-002-provider-privacy-cost-pgvector-spike.md): official-doc comparison, cost/privacy model, pgvector micro-benchmark và live development/held-out gate evidence.
+- [V3 extraction/cache evidence](docs/evidence/V3-003-extraction-result-cache.md): accepted-only cache, deterministic-first orchestration và PostgreSQL transaction semantics.
+- [V3 taxonomy evidence](docs/evidence/V3-004-taxonomy-classification-summary.md): versioned skill category, role classification và bounded evidence-rendered summary.
+- [V3 embeddings/search/trends evidence](docs/evidence/V3-005-embeddings-search-trends.md): fixed local model integrity, pgvector persistence, semantic filters và analytics denominator/coverage.
 - [DeepSeek V3 spike module](src/devradar/intelligence/deepseek_spike.py): synthetic-only, fail-closed JSON extraction spike; không phải production provider adapter.
 - [Roadmap](docs/ROADMAP.md): kế hoạch V1–V6 và definition of done.
 - [Architecture Decision Records](docs/decisions/README.md): quyết định đã chấp nhận và quyết định còn đề xuất.
@@ -166,6 +169,25 @@ try {
     Remove-Item Env:\PYTHONPATH -ErrorAction SilentlyContinue
 }
 ```
+
+### V3 local embeddings
+
+Model `intfloat/multilingual-e5-small` chỉ được tải từ revision đã khóa; inference không tự download và không gửi JD/query ra external provider. Lần đầu local có thể tải khoảng 465 MiB. Sau khi PostgreSQL Compose đang chạy và migration đã lên `head`, tải model rồi backfill một batch bounded:
+
+```powershell
+$env:PYTHONPATH = (Join-Path (Get-Location) 'src')
+$env:DEVRADAR_DATABASE_URL = 'postgresql+psycopg://devradar:devradar_local_only@127.0.0.1:55432/devradar'
+try {
+    .venv\Scripts\python -m devradar.cli download-embedding-model
+    .venv\Scripts\python -m alembic upgrade head
+    .venv\Scripts\python -m devradar.cli embed-jobs --max-items 100
+} finally {
+    Remove-Item Env:\PYTHONPATH -ErrorAction SilentlyContinue
+    Remove-Item Env:\DEVRADAR_DATABASE_URL -ErrorAction SilentlyContinue
+}
+```
+
+`--max-items` nhận `1..1000`; rerun cùng Job/hash/model là idempotent. Có thể đặt `DEVRADAR_EMBEDDING_MODEL_PATH` cho một thư mục local khác, nhưng model identity/revision/hash không thay đổi. Docker image đã prefetch đúng revision vào image build; semantic API trả `503` an toàn nếu artifact thiếu hoặc sai hash.
 
 PostgreSQL integration là opt-in và tạo/xóa database test tên ngẫu nhiên. Với database Compose đang chạy:
 

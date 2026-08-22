@@ -2,7 +2,7 @@
 
 ## 1. Mục tiêu
 
-Tài liệu này định nghĩa bằng chứng cần có để nói DevRadar chạy đúng, an toàn và có thể chẩn đoán. V1 data pipeline và V2 schedule/retry/lifecycle/health/operator queue đã có verified PostgreSQL, static và bounded live evidence. V3 AI/semantic capability chưa được coi là triển khai cho tới khi fixed evaluation và provider/pgvector gate tương ứng pass.
+Tài liệu này định nghĩa bằng chứng cần có để nói DevRadar chạy đúng, an toàn và có thể chẩn đoán. V1 data pipeline và V2 schedule/retry/lifecycle/health/operator queue đã có verified PostgreSQL, static và bounded live evidence. V3 extraction/taxonomy cùng local E5/pgvector semantic boundary đã có task-level evidence; toàn phase vẫn `in_progress` cho tới khi V3-006 đạt dataset/evaluation/scale gates.
 
 ## 2. Environment
 
@@ -15,7 +15,7 @@ Tài liệu này định nghĩa bằng chứng cần có để nói DevRadar ch�
 
 Kết quả kiểm tra capability máy phát triển trước V1 được ghi riêng tại [PRE-007 local prerequisites evidence](evidence/PRE-007-local-prerequisites.md); đây không phải Quick Start hoặc runtime proof của ứng dụng.
 
-Kết quả scaffold nằm tại [V1-001 evidence](evidence/V1-001-scaffold.md); fresh PostgreSQL migration/schema integration nằm tại [V1-002 evidence](evidence/V1-002-postgresql-schema.md); safe fetch/raw snapshot boundary nằm tại [V1-004 evidence](evidence/V1-004-safe-fetch-and-snapshot.md); NAVER/VNG/MoMo adapters nằm tại [V1-006](evidence/V1-006-naver-greenhouse-adapter.md), [V1-007](evidence/V1-007-vng-adapter.md) và [V1-008](evidence/V1-008-momo-adapter.md); current-state persistence nằm tại [V1-009 evidence](evidence/V1-009-job-upsert.md); PostgreSQL-backed read contract nằm tại [V1-010 evidence](evidence/V1-010-read-api.md); safe structured events nằm tại [V1-011 evidence](evidence/V1-011-observability.md); on-demand runner cùng Compose browser sandbox nằm tại [V1-012 evidence](evidence/V1-012-compose-and-runner.md); full source/replay inventory nằm tại [V1-013 evidence](evidence/V1-013-live-inventory.md); phase decision và gate mapping nằm tại [V1 closeout](evidence/V1-closeout.md). Health endpoint chỉ chứng minh API process sống; API database behavior và browser sandbox được kiểm tra bằng smoke riêng.
+Kết quả scaffold nằm tại [V1-001 evidence](evidence/V1-001-scaffold.md); fresh PostgreSQL migration/schema integration nằm tại [V1-002 evidence](evidence/V1-002-postgresql-schema.md); safe fetch/raw snapshot boundary nằm tại [V1-004 evidence](evidence/V1-004-safe-fetch-and-snapshot.md); NAVER/VNG/MoMo adapters nằm tại [V1-006](evidence/V1-006-naver-greenhouse-adapter.md), [V1-007](evidence/V1-007-vng-adapter.md) và [V1-008](evidence/V1-008-momo-adapter.md); current-state persistence nằm tại [V1-009 evidence](evidence/V1-009-job-upsert.md); PostgreSQL-backed read contract nằm tại [V1-010 evidence](evidence/V1-010-read-api.md); safe structured events nằm tại [V1-011 evidence](evidence/V1-011-observability.md); on-demand runner cùng Compose browser sandbox nằm tại [V1-012 evidence](evidence/V1-012-compose-and-runner.md); full source/replay inventory nằm tại [V1-013 evidence](evidence/V1-013-live-inventory.md); phase decision và gate mapping nằm tại [V1 closeout](evidence/V1-closeout.md). V3 model/vector/search/trend gates nằm tại [V3-005 evidence](evidence/V3-005-embeddings-search-trends.md). Health endpoint chỉ chứng minh API process sống; API/database/model behavior và browser sandbox được kiểm tra bằng smoke riêng.
 
 Không dùng production secret/data trong CI. Không gọi source/LLM thật từ default unit test; live integration phải opt-in, có budget và được gắn nhãn rõ.
 
@@ -26,6 +26,7 @@ Không dùng production secret/data trong CI. Không gọi source/LLM thật t�
 - `.env`, local override, key/certificate và exported data phải bị ignore khi scaffold Git.
 - API key, database password, session secret, webhook token và source credential không được hardcode hoặc log.
 - `DEVRADAR_OPERATOR_WRITE_ENABLED` mặc định `false`; đây chỉ là local deployment gate, không phải auth. Không bật write API trên public ingress trước V6 auth/authorization.
+- `DEVRADAR_EMBEDDING_MODEL_PATH` là optional local path, không phải model selector. Dù đổi path, application vẫn khóa model ID/revision/artifact hash; request không được chọn path/model.
 - External provider/source mới phải có owner, mục đích, data classification và rotation/revocation path.
 - Nếu secret từng bị commit hoặc lộ trong log, rotate/revoke trước; chỉ xóa khỏi file không đủ.
 
@@ -41,6 +42,7 @@ Chạy nhanh, deterministic, không network:
 - match component/scoring version;
 - AI output validator, evidence check, cost/step limit;
 - V3 taxonomy/category, role ambiguity và bounded summary evidence/length validator;
+- V3 canonical embedding input, model artifact integrity, query/vector bounds và safe model-unavailable behavior;
 - redaction và security policy helpers.
 
 ### 4.2. Integration tests
@@ -52,7 +54,8 @@ Chạy nhanh, deterministic, không network:
 - FastAPI → PostgreSQL với OpenAPI/contract assertion;
 - V2 scheduler/retry → run state/metrics;
 - V2 API pending request → `SKIP LOCKED` one-shot claim → ingestion/retry chain, không chạy network trong HTTP request;
-- V3 pgvector query với model-version filter;
+- V3 pgvector extension/version/dimension/logical identity, idempotent backfill và exact query với current hash/model-version/status/source filters;
+- V3 skill/trend denominator, extraction coverage, bounded window và stable ordering;
 - V5 upload parser trong isolated test và owner access control;
 - alert retry/idempotency với fake connector.
 
@@ -79,7 +82,7 @@ PostgreSQL test hiện dùng `DEVRADAR_TEST_DATABASE_URL`, tạo database tên n
 
 - V1: trigger approved adapter qua operator path, ingest dataset và query qua API.
 - V2: nhiều scheduled fixture cycles phát hiện new/update/missing/removed/reactivated, duplicate slot không process lại, partial/anomaly không false removal và quarantine recovery đúng policy.
-- V3: deterministic extraction + LLM fallback trên labeled suite và semantic query.
+- V3: deterministic extraction + LLM fallback trên labeled suite; fixed local model backfill; keyword/semantic comparison và skill trend có denominator/coverage.
 - V4: invalid extraction đi qua bounded validator decision, retry/review và audit.
 - V5: upload CV hợp lệ, xem match/evidence, xóa profile và xác nhận artifact hết hiệu lực.
 - V6: public auth, authorization, rate limiting, backup restore và deploy rollback.
@@ -98,6 +101,9 @@ PostgreSQL test hiện dùng `DEVRADAR_TEST_DATABASE_URL`, tạo database tên n
 | LLM malformed/hallucinated output | Schema/evidence gate reject hoặc bounded retry/review. |
 | Taxonomy unknown/role ambiguous | Giữ evidence, trả `needs_review`; không auto-merge hoặc tự suy đoán. |
 | Summary unsupported claim/extra field/control char | Candidate validator reject; không đưa vào canonical data hoặc log. |
+| Model artifact thiếu/sai hash hoặc vector sai dimension/non-finite | Download/load/backfill/search fail closed bằng safe code; không external fallback hoặc persist vector lỗi. |
+| Stale Job hash/model revision | Không reuse/rank embedding hoặc extraction không tương thích. |
+| Analytics thiếu accepted extraction | Giữ Job trong denominator, giảm `analyzedJobs`/coverage; không bịa zero coverage thành full coverage. |
 | Prompt injection trong JD/CV | Không đổi tool/policy, không gọi arbitrary action. |
 | Upload sai type/magic/size | Reject, cleanup temporary file, không tạo profile dở dang. |
 | Upload parser timeout/bomb | Giới hạn tài nguyên, cleanup và safe error. |
@@ -128,6 +134,7 @@ PostgreSQL test hiện dùng `DEVRADAR_TEST_DATABASE_URL`, tạo database tên n
 - V2 local write API chỉ nhận `sourceId` + custom idempotency header, enqueue DB và không nhận URL/outbound option; default-disabled gate cùng loopback Compose binding giảm accidental exposure nhưng không thay authentication.
 - Error public generic; detail nội bộ được sanitize và correlation bằng request ID.
 - LLM tool default deny, output không đi vào SQL/shell/path/HTML và có token/step/cost cap.
+- Embedding artifact tải explicit từ fixed repository/revision, kiểm SHA-256 trước inference, chạy local-files-only và container disable ONNX Runtime telemetry trước initialization; query/JD/vector/model path không vào response/log và API không tự tải model.
 - Dependency/lockfile được audit; finding chỉ được defer khi có reachability assessment, owner và review date.
 
 ### 6.3. Abuse cases cần test trước exposure
@@ -155,7 +162,7 @@ Mỗi request/run/extraction/agent/delivery có opaque ID. Log dùng structured 
 | Crawler | `crawl_runs_total`, `crawl_success_rate`, `crawl_duration_seconds`, `pages_fetched_total`, `response_bytes_total` |
 | Data | `jobs_new_total`, `jobs_updated_total`, `jobs_missing_total`, `jobs_removed_total`, `jobs_reactivated_total`, `duplicates_candidate_total`, `parse_failures_total` |
 | Source | `source_last_success_age`, `source_failure_rate`, `source_coverage_anomalies_total`, health state |
-| AI | `ai_requests_total`, `ai_cache_hits_total`, extraction/classification/summary accepted/rejected/needs-review counts, provider attempts, `ai_validation_failures_total`, `ai_latency_seconds`, input/output tokens, estimated cost |
+| AI | `ai_requests_total`, `ai_cache_hits_total`, extraction/classification/summary accepted/rejected/needs-review counts, provider attempts, embedding selected/created/cache-hit/stale counts, model unavailable, `ai_validation_failures_total`, `ai_latency_seconds`, input/output tokens, estimated cost |
 | Agent | `agent_runs_total`, decision/retry/review count, step-limit hit, failure rate |
 | API | request count, latency, status code, validation/rate-limit failures |
 | CV/alert | upload reject/cleanup, match duration, deletion completion, delivery success/duplicate prevented |
@@ -206,8 +213,9 @@ Default được dùng cho đến khi có ADR thay đổi:
 | Raw job payload | 90 ngày; hash/provenance metadata giữ lâu hơn để audit. |
 | Application logs | 30 ngày ở deployment; local/CI ngắn hơn. |
 | Agent/LLM audit metadata | 90 ngày; không giữ full prompt chứa raw content/PII. |
+| JobEmbedding derived từ public Job | Giữ/rebuild theo canonical Job và model version; stale row không được query như current. |
 | CV file gốc | Xóa ngay sau parsing thành công/thất bại cleanup. |
-| ResumeProfile, embedding, JobMatch khi chưa có auth | Ephemeral, mặc định hết hạn sau 24 giờ. |
+| ResumeProfile, profile embedding, JobMatch khi chưa có auth | Ephemeral, mặc định hết hạn sau 24 giờ. |
 | Authenticated saved profile ở V6 | Chỉ khi user opt-in; retention hiển thị rõ và hỗ trợ delete. |
 
 Backup:
@@ -222,7 +230,7 @@ Backup:
 |---|---|
 | V1 | format/lint/type check, unit, PostgreSQL integration, migration check, OpenAPI contract, image/config smoke |
 | V2 | scheduler/retry/state-transition tests và orchestration smoke |
-| V3 | fixed AI evaluation suite, pgvector integration, cost/token report |
+| V3 | fixed AI evaluation suite, fixed model integrity/inference smoke, pgvector migration/query integration, OpenAPI/search/analytics contract và cost/latency report |
 | V4 | agent step/tool/policy safety tests và graph regression |
 | V5 | frontend build, accessibility baseline, browser E2E, upload/delete/authorization tests |
 | V6 | dependency/container scan, secret scan, auth/rate-limit/security header tests, deploy/rollback và restore drill |
@@ -237,6 +245,7 @@ Command cụ thể trong README/AGENTS phải từng chạy thành công và đ�
 - migration chạy trên PostgreSQL mới;
 - một approved fixture/source run và API smoke;
 - pending operator run được xử lý ngoài HTTP bằng one-shot worker; queue rỗng exit thành công, source mismatch fail trước network;
+- embedding download là explicit fixed-revision step; image/local artifact được kiểm integrity, bounded backfill idempotent và missing model cho safe `503` mà ingestion vẫn chạy;
 - teardown không xóa volume/data nếu thiếu explicit operator action.
 
 ### Protected demo V5
@@ -263,6 +272,7 @@ Trước public deployment phải có procedure được kiểm thử cho:
 - parser regression gây dữ liệu sai;
 - database migration/persistence failure;
 - LLM provider outage/cost spike/model regression;
+- local embedding artifact corruption, backfill failure hoặc semantic latency regression;
 - secret exposure;
 - CV/PII exposure hoặc deletion failure;
 - bad deploy và rollback.

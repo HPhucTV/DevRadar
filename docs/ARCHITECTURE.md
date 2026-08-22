@@ -2,7 +2,7 @@
 
 ## 1. Trạng thái và phạm vi
 
-Kiến trúc nền tảng là **modular monolith, phase-gated stack** theo [ADR-001](decisions/0001-modular-monolith-and-phase-gated-stack.md). V1 khóa Python, FastAPI, PostgreSQL và Docker Compose; [ADR-005](decisions/0005-sqlalchemy-alembic-and-psycopg.md) khóa SQLAlchemy/Alembic/Psycopg cho persistence V1. V2 đã hoàn tất PostgreSQL-backed direct orchestration theo [ADR-006](decisions/0006-defer-prefect-use-direct-v2-orchestration.md). V3 hiện active nhưng LLM provider và pgvector vẫn `Proposed` cho tới khi evaluation/provider spike tương ứng đạt; LangGraph, Next.js và Redis vẫn bị phase gate ở V4+.
+Kiến trúc nền tảng là **modular monolith, phase-gated stack** theo [ADR-001](decisions/0001-modular-monolith-and-phase-gated-stack.md). V1 khóa Python, FastAPI, PostgreSQL và Docker Compose; [ADR-005](decisions/0005-sqlalchemy-alembic-and-psycopg.md) khóa SQLAlchemy/Alembic/Psycopg cho persistence V1. V2 đã hoàn tất PostgreSQL-backed direct orchestration theo [ADR-006](decisions/0006-defer-prefect-use-direct-v2-orchestration.md). V3 đã chấp nhận DeepSeek cho synthetic generation boundary theo ADR-008 và fixed-revision local E5 + exact pgvector cho private deployment theo [ADR-009](decisions/0009-accept-local-multilingual-e5-and-pgvector.md). Production DeepSeek adapter, external embedding, HNSW, LangGraph, Next.js và Redis vẫn bị phase/evidence gate.
 
 Tài liệu này mô tả boundary và data flow. Nó không quy định folder/class chi tiết trước khi scaffold và không biến module logic thành microservice.
 
@@ -17,7 +17,8 @@ flowchart LR
     SRC["Approved public job sources"] --> ING
     ING --> DB[("PostgreSQL")]
     API --> DB
-    AI["Approved LLM or embedding provider - V3+"] <--> INT["Intelligence modules"]
+    LLM["Approved external LLM boundary - synthetic V3"] <--> INT["Intelligence modules"]
+    EMB["Fixed local E5 model - V3"] --> INT
     INT <--> DB
     API --> INT
     ALT["Telegram / Discord - V5+"] <-- ALERT["Alert module"]
@@ -27,7 +28,7 @@ flowchart LR
 External actors và trust level:
 
 - job source, HTML, JSON-LD, redirect và file CV là **untrusted input**;
-- LLM/embedding provider là **external processor**, không phải nguồn dữ liệu có thẩm quyền;
+- external LLM là **external processor**, không phải nguồn dữ liệu có thẩm quyền; local embedding artifact là dependency không đáng tin cho tới khi revision/hash được xác minh;
 - operator local được tin cậy có giới hạn; secret vẫn không được ghi log;
 - người dùng public là anonymous/untrusted cho tới khi V6 có auth.
 
@@ -91,7 +92,27 @@ flowchart TD
     H -- No --> E
 ```
 
-### 5.3. CV matching
+### 5.3. Local embedding, search và analytics
+
+```mermaid
+flowchart LR
+    J["Current canonical Job"] --> C["Bounded canonical text + input hash"]
+    C --> E["Fixed-revision local E5"]
+    E --> V["Validate finite vector(384)"]
+    V --> P[("PostgreSQL job_embeddings")]
+    Q["Bounded API query"] --> QE["Same local E5 query space"]
+    QE --> S["Exact cosine search"]
+    P --> S
+    J --> S
+    X["Latest accepted ExtractionResult"] --> T["Skill frequency/trend aggregate"]
+    J --> T
+    S --> API["/api/v1/jobs"]
+    T --> API2["/api/v1/skills + /skill-trends"]
+```
+
+Embedding model call chạy ngoài database transaction; persistence re-check Job hash trước insert. Row cũ được giữ làm audit derived data nhưng semantic query chỉ join đúng current hash/input schema/provider/model/revision/dimension. V3 dùng exact cosine và application aggregation vì target chỉ 500–1.000 Job; chưa có HNSW, materialized `JobSkill`, cache hoặc distributed worker.
+
+### 5.4. CV matching
 
 Upload validation và text extraction chạy trước. File gốc được xóa sau khi tạo `ResumeProfile` trừ khi người dùng chủ động chọn retention được hỗ trợ. Match engine lưu component score và evidence; LLM chỉ diễn đạt từ evidence đó.
 
@@ -101,7 +122,7 @@ Upload validation và text extraction chạy trước. File gốc được xóa 
 |---|---|---|
 | V1 | PostgreSQL, FastAPI process, on-demand crawler/CLI từ cùng codebase | Accepted |
 | V2 | V1 + deterministic scheduler/runner từ cùng codebase, PostgreSQL coordination | Accepted theo ADR-006 |
-| V3 | V2 + evaluation trước; LLM/embedding adapter và pgvector chỉ sau spike | In progress; dependency vẫn Proposed |
+| V3 | V2 + extraction/taxonomy; local FastEmbed E5 artifact, pgvector `vector(384)`, exact semantic search và bounded analytics | In progress; ADR-009 Accepted cho local/private |
 | V4 | V3 + LangGraph chạy trong worker/application process | Proposed |
 | V5 | V4 + Next.js và optional alert connector | Proposed |
 | V6 | Public ingress, auth, managed secrets, backup/monitoring; Redis/worker pool nếu metric yêu cầu | Proposed |
@@ -115,6 +136,7 @@ Crawler/one-shot worker CLI và API dùng cùng code nhưng là entrypoint/proce
 | Source URL/browser subrequest → fetcher | SSRF, redirect escape, oversized/slow response | source allow-list trên mọi request, DNS/IP/redirect re-validation, egress control, timeout, byte limit |
 | HTML/JSON-LD → parser | malformed content, injection, parser bomb | content type/size limit, safe parser, no script execution ở HTTP path, fixtures |
 | Raw content → LLM | prompt injection, PII leak, cost abuse | treat as data, minimal fields, tool deny-by-default, budget, redaction |
+| Model artifact/query → local embedding | supply-chain tampering, unbounded CPU/input, vector mismatch, query disclosure | fixed revision + artifact SHA-256, local-files-only, length/dimension/finite checks, no raw query/vector logging |
 | CV upload → parser | malware/polyglot, decompression bomb, PII | type/signature/size/page limits, isolated parse, no macro execution, short retention |
 | API → mutation | unauthorized crawl/data access | local/operator-only trước auth; authenticated role sau V6 |
 | App → database | injection, accidental destructive update | parameterized access, migration review, transaction, least privilege |
@@ -128,7 +150,8 @@ Chi tiết vận hành nằm trong [OPERATIONS.md](OPERATIONS.md).
 - V1 upsert job và last-seen update thuộc cùng transaction logic; từ V2, JobChange liên quan tham gia cùng transaction boundary.
 - `RawJobSnapshot` là evidence append-oriented; không sửa snapshot cũ để phản ánh parser mới.
 - Reprocessing tạo kết quả extraction/version mới và giữ reference tới input cũ.
-- Analytics chỉ đọc run/job data đã đạt trạng thái đủ điều kiện; partial run không được trộn vào trend nếu làm sai denominator.
+- Job embedding là derived row có logical model/hash identity; canonical Job/PostgreSQL vẫn authoritative và stale vector không được rank như current.
+- Analytics đọc current Job cohort cùng latest compatible accepted extraction, luôn công bố denominator/coverage; partial run không được làm sai Job lifecycle hoặc cohort.
 - Delivery alert dùng idempotency key để retry an toàn.
 
 ## 9. Quy tắc thay đổi kiến trúc

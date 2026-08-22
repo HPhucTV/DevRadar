@@ -8,7 +8,7 @@ AI là lớp bổ sung có giới hạn, không phải nguồn sự thật hoặ
 2. **Model output is untrusted:** parse, validate, bound và encode trước khi dùng.
 3. **Evidence-backed:** field/insight/match explanation phải trỏ tới input hoặc aggregate query.
 4. **Version everything:** input hash, schema, extractor, prompt, model, embedding và scoring version.
-5. **Provider-agnostic boundary:** DeepSeek V4 Pro đã được `Accepted` cho synthetic generation spike sau held-out gate; embedding provider vẫn tách riêng và không được suy luận từ OpenAI-compatible wire format.
+5. **Explicit provider boundary:** DeepSeek V4 Pro chỉ được `Accepted` cho synthetic generation spike; ADR-009 chấp nhận fixed-revision local E5 riêng cho embedding. Không suy luận capability từ OpenAI-compatible wire format hoặc tự fallback provider.
 6. **Bounded agency:** model không tự chọn arbitrary URL, chạy shell/SQL, ghi database hoặc gửi alert.
 
 ## 2. Phase boundary
@@ -19,14 +19,14 @@ AI là lớp bổ sung có giới hạn, không phải nguồn sự thật hoặ
 | LLM structured extraction fallback | V3 | V3-003 boundary implemented; production provider chưa có |
 | Job classification và bounded summary | V3 | V3-004 deterministic boundary implemented; evidence-validated |
 | Skill taxonomy assisted mapping | V3 | V3-004 versioned deterministic map; unknown cần review |
-| Embedding và pgvector | V3 | Proposed |
+| Embedding và pgvector | V3 | V3-005 local E5 384d + exact pgvector implemented theo ADR-009; private/local |
 | Planner/validator/analyst graph | V4 | Proposed |
 | Resume extraction/matching | V5 | Proposed |
 | LLM-written alert/explanation | V5 | Optional; deterministic evidence required |
 
 Không thêm SDK/model dependency trong V1–V2 chỉ để chuẩn bị.
 
-V3-002 đã `Accepted` cho synthetic generation spike với DeepSeek `deepseek-v4-pro` ở non-thinking JSON mode; held-out v6 đạt toàn bộ target sau deterministic canonicalization (schema/evidence, skill, level, salary, location `1.0`; experience và complete accepted `0.875`). Đây là contract-level result, không phải raw model-only accuracy cho scalar field. Embedding provider/pgvector vẫn là candidate riêng, chưa được `Accepted`, trong [ADR-008](decisions/0008-proposed-deepseek-v4-flash-generation-and-embedding-boundary.md). Không gửi source JD/CV tới external LLM và chưa có production provider adapter.
+V3-002 đã `Accepted` cho synthetic generation spike với DeepSeek `deepseek-v4-pro` ở non-thinking JSON mode; held-out v6 đạt toàn bộ target sau deterministic canonicalization (schema/evidence, skill, level, salary, location `1.0`; experience và complete accepted `0.875`). Đây là contract-level result, không phải raw model-only accuracy cho scalar field. [ADR-009](decisions/0009-accept-local-multilingual-e5-and-pgvector.md) tách embedding sang local FastEmbed/E5 và exact pgvector; không gửi source JD/query/CV ra external embedding provider. Chưa có production DeepSeek provider adapter.
 
 ## 3. LLM extraction contract
 
@@ -152,13 +152,16 @@ rejected/needs-review rows vẫn được audit.
 
 ## 7. Embeddings và semantic search
 
-- PostgreSQL vẫn là system of record; pgvector chỉ được bật ở V3.
-- Embedding lưu model/version, dimension, input hash và created time.
-- Không so sánh vector từ model/version không tương thích.
-- Job embedding dùng canonical text đã xác định; CV embedding dùng `ResumeProfile` được phép xử lý.
+- PostgreSQL vẫn là system of record; `job_embeddings` là derived data và pgvector được bật từ migration V3-005.
+- Boundary hiện hành là `local_fastembed` + `intfloat/multilingual-e5-small`, revision `614241f622f53c4eeff9890bdc4f31cfecc418b3`, mean pooling/normalization và dimension 384.
+- Explicit download/build step chỉ lấy required artifact từ fixed revision và kiểm SHA-256; inference dùng local files only. Container đặt `ORT_DISABLE_TELEMETRY=1` trước runtime init để không tạo uploader/device identifier. Missing/corrupt artifact trả unavailable, không download trong request hoặc fallback external.
+- Job input dùng `job-embedding-input-v1`, canonical title/description bounded 12.000 ký tự cùng `passage:` prefix; query được normalize, giới hạn 300 ký tự và dùng `query:` prefix.
+- Embedding lưu input hash/schema, provider/model/revision, dimension, latency và created time. Không so sánh vector từ identity không tương thích; hash cũ không được coi current.
+- Semantic API dùng exact cosine, áp Job status/source/skill filter trước rank và tie-break bằng Job ID; `relevanceScore` là similarity trong `[-1,1]`, không phải probability.
+- CV embedding chỉ dùng `ResumeProfile` được phép xử lý từ V5; không reuse Job embedding boundary ngầm định.
 - Xóa/expire ResumeProfile phải xóa hoặc vô hiệu embedding và match liên quan.
-- Semantic result luôn giữ link tới canonical Job; vector result không bypass status/source filter.
-- Không thêm Pinecone/Qdrant trước khi PostgreSQL/pgvector có bottleneck được đo.
+- Raw vector, model path và raw query/JD không được trả hoặc ghi log.
+- Không thêm HNSW, Pinecone/Qdrant, Redis hoặc distributed embedding worker trước khi V3-006/V6 đo bottleneck thực tế.
 
 ## 8. Match score
 
@@ -254,6 +257,9 @@ needs-review, cache hit và estimated cost. Khi provider unavailable, rate-limit
 - Provider timeout/rate limit: canonical ingestion vẫn thành công và trạng thái extraction rõ ràng.
 - Cùng cache key: không gọi model lần hai.
 - Đổi model/prompt/taxonomy: không reuse cache sai version.
+- Model artifact thiếu/sai hash hoặc query vector sai dimension/non-finite: semantic request trả safe unavailable; không external fallback.
+- Semantic query với status/source/skill filter: chỉ rank compatible current JobEmbedding trong cohort đã lọc.
+- Skill frequency/trend khi extraction coverage thiếu: denominator vẫn là toàn Job cohort và response công bố `analyzedJobs`/coverage.
 - CV raw text/embedding không xuất hiện trong log, error hoặc AgentRun response.
 - Analyst claim không có denominator/query evidence: validation reject.
 - Planner đề xuất host ngoài allow-list hoặc vượt policy: deterministic layer reject.

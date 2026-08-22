@@ -15,6 +15,7 @@ from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+import devradar.api.jobs as jobs_api
 from devradar.api.crawl_runs import OPERATOR_WRITE_ENABLED_ENV
 from devradar.catalog.models import Job, JobChange, JobChangeType, JobStatus
 from devradar.ingestion.models import (
@@ -28,6 +29,20 @@ from devradar.ingestion.models import (
     SourceApprovalStatus,
     SourceHealthStatus,
 )
+from devradar.intelligence.embeddings import (
+    EMBEDDING_DIMENSION,
+    EMBEDDING_INPUT_SCHEMA_VERSION,
+    EMBEDDING_MODEL_ID,
+    EMBEDDING_MODEL_REVISION,
+    EMBEDDING_PROVIDER,
+    EmbeddingModelUnavailable,
+)
+from devradar.intelligence.extraction import (
+    CANONICALIZATION_VERSION,
+    DETERMINISTIC_EXTRACTOR_VERSION,
+    EXTRACTION_SCHEMA_VERSION,
+)
+from devradar.intelligence.models import ExtractionResult, JobEmbedding
 from devradar.main import app
 from devradar.platform.database import DATABASE_URL_ENV, _database_engine, get_database_url
 
@@ -309,6 +324,67 @@ def _seed_database(session: Session) -> ApiSeed:
     )
     session.add_all((first_job, second_job, third_job))
     session.flush()
+    embeddings: list[JobEmbedding] = []
+    for job, axis, direction in (
+        (first_job, 0, 1.0),
+        (second_job, 1, 1.0),
+        (third_job, 0, -1.0),
+    ):
+        vector = [0.0] * EMBEDDING_DIMENSION
+        vector[axis] = direction
+        embeddings.append(
+            JobEmbedding(
+                job_id=job.id,
+                input_hash=job.job_content_hash,
+                input_schema_version=EMBEDDING_INPUT_SCHEMA_VERSION,
+                provider=EMBEDDING_PROVIDER,
+                model=EMBEDDING_MODEL_ID,
+                model_revision=EMBEDDING_MODEL_REVISION,
+                dimension=EMBEDDING_DIMENSION,
+                embedding=vector,
+                latency_ms=1,
+            )
+        )
+    session.add_all(embeddings)
+
+    for job, skill_name in (
+        (first_job, "python"),
+        (second_job, "sql"),
+        (third_job, "kubernetes"),
+    ):
+        session.add(
+            ExtractionResult(
+                input_type="job",
+                input_ref=job.id,
+                input_hash=job.job_content_hash,
+                extractor_type="rule",
+                extractor_version=DETERMINISTIC_EXTRACTOR_VERSION,
+                schema_version=EXTRACTION_SCHEMA_VERSION,
+                prompt_version=None,
+                model=None,
+                canonicalization_version=CANONICALIZATION_VERSION,
+                output_data={
+                    "levels": job.levels,
+                    "experience": {"minimumYears": None, "maximumYears": None},
+                    "salary": {
+                        "minimum": None,
+                        "maximum": None,
+                        "currency": None,
+                        "period": None,
+                    },
+                    "location": {"city": None, "province": None, "workMode": None},
+                    "skills": [
+                        {
+                            "name": skill_name,
+                            "requirementType": "required",
+                            "evidence": skill_name,
+                        }
+                    ],
+                },
+                validation_status="accepted",
+                validation_errors=None,
+            )
+        )
     session.add_all(
         (
             JobChange(
@@ -505,6 +581,126 @@ def test_read_api_uses_postgresql_and_enforces_public_contract(
 
 
 @pytest.mark.postgresql
+def test_job_search_applies_semantic_skill_and_source_filters_before_ranking(
+    seeded_api: tuple[TestClient, ApiSeed],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, seed = seeded_api
+    query_vector = [0.0] * EMBEDDING_DIMENSION
+    query_vector[0] = 1.0
+    monkeypatch.setattr(jobs_api, "embed_query_text", lambda _query: tuple(query_vector))
+
+    semantic = client.get(
+        "/api/v1/jobs",
+        params={"query": "backend Python", "searchMode": "semantic", "pageSize": 3},
+    )
+    assert semantic.status_code == 200
+    assert [item["title"] for item in semantic.json()["data"]] == [
+        "Alpha Backend Engineer",
+        "Beta Data Engineer",
+        "Gamma Platform Engineer",
+    ]
+    assert semantic.json()["data"][0]["relevanceScore"] == 1.0
+    assert "embedding" not in _json(semantic.json())
+    assert "model" not in _json(semantic.json())
+
+    source_filtered = client.get(
+        "/api/v1/jobs",
+        params={
+            "query": "backend Python",
+            "searchMode": "semantic",
+            "sourceId": str(seed.source_naver_id),
+        },
+    )
+    assert [item["title"] for item in source_filtered.json()["data"]] == ["Gamma Platform Engineer"]
+
+    skill_filtered = client.get("/api/v1/jobs", params={"skill": "Python"})
+    assert [item["title"] for item in skill_filtered.json()["data"]] == ["Alpha Backend Engineer"]
+
+
+@pytest.mark.postgresql
+def test_semantic_search_reports_safe_unavailable_error(
+    seeded_api: tuple[TestClient, ApiSeed],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _ = seeded_api
+
+    def unavailable(_query: str) -> tuple[float, ...]:
+        raise EmbeddingModelUnavailable
+
+    monkeypatch.setattr(jobs_api, "embed_query_text", unavailable)
+    response = client.get(
+        "/api/v1/jobs",
+        params={"query": "backend", "searchMode": "semantic"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "embedding_model_unavailable"
+    assert "path" not in _json(response.json())
+
+
+@pytest.mark.postgresql
+def test_skill_frequency_and_trends_publish_denominator_and_coverage(
+    seeded_api: tuple[TestClient, ApiSeed],
+) -> None:
+    client, seed = seeded_api
+
+    frequency = client.get("/api/v1/skills", params={"pageSize": 2})
+    assert frequency.status_code == 200
+    assert frequency.json()["meta"] == {
+        "cohortSize": 3,
+        "analyzedJobs": 3,
+        "coverage": 1.0,
+        "taxonomyVersion": "job-taxonomy-v1",
+        "extractionSchemaVersion": EXTRACTION_SCHEMA_VERSION,
+    }
+    assert [item["name"] for item in frequency.json()["data"]] == ["kubernetes", "python"]
+    assert all(item["jobCount"] == 1 for item in frequency.json()["data"])
+    assert frequency.json()["pagination"]["totalItems"] == 3
+
+    source_frequency = client.get(
+        "/api/v1/skills",
+        params={"sourceId": str(seed.source_vng_id), "pageSize": 10},
+    )
+    assert source_frequency.json()["meta"]["cohortSize"] == 2
+    assert [item["name"] for item in source_frequency.json()["data"]] == ["python", "sql"]
+
+    trends = client.get(
+        "/api/v1/skill-trends",
+        params={
+            "from": "2026-08-19",
+            "to": "2026-08-22",
+            "cohort": "firstSeenAt",
+            "granularity": "day",
+            "topSkills": 3,
+        },
+    )
+    assert trends.status_code == 200
+    assert trends.json()["meta"]["cohortSize"] == 3
+    assert trends.json()["meta"]["analyzedJobs"] == 3
+    assert trends.json()["meta"]["coverage"] == 1.0
+    assert trends.json()["data"] == [
+        {
+            "periodStart": "2026-08-20",
+            "denominator": 3,
+            "analyzedJobs": 3,
+            "coverage": 1.0,
+            "skills": [
+                {"name": "kubernetes", "jobCount": 1, "share": 0.3333},
+                {"name": "python", "jobCount": 1, "share": 0.3333},
+                {"name": "sql", "jobCount": 1, "share": 0.3333},
+            ],
+        }
+    ]
+
+    invalid = client.get(
+        "/api/v1/skill-trends",
+        params={"from": "2025-01-01", "to": "2026-08-22"},
+    )
+    assert invalid.status_code == 422
+
+
+@pytest.mark.postgresql
 def test_operator_crawl_request_is_fail_closed_allowlisted_and_idempotent(
     seeded_api: tuple[TestClient, ApiSeed],
     monkeypatch: pytest.MonkeyPatch,
@@ -605,7 +801,7 @@ def test_operator_crawl_request_is_fail_closed_allowlisted_and_idempotent(
     assert detail.json()["data"]["id"] == accepted_data["id"]
 
 
-def test_openapi_exposes_v2_contract_with_camel_case_parameters() -> None:
+def test_openapi_exposes_v3_contract_with_camel_case_parameters() -> None:
     with TestClient(app) as client:
         response = client.get("/api/v1/openapi.json")
 
@@ -620,6 +816,8 @@ def test_openapi_exposes_v2_contract_with_camel_case_parameters() -> None:
         "/api/v1/sources/{sourceId}",
         "/api/v1/crawl-runs",
         "/api/v1/crawl-runs/{runId}",
+        "/api/v1/skills",
+        "/api/v1/skill-trends",
     }
     assert set(openapi["paths"]) == expected_paths
     assert set(openapi["paths"]["/api/v1/crawl-runs"]) == {"get", "post"}
@@ -633,7 +831,21 @@ def test_openapi_exposes_v2_contract_with_camel_case_parameters() -> None:
     job_query_names = {
         parameter["name"] for parameter in openapi["paths"]["/api/v1/jobs"]["get"]["parameters"]
     }
-    assert {"pageSize", "sourceId", "salaryMin", "seenAfter", "sortBy"} <= job_query_names
+    assert {
+        "pageSize",
+        "sourceId",
+        "salaryMin",
+        "seenAfter",
+        "sortBy",
+        "query",
+        "searchMode",
+        "skill",
+    } <= job_query_names
     assert "page_size" not in job_query_names
+    trend_query_names = {
+        parameter["name"]
+        for parameter in openapi["paths"]["/api/v1/skill-trends"]["get"]["parameters"]
+    }
+    assert {"from", "to", "topSkills", "sourceId"} <= trend_query_names
     assert "RawJobSnapshot" not in _json(openapi)
     assert "rawContent" not in _json(openapi)

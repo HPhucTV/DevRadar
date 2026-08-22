@@ -8,6 +8,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
 
+from pgvector.sqlalchemy import VECTOR
 from sqlalchemy import (
     CheckConstraint,
     DateTime,
@@ -104,6 +105,59 @@ class ExtractionResult(Base):
     prompt_tokens: Mapped[int | None] = mapped_column(Integer)
     completion_tokens: Mapped[int | None] = mapped_column(Integer)
     estimated_cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(14, 8))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP")
+    )
+
+
+class JobEmbedding(Base):
+    __tablename__ = "job_embeddings"
+    __table_args__ = (
+        CheckConstraint(
+            "input_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_job_embeddings_input_hash",
+        ),
+        CheckConstraint(
+            "provider = 'local_fastembed'",
+            name="ck_job_embeddings_provider",
+        ),
+        CheckConstraint(
+            "model_revision ~ '^[0-9a-f]{40}$'",
+            name="ck_job_embeddings_model_revision",
+        ),
+        CheckConstraint(
+            "dimension = 384",
+            name="ck_job_embeddings_dimension",
+        ),
+        CheckConstraint(
+            "latency_ms IS NULL OR latency_ms >= 0",
+            name="ck_job_embeddings_latency",
+        ),
+        Index(
+            "uq_job_embeddings_logical_key",
+            "job_id",
+            "input_hash",
+            "input_schema_version",
+            "provider",
+            "model",
+            "model_revision",
+            unique=True,
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True, default=uuid4)
+    job_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("jobs.id", ondelete="CASCADE", name="fk_job_embeddings_job_id_jobs"),
+    )
+    input_hash: Mapped[str] = mapped_column(String(64))
+    input_schema_version: Mapped[str] = mapped_column(String(100))
+    provider: Mapped[str] = mapped_column(String(50))
+    model: Mapped[str] = mapped_column(String(200))
+    model_revision: Mapped[str] = mapped_column(String(40))
+    dimension: Mapped[int] = mapped_column(Integer)
+    embedding: Mapped[list[float]] = mapped_column(VECTOR(384))
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP")
     )

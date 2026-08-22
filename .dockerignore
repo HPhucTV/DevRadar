@@ -9,9 +9,14 @@ __pycache__
 .env.*
 !.env.example
 artifacts
+data
 docs
 htmlcov
+logs
+output
+storage
 tests
+tmp
 TASK_BOARD.md
 *.pyc
 *.pyo

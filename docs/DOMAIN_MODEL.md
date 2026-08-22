@@ -26,6 +26,7 @@ Tài liệu này là ubiquitous language của DevRadar. Tên entity, enum và s
 | DuplicateCandidate | Liên kết gợi ý hai Job có thể cùng cơ hội tuyển dụng; không phải auto-merge. |
 | Skill | Khái niệm kỹ năng chuẩn hóa trong taxonomy có version. |
 | ExtractionResult | Một extraction attempt có schema/version, provenance theo `Job`, validation status và metric an toàn. |
+| JobEmbedding | Derived local vector của canonical Job, có input/model/schema identity đầy đủ; không phải nguồn dữ liệu authoritative. |
 | ResumeProfile | Hồ sơ có cấu trúc được trích từ CV; không đồng nghĩa file CV gốc. |
 | JobMatch | Kết quả match có tổng điểm, component score, evidence và scoring version. |
 | AgentRun | Một quyết định AI/agent được audit với input reference, output, model và cost. |
@@ -128,7 +129,7 @@ Thay đổi markup, tracking parameter hoặc thứ tự không có nghĩa khôn
 
 `Skill` gồm `name`, `normalized_name`, `category`, aliases và `taxonomy_version`. Taxonomy V3-004 khóa version `job-taxonomy-v1`; category ban đầu: `language`, `framework`, `database`, `cloud`, `devops`, `messaging`, `testing`, `ai`, `tool`, `other`. Alias map dùng chung với deterministic extraction, không tạo alias thứ hai.
 
-`JobSkill` liên kết Job–Skill với:
+`JobSkill` là logical/materialized relation có thể liên kết Job–Skill với:
 
 - `requirement_type`: `required`, `preferred`, `optional`, `mentioned`;
 - `confidence`;
@@ -138,6 +139,8 @@ Thay đổi markup, tracking parameter hoặc thứ tự không có nghĩa khôn
 Alias mới không được merge skill lịch sử âm thầm; taxonomy change cần version và reprocessing plan.
 
 V3-004 có `TaxonomySkill` typed boundary để map canonical skill sang category. Skill chưa có category được giữ raw name/evidence với `category=other` nhưng outcome là `needs_review`, không tự trở thành canonical mapping.
+
+V3-005 chưa tạo bảng `skills`/`job_skills`: frequency và trend đọc skill từ latest accepted `ExtractionResult` đúng current `job_content_hash`, schema và canonicalization version. Với dataset mục tiêu tối đa 1.000 ở V3, cách này giữ một nguồn extraction duy nhất; chỉ materialize relation khi query profile thực tế chứng minh nhu cầu.
 
 ### 4.6A. RoleClassification và BoundedSummary
 
@@ -162,6 +165,18 @@ V3-004 có `TaxonomySkill` typed boundary để map canonical skill sang categor
 
 Cache identity có thứ tự cố định `input_type + input_ref + input_hash + extractor_type + extractor_version + schema_version + prompt_version + model + canonicalization_version`. PostgreSQL partial unique index chỉ áp dụng khi `validation_status=accepted`; `rejected` và `needs_review` vẫn có thể có nhiều attempt để audit nhưng không bao giờ trả cache hit. Cache luôn gắn với `input_ref`, vì hai Job khác nhau không được dùng chung result chỉ do trùng content hash.
 
+### 4.7A. JobEmbedding
+
+| Field logic | Ý nghĩa |
+|---|---|
+| `id`, `job_id` | UUID derived row và canonical Job owner; xóa Job sẽ cascade vector. |
+| `input_hash`, `input_schema_version` | `Job.job_content_hash` cùng canonical input schema `job-embedding-input-v1`. |
+| `provider`, `model`, `model_revision`, `dimension` | Compatibility identity cố định theo ADR-009: `local_fastembed`, `intfloat/multilingual-e5-small`, revision đã khóa và 384 dimensions. |
+| `embedding` | Local `vector(384)`; không xuất hiện trong API/log. |
+| `latency_ms`, `created_at` | Metric bounded và UTC creation time; không chứa query/JD. |
+
+Logical uniqueness là `job_id + input_hash + input_schema_version + provider + model + model_revision`. Job hash đổi không xóa audit row cũ nhưng semantic query chỉ join row tương thích với current hash/model/schema/dimension. V3 dùng exact cosine order; similarity chỉ là ranking score, không phải xác suất phù hợp và không dùng để auto-merge cross-source.
+
 ### 4.8. ResumeProfile
 
 | Field logic | Ý nghĩa |
@@ -169,7 +184,7 @@ Cache identity có thứ tự cố định `input_type + input_ref + input_hash 
 | `id`, optional owner reference | Identity và ownership khi auth tồn tại. |
 | `file_name_sanitized`, `content_hash` | Audit mà không dùng path/tên tùy ý. |
 | structured profile | skill, experience, role preference, location preference. |
-| `embedding`/reference | Chỉ từ V3/V5 và có model version. |
+| `embedding`/reference | Chỉ từ V5 cho ResumeProfile và luôn có model version; JobEmbedding V3 là entity derived riêng. |
 | `retention_mode`, `expires_at` | Mặc định ephemeral/short-lived. |
 
 File CV gốc không phải entity lưu trữ lâu dài mặc định. Raw text không được ghi vào log hoặc AgentRun.

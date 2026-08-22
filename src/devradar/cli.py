@@ -20,6 +20,14 @@ from devradar.automation.worker import work_one_pending_run
 from devradar.ingestion.models import CrawlRunStatus
 from devradar.ingestion.runner import IngestionRunError, resolve_v1_source
 from devradar.ingestion.source_registry import V1_SOURCE_REGISTRY
+from devradar.intelligence.embeddings import (
+    EMBEDDING_MODEL_ID,
+    EMBEDDING_MODEL_REVISION,
+    LocalEmbeddingModel,
+    backfill_job_embeddings,
+    download_embedding_model,
+    get_embedding_model_path,
+)
 from devradar.platform.database import get_database_url
 from devradar.platform.observability import configure_structured_logging
 
@@ -35,6 +43,13 @@ def _deadline_minutes(value: str) -> int:
     parsed = _positive_int(value)
     if parsed > 360:
         raise argparse.ArgumentTypeError("deadline minutes must not exceed 360")
+    return parsed
+
+
+def _embedding_batch_size(value: str) -> int:
+    parsed = _positive_int(value)
+    if parsed > 1_000:
+        raise argparse.ArgumentTypeError("embedding batch size must not exceed 1000")
     return parsed
 
 
@@ -65,6 +80,20 @@ def _parser() -> argparse.ArgumentParser:
         default=60,
         help="hard run deadline from now (1..360, default 60)",
     )
+    subparsers.add_parser(
+        "download-embedding-model",
+        help="download the fixed local embedding model revision",
+    )
+    embeddings = subparsers.add_parser(
+        "embed-jobs",
+        help="embed a bounded batch of canonical jobs with the fixed local model",
+    )
+    embeddings.add_argument(
+        "--max-items",
+        type=_embedding_batch_size,
+        default=100,
+        help="maximum current jobs to embed (default 100)",
+    )
     return parser
 
 
@@ -81,11 +110,49 @@ def _json_value(value: Any) -> Any:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     configure_structured_logging()
+    if args.command == "download-embedding-model":
+        try:
+            download_embedding_model(get_embedding_model_path())
+        except Exception:
+            print(
+                json.dumps(
+                    {
+                        "error": {
+                            "code": "embedding_model_download_failed",
+                            "message": "Fixed embedding model could not be downloaded safely.",
+                        }
+                    }
+                ),
+                file=sys.stderr,
+            )
+            return 1
+        print(
+            json.dumps(
+                {
+                    "model": EMBEDDING_MODEL_ID,
+                    "revision": EMBEDDING_MODEL_REVISION,
+                    "ready": True,
+                },
+                sort_keys=True,
+            )
+        )
+        return 0
+
     engine: Engine | None = None
     report = None
     try:
         engine = create_engine(get_database_url())
         with Session(engine) as session:
+            if args.command == "embed-jobs":
+                model = LocalEmbeddingModel(get_embedding_model_path())
+                embedding_report = backfill_job_embeddings(
+                    session,
+                    embed_passage=model.embed_passage,
+                    max_items=args.max_items,
+                )
+                print(json.dumps(asdict(embedding_report), sort_keys=True))
+                return 0
+
             deadline = datetime.now(UTC) + timedelta(minutes=args.deadline_minutes)
             if args.command == "crawl":
                 resolved = resolve_v1_source(args.source)
@@ -118,15 +185,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 1
     except Exception:
+        if args.command == "embed-jobs":
+            error_payload = {
+                "code": "embedding_failed",
+                "message": "Embedding batch could not start or complete safely.",
+            }
+        else:
+            error_payload = {
+                "code": "ingestion_failed",
+                "message": "Ingestion could not start or complete safely.",
+            }
         print(
-            json.dumps(
-                {
-                    "error": {
-                        "code": "ingestion_failed",
-                        "message": "Ingestion could not start or complete safely.",
-                    }
-                }
-            ),
+            json.dumps({"error": error_payload}),
             file=sys.stderr,
         )
         return 1

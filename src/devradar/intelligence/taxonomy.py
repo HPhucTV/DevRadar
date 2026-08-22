@@ -195,6 +195,10 @@ _ROLE_PATTERNS = {
 }
 
 
+def skill_category(name: str) -> SkillCategory:
+    return _SKILL_CATEGORIES.get(canonicalize_skill_name(name), SkillCategory.OTHER)
+
+
 def _error(code: str, path: str, error_type: str) -> dict[str, str]:
     return {"code": code, "path": path, "type": error_type}
 
