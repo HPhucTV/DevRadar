@@ -98,6 +98,8 @@ def test_usage_rejects_negative_or_extra_data_and_computes_total_tokens() -> Non
         AgentRunUsage(step_count=-1)
     with pytest.raises(ValidationError):
         AgentRunUsage.model_validate({"promptTokens": 1, "rawPrompt": "secret"})
+    with pytest.raises(ValidationError):
+        AgentRunUsage(estimated_cost_usd=Decimal("0.000000001"))
 
 
 def test_input_hash_is_order_independent_but_content_sensitive() -> None:

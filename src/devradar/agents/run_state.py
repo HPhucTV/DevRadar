@@ -93,7 +93,13 @@ class AgentRunLimits(AgentModel):
     max_tool_calls: Literal[4] = 4
     timeout_ms: Literal[180000] = 180000
     max_total_tokens: Literal[8000] = 8000
-    max_cost_usd: Decimal = Field(default=MAX_AGENT_COST_USD, ge=0, allow_inf_nan=False)
+    max_cost_usd: Decimal = Field(
+        default=MAX_AGENT_COST_USD,
+        ge=0,
+        max_digits=14,
+        decimal_places=8,
+        allow_inf_nan=False,
+    )
 
     @field_validator("max_cost_usd")
     @classmethod
@@ -112,7 +118,13 @@ class AgentRunUsage(AgentModel):
     prompt_tokens: int = Field(default=0, ge=0)
     completion_tokens: int = Field(default=0, ge=0)
     latency_ms: int = Field(default=0, ge=0)
-    estimated_cost_usd: Decimal = Field(default=Decimal("0"), ge=0, allow_inf_nan=False)
+    estimated_cost_usd: Decimal = Field(
+        default=Decimal("0"),
+        ge=0,
+        max_digits=14,
+        decimal_places=8,
+        allow_inf_nan=False,
+    )
 
     @property
     def total_tokens(self) -> int:
