@@ -57,6 +57,21 @@ Chạy nhanh, deterministic, không network:
 
 Test được gọi “PostgreSQL integration” chỉ khi thực sự chạy PostgreSQL, không phải SQLite/mock. Test AI live không được thay thế evaluation trên fixed dataset.
 
+V3-003 PostgreSQL gate phải chạy migration trên database mới, kiểm tra partial unique index
+`uq_extraction_results_accepted_cache`, read-after-write cho accepted cache, audit rows cho
+`rejected/needs_review`, rollback không để lại half-result và savepoint re-read khi duplicate
+accepted insert. Lệnh opt-in dùng database tạm:
+
+```powershell
+docker compose --env-file .env.example up database --wait
+$env:DEVRADAR_TEST_DATABASE_URL = 'postgresql+psycopg://devradar:devradar_local_only@127.0.0.1:55432/postgres'
+.venv\Scripts\python -m pytest tests/integration/test_extraction_result.py -m postgresql
+Remove-Item Env:\DEVRADAR_TEST_DATABASE_URL
+```
+
+Nếu database không khả dụng, test phải báo `skipped` với lý do; không được ghi evidence như
+integration pass.
+
 PostgreSQL test hiện dùng `DEVRADAR_TEST_DATABASE_URL`, tạo database tên ngẫu nhiên rồi drop bằng `WITH (FORCE)`. Chỉ trỏ biến này tới local/CI role riêng có quyền tạo database tạm; không chạy với production credential.
 
 ### 4.3. End-to-end và acceptance
@@ -137,7 +152,7 @@ Mỗi request/run/extraction/agent/delivery có opaque ID. Log dùng structured 
 | Crawler | `crawl_runs_total`, `crawl_success_rate`, `crawl_duration_seconds`, `pages_fetched_total`, `response_bytes_total` |
 | Data | `jobs_new_total`, `jobs_updated_total`, `jobs_missing_total`, `jobs_removed_total`, `jobs_reactivated_total`, `duplicates_candidate_total`, `parse_failures_total` |
 | Source | `source_last_success_age`, `source_failure_rate`, `source_coverage_anomalies_total`, health state |
-| AI | `ai_requests_total`, `ai_cache_hits_total`, `ai_validation_failures_total`, `ai_latency_seconds`, input/output tokens, estimated cost |
+| AI | `ai_requests_total`, `ai_cache_hits_total`, accepted/rejected/needs-review counts, provider attempts, `ai_validation_failures_total`, `ai_latency_seconds`, input/output tokens, estimated cost |
 | Agent | `agent_runs_total`, decision/retry/review count, step-limit hit, failure rate |
 | API | request count, latency, status code, validation/rate-limit failures |
 | CV/alert | upload reject/cleanup, match duration, deletion completion, delivery success/duplicate prevented |
@@ -151,7 +166,10 @@ Metric label không chứa URL query, title/company tùy ý, raw skill, CV field
 - `ERROR`: operation failed với error code và correlation ID;
 - debug payload chỉ dùng fixture/sanitized local mode, tắt ở public deployment.
 
-Redact authorization/cookie/token, database DSN credential, prompt/JD/CV content và provider response. Không dựa vào redact regex duy nhất; ưu tiên allow-list structured fields.
+Redact authorization/cookie/token, database DSN credential, prompt/JD/CV content và provider response.
+Extraction error chỉ được giữ `result_id`, input hash, version, status và bounded error code/path/type;
+không serialize `output_data` đầy đủ hoặc rejected value. Không dựa vào redact regex duy nhất; ưu tiên
+allow-list structured fields.
 
 V1 hiện ghi JSON line ra stderr bằng standard library, không thêm telemetry dependency hoặc public metrics endpoint. Event surface được khóa như sau:
 

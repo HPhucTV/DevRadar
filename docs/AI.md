@@ -16,7 +16,7 @@ AI là lớp bổ sung có giới hạn, không phải nguồn sự thật hoặ
 | Capability | Phase | Trạng thái trước phase |
 |---|---|---|
 | Deterministic extraction | V1 | Required |
-| LLM structured extraction fallback | V3 | Proposed |
+| LLM structured extraction fallback | V3 | V3-003 boundary implemented; production provider chưa có |
 | Job classification và bounded summary | V3 | Proposed, evidence-validated |
 | Skill taxonomy assisted mapping | V3 | Proposed, human/eval governed |
 | Embedding và pgvector | V3 | Proposed |
@@ -59,6 +59,8 @@ Output logic tối thiểu:
 
 Schema thực tế phải giới hạn enum, collection size, string length và numeric range. Evidence span phải tồn tại trong canonical input sau normalization; nếu không tìm thấy, field không được auto-accept. Trước strict schema validation, deterministic canonicalizer áp dụng taxonomy alias cho skill và giữ `levels`, `experience`, `salary`, `location` theo parser hiện hành trên input canonical. Model không được override các scalar field này; field mơ hồ giữ `null`, salary raw vẫn được giữ riêng.
 
+V3-003 lưu `ExtractionResult` trong PostgreSQL với `input_type=job`, `input_ref=Job.id`, `input_hash=Job.job_content_hash`, `extractor_version`, `schema_version`, `prompt_version`, `model` và `canonicalization_version`. `output_data` chỉ là `ExtractionPayload` đã validate; `validation_errors` chỉ có safe `code/path/type`. Deterministic-complete result được persist `rule/accepted` và không gọi provider. Provider boundary là callable được inject cho test/spike, không phải DeepSeek adapter production; request không có URL, credential, tool capability hoặc CV.
+
 Job classification dùng taxonomy/version và trả evidence giống extraction field. AI summary phải ngắn, chỉ tổng hợp claim được hỗ trợ bởi canonical JD và bị reject nếu thêm salary, skill, benefit hoặc requirement không có evidence.
 
 ## 4. Validation và retry
@@ -73,7 +75,7 @@ Validation theo thứ tự:
 6. confidence/policy gate;
 7. accept, reject hoặc `needs_review`.
 
-Retry chỉ dành cho lỗi transient hoặc malformed structured output có khả năng sửa. Không retry vô hạn hoặc retry hallucination bằng cùng input/prompt mà không đổi chiến lược. Default tối đa hai model attempts cho một extraction; vượt mức thì `needs_review`/fallback. V4 graph có recursion/step cap cứng.
+Retry chỉ dành cho lỗi transient hoặc malformed structured output có khả năng sửa. Không retry vô hạn hoặc retry hallucination bằng cùng input/prompt mà không đổi chiến lược. V3-003 giới hạn đúng hai transient attempts; malformed shape/extra field/enum/evidence invalid bị `rejected` an toàn, provider thiếu hoặc transient exhausted là `needs_review`. Persistence re-check accepted cache sau provider call để xử lý concurrent writer; provider không chạy trong transaction giữ row lock. V4 graph có recursion/step cap cứng.
 
 Validator agent không thể override source policy, invent evidence hoặc tự commit kết quả. Nó trả decision schema để deterministic application layer áp dụng.
 
@@ -121,17 +123,24 @@ Baseline held-out `deterministic-keyword-v1`: skill F1 `0.9545`, unsupported ski
 
 ## 6. Caching và reproducibility
 
-Cache key tối thiểu gồm:
+V3-003 dùng accepted-only cache theo từng `input_ref`; rejected/needs-review không phải cache hit. Cache key đầy đủ gồm:
 
 ```text
-input_content_hash
-+ task/schema version
-+ extractor/prompt version
-+ model identifier
-+ relevant generation parameters
+input_type
++ input_ref
++ input_hash
++ extractor_type
++ extractor_version
++ schema_version
++ prompt_version
++ model
++ canonicalization_version
 ```
 
-JD không đổi và key không đổi thì reuse result đã validated. Đổi prompt/model/taxonomy không overwrite output cũ; tạo extraction version mới và reprocess có kiểm soát.
+Job không đổi và key không đổi thì chỉ result `accepted` mới được reuse. Đổi input reference, content hash,
+prompt/model/schema/extractor/canonicalization version tạo cache miss và extraction attempt mới; không
+overwrite result cũ. PostgreSQL partial unique index giữ một accepted row cho một logical key, trong khi
+rejected/needs-review rows vẫn được audit.
 
 ## 7. Embeddings và semantic search
 
@@ -218,10 +227,11 @@ Input là aggregate query result có cohort, date range, denominator và provena
 
 ## 12. Cost và failure handling
 
-Mỗi task AI có budget theo request/run và metric: calls, tokens, latency, accepted/rejected, cache hit và estimated cost. Khi provider unavailable, rate-limited hoặc budget hết:
+Mỗi task AI có budget theo request/run và metric: calls, attempts, tokens, latency, accepted/rejected,
+needs-review, cache hit và estimated cost. Khi provider unavailable, rate-limited hoặc budget hết:
 
 - ingestion deterministic vẫn tiếp tục;
-- field AI-only giữ `null`/partial và queue/review theo phase;
+- field AI-only giữ `null`/partial và lưu `needs_review` theo phase;
 - không làm mất raw snapshot hoặc rollback canonical field đã xác nhận;
 - không tự chuyển sang provider khác nếu chưa có adapter/evaluation tương đương;
 - UI/API nêu rõ dữ liệu AI đang pending/degraded.

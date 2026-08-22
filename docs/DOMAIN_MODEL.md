@@ -25,7 +25,7 @@ Tài liệu này là ubiquitous language của DevRadar. Tên entity, enum và s
 | JobChange | Từ V2, thay đổi có ý nghĩa giữa hai phiên bản canonical của cùng Job. |
 | DuplicateCandidate | Liên kết gợi ý hai Job có thể cùng cơ hội tuyển dụng; không phải auto-merge. |
 | Skill | Khái niệm kỹ năng chuẩn hóa trong taxonomy có version. |
-| ExtractionResult | Kết quả parser/LLM có schema, provenance, version và validation status. |
+| ExtractionResult | Một extraction attempt có schema/version, provenance theo `Job`, validation status và metric an toàn. |
 | ResumeProfile | Hồ sơ có cấu trúc được trích từ CV; không đồng nghĩa file CV gốc. |
 | JobMatch | Kết quả match có tổng điểm, component score, evidence và scoring version. |
 | AgentRun | Một quyết định AI/agent được audit với input reference, output, model và cost. |
@@ -141,14 +141,18 @@ Alias mới không được merge skill lịch sử âm thầm; taxonomy change 
 
 | Field logic | Ý nghĩa |
 |---|---|
-| `input_type`, `input_ref`, `input_hash` | Input được xử lý mà không copy payload vào log. |
-| `extractor_type` | `structured_data`, `selector`, `rule`, `llm`. |
-| `extractor_version`, `model`, `prompt_version` | Reproducibility. |
-| `output_data` | Typed output theo schema version. |
+| `id` | UUID của một extraction attempt/result. |
+| `input_type`, `input_ref`, `input_hash` | V3-003 hiện chỉ nhận `job`; `input_ref` trỏ `Job.id`, hash là `Job.job_content_hash`, không copy payload vào log. |
+| `extractor_type` | `rule` hoặc `llm`; structured data/selector là nguồn upstream của canonical Job, không phải status mới trong V3-003. |
+| `extractor_version`, `schema_version`, `model`, `prompt_version` | Version identity để tái lập và tách cache; `model`/`prompt_version` null cho rule. |
 | `canonicalization_version` | Version của deterministic alias/field normalization trước validation. |
-| `validation_status` | `accepted`, `rejected`, `needs_review`. |
-| `confidence`, `validation_errors` | Evidence quality. |
-| `latency_ms`, token/cost fields | Operation metric khi dùng model. |
+| `output_data` | Typed payload đã validate; không lưu raw prompt, raw provider output, JD hoặc CV. |
+| `validation_status` | `accepted`, `rejected`, `needs_review`; chỉ `accepted` được dùng làm cache hit. |
+| `confidence`, `validation_errors` | Confidence tùy contract và danh sách safe `code/path/type`, không chứa rejected value. |
+| `latency_ms`, `prompt_tokens`, `completion_tokens`, `estimated_cost_usd` | Metric bounded; cost là estimate, không phải invoice. |
+| `created_at` | UTC timestamp của attempt được persist. |
+
+Cache identity có thứ tự cố định `input_type + input_ref + input_hash + extractor_type + extractor_version + schema_version + prompt_version + model + canonicalization_version`. PostgreSQL partial unique index chỉ áp dụng khi `validation_status=accepted`; `rejected` và `needs_review` vẫn có thể có nhiều attempt để audit nhưng không bao giờ trả cache hit. Cache luôn gắn với `input_ref`, vì hai Job khác nhau không được dùng chung result chỉ do trùng content hash.
 
 ### 4.8. ResumeProfile
 
@@ -223,6 +227,12 @@ LLM output không được ghi đè field đã có deterministic parser. `levels
 `location` lấy từ canonical input; skill alias được map theo `taxonomy_version` trước strict schema
 validation. Ambiguous field giữ `null` và raw value/provenance vẫn được bảo toàn. Đổi rule này phải
 bump `canonicalization_version` và re-evaluate extraction result.
+
+V3-003 persist `accepted` rule result ngay khi deterministic extractor đủ dữ liệu và không gọi
+provider. Khi incomplete, hệ thống lookup accepted cache trước; cache miss mới gọi provider callable
+ngoài transaction ngắn, tối đa hai transient attempts. Provider thiếu hoặc transient exhausted tạo
+`needs_review` với deterministic payload; malformed shape, extra field, enum lạ hoặc evidence không
+tồn tại tạo `rejected`. Các outcome này không làm Job đổi lifecycle `active → missing → removed`.
 
 ## 6. Identity, deduplication và hashing
 
