@@ -7,8 +7,10 @@ from decimal import Decimal
 from enum import StrEnum
 from time import monotonic_ns
 from typing import Literal, Self
+from uuid import UUID
 
 from pydantic import Field, ValidationError, model_validator
+from sqlalchemy.orm import Session, sessionmaker
 
 from devradar.agents.application import (
     ApplicationFailure,
@@ -24,6 +26,7 @@ from devradar.agents.decisions import (
     DecisionRef,
     Responsibility,
 )
+from devradar.agents.persistence import finalize_agent_run, start_agent_run
 from devradar.agents.responsibilities import (
     PlannerFacts,
     ResponsibilityInput,
@@ -142,6 +145,46 @@ class AgentWorkflowEvaluation(AgentModel):
             self.decision is not None or self.failure_code is None
         ):
             raise ValueError("failed evaluation is invalid")
+        return self
+
+
+class AgentWorkflowCode(StrEnum):
+    FINALIZE_FAILED = "finalize_failed"
+
+
+_SAFE_WORKFLOW_SUMMARIES = {
+    AgentWorkflowCode.FINALIZE_FAILED: "Agent run finalization failed.",
+}
+
+
+class AgentWorkflowError(RuntimeError):
+    """Allow-listed executor error without database or provider detail."""
+
+    def __init__(self, code: AgentWorkflowCode) -> None:
+        super().__init__(code.value)
+        self.code = code
+        self.safe_summary = _SAFE_WORKFLOW_SUMMARIES[code]
+
+
+class AgentExecutionOutcome(AgentModel):
+    """Safe public result of one persisted responsibility execution."""
+
+    run_id: UUID
+    responsibility: Responsibility
+    status: AgentRunStatus
+    application_result: ApplicationResult
+    failure_code: AgentRunFailureCode | None = None
+
+    @model_validator(mode="after")
+    def validate_terminal(self) -> Self:
+        if self.status is AgentRunStatus.RUNNING:
+            raise ValueError("execution outcome must be terminal")
+        if self.status in {AgentRunStatus.SUCCEEDED, AgentRunStatus.REJECTED} and (
+            self.failure_code is not None
+        ):
+            raise ValueError("decision outcome cannot have a failure code")
+        if self.status is AgentRunStatus.FAILED and self.failure_code is None:
+            raise ValueError("failed outcome requires a failure code")
         return self
 
 
@@ -436,7 +479,74 @@ def evaluate_responsibility(
     )
 
 
+def execute_responsibility(
+    session_factory: sessionmaker[Session],
+    *,
+    responsibility_input: ResponsibilityInput,
+    proposal: ProposalCallable,
+    correlation_id: str,
+    clock_ms: ClockMilliseconds = _monotonic_ms,
+) -> AgentExecutionOutcome:
+    """Persist one run around proposal work using two short transactions."""
+
+    state = start_run_state(
+        responsibility=responsibility_input.responsibility,
+        agent_name=responsibility_input.responsibility.value,
+        agent_version=f"{responsibility_input.responsibility.value}-v1",
+        input_refs=responsibility_input.input_refs,
+    )
+    with session_factory() as session, session.begin():
+        run = start_agent_run(
+            session,
+            responsibility=responsibility_input.responsibility,
+            agent_name=state.agent_name,
+            agent_version=state.agent_version,
+            correlation_id=correlation_id,
+            input_refs=state.input_refs,
+        )
+        run_id = run.id
+
+    try:
+        evaluation = _evaluate_running_state(
+            state,
+            responsibility_input,
+            proposal,
+            clock_ms=clock_ms,
+        )
+    except Exception:
+        evaluation = _finish_failure(
+            state,
+            failure_code=AgentRunFailureCode.INTERNAL_ERROR,
+            status=AgentRunStatus.FAILED,
+        )
+
+    try:
+        with session_factory() as session, session.begin():
+            finalize_agent_run(
+                session,
+                run_id=run_id,
+                status=evaluation.status,
+                usage=evaluation.usage,
+                decision=evaluation.decision,
+                failure_code=evaluation.failure_code,
+                model=evaluation.model,
+            )
+    except Exception:
+        raise AgentWorkflowError(AgentWorkflowCode.FINALIZE_FAILED) from None
+
+    return AgentExecutionOutcome(
+        run_id=run_id,
+        responsibility=responsibility_input.responsibility,
+        status=evaluation.status,
+        application_result=evaluation.application_result,
+        failure_code=evaluation.failure_code,
+    )
+
+
 __all__ = [
+    "AgentExecutionOutcome",
+    "AgentWorkflowCode",
+    "AgentWorkflowError",
     "AgentWorkflowEvaluation",
     "ProposalAttempt",
     "ProposalCallable",
@@ -444,4 +554,5 @@ __all__ = [
     "ProposalRequest",
     "ProposalTransientError",
     "evaluate_responsibility",
+    "execute_responsibility",
 ]
