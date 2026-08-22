@@ -8,7 +8,7 @@
 | Active phase | `v5` (`proposed`) |
 | Code scaffold | Có — FastAPI health + read-only domain API, PostgreSQL schema/migration, test/static gates và Compose local |
 | Source approved | `3` Vietnam V1 sources + `1` V3 secondary remote API source; mỗi source có scope riêng |
-| Runtime/test evidence | V1 [complete](evidence/V1-closeout.md); V2 [complete](evidence/V2-006-v2-closeout.md); V3 [complete](evidence/V3-006-v3-closeout.md); V4 historical safety evidence nằm ở [V4-001](evidence/V4-001-deterministic-agent-policy.md)–[V4-005](evidence/V4-005-analyst-skill-trend.md); [ADR-013](decisions/0013-remove-unretained-v4-agent-runtime.md) loại cả ba reasoning path và đóng keep/delete decision |
+| Runtime/test evidence | V1 [complete](evidence/V1-closeout.md); V2 [complete](evidence/V2-006-v2-closeout.md); V3 [complete](evidence/V3-006-v3-closeout.md); V4 historical safety evidence nằm ở [V4-001](evidence/V4-001-deterministic-agent-policy.md)–[V4-005](evidence/V4-005-analyst-skill-trend.md); [V4-006 closeout](evidence/V4-006-agent-usefulness-closeout.md) loại cả ba reasoning path theo ADR-013 |
 
 Task-level status có thể được theo dõi bằng `TASK_BOARD.md` cục bộ. File này bị Git ignore và không thay đổi phase gate hoặc exit criteria của roadmap.
 
@@ -213,7 +213,7 @@ Agent tự điều phối, arbitrary tools, auto-generated claim không có quer
 
 V4-001–V4-005 đã chứng minh typed schema, default-deny policy, limit/failure behavior và PostgreSQL integration của provider-neutral scripted workflow. Đây là historical evaluation evidence, không phải current runtime capability.
 
-V4-006 áp rule giữ/loại đã đặt trước: cả ba proposal path bị loại vì safe facts đã xác định outcome và không có labeled usefulness gain. Planner chỉ nhận schedule/retry/quarantine permission đã tính; validator nhận schema/evidence validity đã tính; analyst nhận exact query/metric/direction/caveat đã tính. [ADR-013](decisions/0013-remove-unretained-v4-agent-runtime.md) loại package, proposal tests và `AgentRun` schema; V5 tiếp tục dùng deterministic API/analytics hiện hành.
+V4-006 áp rule giữ/loại đã đặt trước: cả ba proposal path bị loại vì safe facts đã xác định outcome và không có labeled usefulness gain. Planner chỉ nhận schedule/retry/quarantine permission đã tính; validator nhận schema/evidence validity đã tính; analyst nhận exact query/metric/direction/caveat đã tính. [ADR-013](decisions/0013-remove-unretained-v4-agent-runtime.md) loại package, proposal tests và `AgentRun` schema; [closeout evidence](evidence/V4-006-agent-usefulness-closeout.md) ghi migration/verification. V5 tiếp tục dùng deterministic API/analytics hiện hành.
 
 ### Non-goals
 
