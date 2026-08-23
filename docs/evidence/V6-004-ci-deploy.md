@@ -40,8 +40,14 @@ digest `sha256:93d121300c97ba15f6683fe048f217c9136dca1374905824b17973ebe7fe71ce`
 theo workflow. Run đầu tiên phát hiện `npm ci` thiếu `@emnapi/core/runtime` trên Linux; lockfile được
 regenerate bằng Node 22/npm 10 và run #2 đã xác nhận clean install.
 
+Remote rollback drill: [GitHub Actions run #17](https://github.com/HPhucTV/DevRadar/actions/runs/32615319636)
+trên SHA `be67e89` hoàn tất `success` sau `5m47s`. Job đã deploy release image, chạy migration và health
+smoke, rollback về `devradar-app:known-good`, rồi lưu hai artifact: `compose-smoke-32615319636`
+(`2.25 KB`, digest `sha256:4c67dee7ef01ca6cd59c1f5cdca258a303ec6353cd90b7d391ac7e8b480852b4`) và
+`remote-rollback-32615319636` (`2.29 KB`, digest `sha256:b207f99896f400a9e0eaf24c173062b6bee06870daabe0d615bc16802524977e`).
+
 ## Boundary còn mở
 
-- HTTPS public ingress, managed secret store, deploy host, post-deploy smoke qua endpoint thật và rollback
-  drill có timestamp/operator evidence cần được cấu hình ở V6-004 closeout.
+- HTTPS public ingress, managed secret store và deploy host/public smoke vẫn cần được cấu hình ở V6-004
+  closeout.
 - Backup/restore và monitoring thuộc V6-005; queue pressure/Redis decision thuộc V6-006.
