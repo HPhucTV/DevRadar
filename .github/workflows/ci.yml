@@ -169,10 +169,42 @@ jobs:
         if: always()
         run: docker compose --env-file .env.example --project-name devradar-rollback down
 
+  remote-backup:
+    name: Remote PostgreSQL backup and restore drill
+    runs-on: ubuntu-latest
+    needs: remote-rollback
+    steps:
+      - uses: actions/checkout@v7
+      - name: Start isolated PostgreSQL service
+        run: docker compose --env-file .env.example --project-name devradar-backup up --detach database --wait
+      - name: Run backup and isolated restore
+        run: |
+          mkdir -p backups backup-artifacts
+          pwsh ./scripts/migrate.ps1 -EnvironmentFile .env.example -ProjectName devradar-backup -Action upgrade
+          pwsh ./scripts/backup.ps1 -EnvironmentFile .env.example -ProjectName devradar-backup -OutputPath backups/ci.dump
+          stat --format='backup_bytes=%s' backups/ci.dump > backup-artifacts/metadata.txt
+          pwsh ./scripts/restore.ps1 -EnvironmentFile .env.example -ProjectName devradar-backup -BackupPath backups/ci.dump
+          printf 'sha=%s\nrun_id=%s\nrestore=pass\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" >> backup-artifacts/metadata.txt
+      - name: Capture backup drill artifact
+        if: always()
+        run: |
+          docker compose --env-file .env.example --project-name devradar-backup logs database > backup-artifacts/database.log || true
+          rm -f backups/ci.dump
+      - name: Upload backup drill artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: remote-backup-${{ github.run_id }}
+          path: backup-artifacts/
+          retention-days: 14
+      - name: Teardown backup project
+        if: always()
+        run: docker compose --env-file .env.example --project-name devradar-backup down
+
   container-advisory:
     name: Container critical/high advisory gate
     runs-on: ubuntu-latest
-    needs: remote-rollback
+    needs: remote-backup
     steps:
       - uses: actions/checkout@v7
       - name: Build image in local store
