@@ -149,7 +149,7 @@ flowchart LR
 | V3 | V2 + extraction/taxonomy; local FastEmbed multilingual MiniLM artifact, pgvector `vector(384)`, exact semantic search và bounded analytics | Complete; ADR-010 Accepted cho local/private |
 | V4 | Không thêm runtime vào V3; đánh giá rồi loại planner/validator/analyst reasoning path; LangGraph deferred | Complete; ADR-013 Accepted |
 | V5 | V3 runtime baseline + Next.js App Router/BFF + local-gated ResumeProfile/JobMatch + bounded Discord alert connector | Complete; V5-001–V5-007 evidence |
-| V6 | Public ingress, PostgreSQL-backed auth/session, managed secrets, CI/deploy/rollback command surface, backup/monitoring; Redis/worker pool nếu metric yêu cầu | In progress; V6-001/V6-002/V6-003 complete, V6-004 in progress |
+| V6 | Public ingress, PostgreSQL-backed auth/session, managed secrets, CI/deploy/rollback command surface, backup/monitoring; Redis/worker pool nếu metric yêu cầu | In progress; V6-001/V6-002/V6-003 complete, V6-004/V6-013 in progress |
 
 Crawler/one-shot worker CLI và API dùng cùng code nhưng là entrypoint/process khác nhau. Điều này giữ network work ngoài HTTP request mà không tách service sớm.
 

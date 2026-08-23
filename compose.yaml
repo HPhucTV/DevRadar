@@ -120,7 +120,7 @@ services:
       - --help
 
   database:
-    image: pgvector/pgvector:0.8.6-pg18-bookworm
+    image: ${DEVRADAR_DATABASE_IMAGE:-pgvector/pgvector:0.8.6-pg18-bookworm}
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-devradar}
       POSTGRES_USER: ${POSTGRES_USER:-devradar}

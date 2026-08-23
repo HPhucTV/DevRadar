@@ -63,6 +63,7 @@ def _write_production_env(
                 "POSTGRES_DB=devradar",
                 "POSTGRES_USER=devradar",
                 f"POSTGRES_PASSWORD={password}",
+                f"DEVRADAR_DATABASE_IMAGE=pgvector/pgvector@sha256:{digest}",
                 f"DEVRADAR_APP_IMAGE=ghcr.io/hphuctv/devradar-api@sha256:{digest}",
                 f"DEVRADAR_CRAWLER_IMAGE=ghcr.io/hphuctv/devradar-crawler@sha256:{digest}",
                 f"DEVRADAR_WEB_IMAGE=ghcr.io/hphuctv/devradar-web@sha256:{digest}",
@@ -136,6 +137,7 @@ def test_production_example_is_public_managed_and_secret_free() -> None:
     assert "DEVRADAR_AUTH_ENABLED=true" in env
     assert "DEVRADAR_AUTH_COOKIE_SECURE=true" in env
     assert "POSTGRES_PASSWORD=" in env
+    assert "DEVRADAR_DATABASE_IMAGE=pgvector/pgvector@sha256:" in env
     assert "DEVRADAR_OPERATOR_PASSWORD_HASH=" in env
     assert "devradar_local_only" not in env
     assert "sk-" not in env
@@ -204,6 +206,8 @@ def test_production_workflow_is_manual_exact_sha_and_digest_only() -> None:
     assert "DEVRADAR_FIREWALL_RULE_ADDED" in workflow
     assert "DEVRADAR_FIREWALL_CLEANUP_REQUIRED" in workflow
     assert "DEVRADAR_INGRESS_IMAGE" in workflow
+    assert "DEVRADAR_DATABASE_IMAGE" in workflow
+    assert "pull database api crawler web ingress" in workflow
     assert "IMAGE_ROOT-ingress" in workflow
     assert "deploy/caddy/Dockerfile deploy/caddy/Caddyfile deploy/caddy/main.go" in workflow
     assert "DIGITALOCEAN_TOKEN" not in job_configuration

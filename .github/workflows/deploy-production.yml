@@ -172,6 +172,9 @@ jobs:
           pwsh ./scripts/validate-production-config.ps1 \
             -EnvironmentFile "$RUNNER_TEMP/devradar-production.env" \
             -Domain "$DEVRADAR_DOMAIN"
+          database_image=$(sed -n 's/^DEVRADAR_DATABASE_IMAGE=//p' "$RUNNER_TEMP/devradar-production.env")
+          echo "DEVRADAR_DATABASE_IMAGE=$database_image" >> "$GITHUB_ENV"
+          printf 'database_image=%s\n' "$database_image" >> release-artifacts/release-manifest.txt
 
       - name: Open temporary SSH firewall rule
         shell: bash
@@ -221,7 +224,7 @@ jobs:
           cd /opt/devradar
           compose=(docker compose --env-file .env.production -f compose.yaml -f compose.production.yaml)
           "${compose[@]}" config --quiet
-          "${compose[@]}" pull api crawler web ingress
+          "${compose[@]}" pull database api crawler web ingress
           "${compose[@]}" up --detach database --wait
           "${compose[@]}" run --rm api python -m alembic upgrade head
           "${compose[@]}" up --detach api web ingress --wait

@@ -316,8 +316,29 @@ HTTPS CORS, operator password hash hoặc database password không còn giá tr�
 decision nằm tại [ADR-016](decisions/0016-accept-reproducible-ci-deploy-rollback.md) và [ADR-020](decisions/0020-accept-nextjs-standalone-web-compose-artifact.md).
 
 Container advisory gate dùng Trivy image chính thức với digest pinned theo [ADR-019](decisions/0019-accept-pinned-trivy-container-gate.md),
-scan riêng API, crawler và web image. Full HIGH/CRITICAL report phải được thu thập trước khi gate
+scan riêng API, crawler, web và ingress image; database production vẫn phải được pin digest và kiểm tra image
+identity trước deploy. Full HIGH/CRITICAL report phải được thu thập trước khi gate
 `--ignore-unfixed`; nếu scanner/image/socket không chạy thì fail, không suy diễn an toàn từ image build.
+
+V6-013 production foundation thêm [ADR-022](decisions/0022-accept-patched-caddy-scratch-ingress.md): official
+Caddy/Traefik artifact không qua zero-fixable gate nên ingress được build từ pinned Caddy source, chạy
+`FROM scratch` với user `10001:10001`, high ports `8080/8443`, `cap_drop: ALL` và không có shell/package
+manager. Production env phải có `DEVRADAR_DATABASE_IMAGE` cùng digest bất biến với bốn application/release
+images. Local route smoke không chứng minh public DNS/TLS/provider deployment.
+
+Production workflow surface:
+
+```powershell
+# GitHub Actions workflow_dispatch only; release_sha phải là exact successful DevRadar CI SHA.
+# Production environment variables: DEVRADAR_DOMAIN, DEVRADAR_HOST, DEVRADAR_SSH_USER,
+# DEVRADAR_FIREWALL_ID.
+# Production secrets: DEVRADAR_PRODUCTION_ENV_B64, DEVRADAR_SSH_PRIVATE_KEY,
+# DEVRADAR_SSH_KNOWN_HOSTS, DIGITALOCEAN_TOKEN.
+```
+
+Workflow deploy dùng digest cho database/API/crawler/web/ingress, chỉ mở firewall SSH `/32` của runner
+trong bounded window, ghi cleanup intent trước mutation và luôn xóa rule/temp credentials ở cleanup step.
+Không paste credential vào command history, chat hoặc artifact; release manifest chỉ chứa SHA/run ID/digest.
 
 GitHub `main` yêu cầu strict status checks theo đúng bảy job name trong workflow, linear history và
 conversation resolution. Force-push và branch deletion bị chặn. Không yêu cầu approving review vì dự án

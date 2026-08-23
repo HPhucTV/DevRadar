@@ -26,6 +26,7 @@ $criticalVariables = @(
     "POSTGRES_DB",
     "POSTGRES_USER",
     "POSTGRES_PASSWORD",
+    "DEVRADAR_DATABASE_IMAGE",
     "DEVRADAR_APP_IMAGE",
     "DEVRADAR_CRAWLER_IMAGE",
     "DEVRADAR_WEB_IMAGE",
@@ -70,6 +71,7 @@ if ([string]::IsNullOrWhiteSpace((Get-DeploymentEnvironmentValue $EnvironmentFil
 $digestImagePattern = "^[a-z0-9][a-z0-9._/-]*@sha256:[0-9a-f]{64}$"
 foreach (
     $imageVariable in @(
+        "DEVRADAR_DATABASE_IMAGE",
         "DEVRADAR_APP_IMAGE",
         "DEVRADAR_CRAWLER_IMAGE",
         "DEVRADAR_WEB_IMAGE",

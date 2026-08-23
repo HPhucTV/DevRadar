@@ -50,17 +50,18 @@ Một hostname do operator sở hữu trỏ `A`/`AAAA` tới Droplet. Caddy là 
 - host chỉ mở `80/tcp`, `443/tcp`; API, web và PostgreSQL vẫn bind loopback như Compose hiện hành;
 - Caddy data/config dùng named volume; config được mount read-only.
 
-Ingress dùng Docker Official Image
-`caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d`.
-Image pin là multi-platform manifest; production Droplet dùng `linux/amd64`. `Caddyfile` không nhận upstream
-hoặc directive từ secret/user input; chỉ hostname bounded được inject qua environment.
+Ingress dùng custom patched Caddy `v2.11.4` theo [ADR-022](../../decisions/0022-accept-patched-caddy-scratch-ingress.md).
+Official Caddy 2.10.2/2.11.4 và Traefik 3.7.10 không qua zero-fixable gate, nên runtime build từ pinned Go
+builder, khóa ba patched transitive modules rồi chạy `FROM scratch` non-root trên high ports. `Caddyfile`
+không nhận upstream hoặc directive từ secret/user input; chỉ hostname bounded được inject qua environment.
 
 ## Artifact và release
 
-GitHub Actions build ba image `api`, `crawler`, `web` từ một exact commit đã có successful `DevRadar CI`
-run. Image được push vào GHCR, gắn immutable commit tag và deploy bằng registry digest; floating tag không
-được dùng làm release/rollback identity. Release manifest chỉ chứa commit, build/run ID và ba digest,
-không chứa credential.
+GitHub Actions build bốn image `api`, `crawler`, `web`, `ingress` từ một exact commit đã có successful
+`DevRadar CI` run. Image được push vào GHCR, gắn immutable commit tag và deploy bằng registry digest;
+floating tag không được dùng làm release/rollback identity. PostgreSQL/pgvector cũng dùng manifest digest
+từ managed production config. Release manifest chỉ chứa commit, build/run ID và artifact digests, không
+chứa credential.
 
 Workflow production là `workflow_dispatch`, dùng `environment: production`, `concurrency` một deployment và
 fail closed nếu:
@@ -118,8 +119,8 @@ measured need.
 1. Contract test RED trước khi production Compose/Caddy/workflow tồn tại, GREEN sau implementation.
 2. `docker compose -f compose.yaml -f compose.production.yaml config --quiet` pass với sanitized fixture.
 3. Caddy config validate và local HTTP routing smoke tới real API/web containers pass; không claim public TLS.
-4. Workflow contract khóa exact-SHA CI check, environment gate, digest images, pinned known-host và firewall
-   cleanup.
+4. Workflow contract khóa exact-SHA CI check, environment gate, năm digest images, pinned known-host và
+   firewall cleanup.
 5. Full repository gates và remote seven-check CI pass trên exact implementation SHA.
 
 ### V6-014

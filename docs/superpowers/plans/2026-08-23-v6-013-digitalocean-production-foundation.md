@@ -8,6 +8,15 @@
 
 **Tech Stack:** Docker Compose, Caddy 2.10.2, GitHub Actions/GHCR, PowerShell 7, DigitalOcean Firewall REST API, pytest.
 
+## Implementation amendment — 2026-08-23
+
+Task 2/4 ban đầu dùng Caddy Official Image 2.10.2. Trivy gate phát hiện official Caddy 2.10.2 có `78`
+findings fixable, official Caddy 2.11.4 có `19`, còn Traefik 3.7.10 có `10`. Theo
+[ADR-022](../../decisions/0022-accept-patched-caddy-scratch-ingress.md), implementation hiện hành dùng
+`deploy/caddy/{Dockerfile,Caddyfile,main.go}`, custom Caddy `v2.11.4` scratch runtime, bốn GHCR artifacts
+và `DEVRADAR_DATABASE_IMAGE` immutable digest. Các snippet official-image/path cũ bên dưới chỉ là lịch sử
+RED/GREEN plan, không còn là contract hiện hành.
+
 ---
 
 ## File map
