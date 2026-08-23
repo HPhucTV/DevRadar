@@ -36,7 +36,7 @@ def test_incident_workflow_has_bounded_triggers_and_permissions() -> None:
     text = _workflow_text()
 
     assert "workflow_run:" in text
-    assert "workflows: [\"DevRadar CI\"]" in text
+    assert 'workflows: ["DevRadar CI"]' in text
     assert "branches: [main]" in text
     assert "types: [completed]" in text
     assert "workflow_dispatch:" in text

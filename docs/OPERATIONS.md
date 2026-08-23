@@ -237,6 +237,12 @@ Alert vận hành tối thiểu từ V2:
 - V3+ AI budget, validation failure hoặc provider outage;
 - V6 auth/rate-limit/security event bất thường.
 
+V6-011 route unsuccessful push CI trên `main` qua owner-assigned GitHub issue. Workflow chỉ cấp
+`contents: read` và `issues: write`, không checkout code/download artifact từ `workflow_run`, và payload
+chỉ dùng run URL/ID, conclusion, SHA cùng event. `workflow_dispatch` tạo `[DRILL]` issue để kiểm tra route;
+drill chỉ được đóng sau khi xác nhận author/assignee/body và lưu run/issue evidence. Route này không thay
+thế public uptime alert vì chưa có HTTPS endpoint để monitor từ bên ngoài.
+
 ## 9. Retention, deletion và backup
 
 Default được dùng cho đến khi có ADR thay đổi:
