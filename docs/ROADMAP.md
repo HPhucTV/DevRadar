@@ -353,9 +353,10 @@ pass. Unfixed advisory vẫn là residual risk được theo dõi, không phải
 
 CI workflow, Dependabot, Compose image override, migration command surface, deploy/rollback scripts và
 health smoke đã có tại [V6-004 evidence](evidence/V6-004-ci-deploy.md). Local fresh-database deploy và
-application-image rollback đã pass. GitHub Actions run #2 trên SHA `29e11b3` đã pass toàn bộ Python,
-PostgreSQL, web, Compose và Trivy jobs. Public HTTPS ingress, managed secret store và timestamped remote
-rollback drill vẫn chưa có evidence; không nâng status tới khi các boundary này được kiểm thử thật.
+application-image rollback đã pass. GitHub Actions run #14 trên SHA `3bb3ec7` đã pass toàn bộ Python,
+PostgreSQL, web, Compose và Trivy jobs và lưu Compose smoke
+artifact retention 14 ngày. Public HTTPS ingress, managed secret store và timestamped remote rollback
+drill vẫn chưa có evidence; không nâng status tới khi các boundary này được kiểm thử thật.
 
 ### V6-005 progress (`In Progress`)
 

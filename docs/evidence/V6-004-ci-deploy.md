@@ -32,11 +32,13 @@ Fresh rerun ngày 2026-08-23 sau khi V6-010 được commit: `deploy.ps1 -SkipBu
 `deploy=pass image=devradar-app:local`, sau đó `rollback.ps1` về `devradar-app:v6-004-smoke` trả
 `rollback=pass`; cả hai health smoke đều trả `status=ok`.
 
-Remote CI evidence: [GitHub Actions run #2](https://github.com/HPhucTV/DevRadar/actions/runs/32613916422)
-trên SHA `29e11b3` hoàn tất `success` ngày 2026-08-23. Các job Python quality/default tests,
-PostgreSQL integration, web tests/lint/typecheck/build, Compose migration/API smoke và Trivy
-critical/high gate đều `success`. Run đầu tiên phát hiện `npm ci` thiếu `@emnapi/core/runtime` trên
-Linux; lockfile được regenerate bằng Node 22/npm 10 và run #2 đã xác nhận clean install.
+Remote CI evidence: [GitHub Actions run #14](https://github.com/HPhucTV/DevRadar/actions/runs/32614540019)
+trên SHA `3bb3ec7` hoàn tất `success` ngày 2026-08-23 sau `4m59s`. Các job Python quality/default
+tests, PostgreSQL integration, web tests/lint/typecheck/build, Compose migration/API smoke và Trivy
+critical/high gate đều `success`. Artifact `compose-smoke-32614540019` được lưu với kích thước `2.3 KB`,
+digest `sha256:93d121300c97ba15f6683fe048f217c9136dca1374905824b17973ebe7fe71ce` và retention 14 ngày
+theo workflow. Run đầu tiên phát hiện `npm ci` thiếu `@emnapi/core/runtime` trên Linux; lockfile được
+regenerate bằng Node 22/npm 10 và run #2 đã xác nhận clean install.
 
 ## Boundary còn mở
 
