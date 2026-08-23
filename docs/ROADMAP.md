@@ -358,8 +358,8 @@ Python, PostgreSQL, web, Compose, remote rollback, remote backup/restore và Tri
 14 ngày đã được lưu. GitHub `main` đã bật strict seven-check branch protection, linear history và
 conversation resolution; force-push/deletion bị chặn, còn admin bypass được giữ cho single owner.
 Public HTTPS ingress và managed secret store vẫn chưa có evidence; không nâng status tới khi các boundary
-này được kiểm thử thật. V6-012 đã thêm Next.js standalone artifact, local Compose/deploy/rollback và
-three-image CI contract; remote exact-SHA gate còn chờ.
+này được kiểm thử thật. [V6-012](evidence/V6-012-production-web-compose.md) đã hoàn tất Next.js standalone
+artifact, local/remote Compose deploy/rollback và three-image Trivy gate trên exact SHA `31c662c`.
 
 ### V6-005 progress (`In Progress`)
 

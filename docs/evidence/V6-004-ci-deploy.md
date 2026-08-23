@@ -58,8 +58,9 @@ mọi review conversation phải resolved; force-push và branch deletion bị c
 và `enforce_admins=false` để single owner còn emergency bypass. Đây là repository-control evidence,
 không thay thế HTTPS deployment hoặc production secret evidence.
 
-[V6-012 local evidence](V6-012-production-web-compose.md) xác nhận standalone web image, hardened Compose,
-privacy BFF smoke và dual-image deploy/rollback. Remote exact-SHA CI evidence cho topology mới vẫn chờ.
+[V6-012 evidence](V6-012-production-web-compose.md) xác nhận standalone web image, hardened Compose,
+privacy BFF smoke, dual-image deploy/rollback và remote three-image scan. Run #26 trên SHA `31c662c`
+pass đủ bảy job; Compose/rollback artifacts chứa cả API/web service và exact SHA.
 
 ## Boundary còn mở
 

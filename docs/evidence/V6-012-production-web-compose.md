@@ -1,7 +1,7 @@
 # V6-012 — Production web Compose
 
 **Ngày ghi nhận:** 2026-08-23
-**Trạng thái:** `In Progress` — local image/Compose/deploy/rollback pass; remote CI evidence pending.
+**Trạng thái:** `Done` — local và remote API/web release gates đã được kiểm chứng.
 
 ## Đã triển khai
 
@@ -36,5 +36,25 @@
 
 ## Boundary còn mở
 
-- Chưa có remote CI run trên exact implementation/evidence SHA hoặc remote three-image Trivy output.
 - HTTPS ingress, registry, managed secrets, off-host backup và external uptime vẫn cần provider thật.
+
+## Remote verification
+
+[GitHub Actions run #26](https://github.com/HPhucTV/DevRadar/actions/runs/32619737935) trên SHA `31c662c`
+hoàn tất `success` với đủ bảy job. Step metadata xác nhận:
+
+- web tests/lint/typecheck/build và dependency audit `success`;
+- Compose `Build web image`, API/web startup + smokes, artifact upload và teardown đều `success`;
+- release/known-good dual-image build, dual deploy và dual rollback đều `success`;
+- full và fixable Trivy steps trên API/crawler/web đều `success`.
+
+Artifact `compose-smoke-32619737935` (`2,574` bytes, digest
+`sha256:7a99d754a8e794171fa6571beb313f93c29ce03e2312d818370b639c2d03374c`) và
+`remote-rollback-32619737935` (`2,568` bytes, digest
+`sha256:146121aaad8587f2bdde810c5995fcb2424c77047b5f00a1500ddff058626885`) chưa expired, hết hạn
+2026-09-06. Downloaded artifacts chứa `compose-ps.txt`, `compose.log`, `metadata.txt`; cả hai có `api-1`,
+`web-1` và exact SHA.
+
+Container job log dài `427,997` bytes, nhắc `devradar-web:ci` chín lần. Full report ghi web Debian target
+`30` HIGH/CRITICAL residual; fixable loop chạy đủ ba image và web target trả `0`. Job conclusion `success`
+chứng minh API/crawler/web đều không còn fixable HIGH/CRITICAL theo ADR-019/ADR-020.
