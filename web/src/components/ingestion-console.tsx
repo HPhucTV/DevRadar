@@ -87,7 +87,7 @@ export function IngestionConsole() {
   const degraded = sources.length - healthy;
 
   return <>
-    <section className="content-section">
+    <section className="content-section source-health-intro">
       <div className="section-heading">
         <div><p className="eyebrow">Operator control</p><h2>Approved sources only</h2></div>
         <button type="button" onClick={() => void refresh()} disabled={loading}>{loading ? "Loading..." : sources.length || runs.length ? "Refresh" : "Load registry"}</button>
@@ -96,18 +96,18 @@ export function IngestionConsole() {
     </section>
     {error ? <ApiErrorState error={error} /> : null}
     {notice ? <p className="status-message" role="status">{notice}</p> : null}
-    <div className="metric-grid">
+    <div className="health-grid metric-grid">
       <Metric label="Sources" value={sources.length} />
       <Metric label="Healthy" value={healthy} />
       <Metric label="Needs attention" value={degraded} />
     </div>
     <section className="content-section">
       <div className="section-heading"><div><p className="eyebrow">Allow-list</p><h2>Source health</h2></div><span>{sources.length} loaded</span></div>
-      {loading && !sources.length ? <p className="loading-state">Loading source registry...</p> : sources.length ? <div className="source-list">{sources.map((source) => <article className="source-row" key={source.id}><div><strong>{source.name}</strong><p>{source.healthReasonCode ?? "No active health warning"}</p></div><div><span className={`health-pill health-${source.healthStatus}`}>{source.healthStatus}</span><button type="button" onClick={() => void runSource(source)} disabled={loading || busySourceId !== null || source.approvalStatus !== "approved"}>{busySourceId === source.id ? "Requesting..." : source.approvalStatus === "approved" ? "Run now" : "Not approved"}</button></div></article>)}</div> : <EmptyState message="No source registry rows are available." />}
+      {loading && !sources.length ? <p className="loading-state">Loading source registry...</p> : sources.length ? <div className="source-list health-source-list">{sources.map((source) => <article className="source-card source-row" key={source.id}><div><strong>{source.name}</strong><p>{source.healthReasonCode ?? "No active health warning"}</p></div><div><span className={`health-pill health-${source.healthStatus}`}>{source.healthStatus}</span><button type="button" onClick={() => void runSource(source)} disabled={loading || busySourceId !== null || source.approvalStatus !== "approved"}>{busySourceId === source.id ? "Requesting..." : source.approvalStatus === "approved" ? "Run now" : "Not approved"}</button></div></article>)}</div> : <EmptyState message="No source registry rows are available." />}
     </section>
     <section className="content-section">
       <div className="section-heading"><div><p className="eyebrow">Workflow history</p><h2>Recent crawl runs</h2></div><span>{runs.length} shown</span></div>
-      {runs.length ? <div className="source-list">{runs.map((run) => <article className="source-row" key={run.id}><div><strong>{run.status} · {run.coverageStatus}</strong><p>{run.counts.itemsFound} found · {run.counts.itemsFailed} failed · requested {new Date(run.requestedAt).toLocaleString()}</p></div><span>{run.healthSignalCode ?? "No health signal"}</span></article>)}</div> : <EmptyState message="No crawl runs have been recorded for this operator." />}
+      {runs.length ? <div className="run-timeline source-list">{runs.map((run) => <article className="run-card source-row" key={run.id}><div><strong>{run.status} · {run.coverageStatus}</strong><p>{run.counts.itemsFound} found · {run.counts.itemsFailed} failed · requested {new Date(run.requestedAt).toLocaleString()}</p></div><span>{run.healthSignalCode ?? "No health signal"}</span></article>)}</div> : <EmptyState message="No crawl runs have been recorded for this operator." />}
     </section>
   </>;
 }
