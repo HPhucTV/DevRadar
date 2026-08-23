@@ -38,7 +38,7 @@ def test_compose_web_is_loopback_internal_api_and_hardened() -> None:
     assert "DEVRADAR_WEB_IMAGE" in compose
     assert "DEVRADAR_WEB_HOST_PORT" in compose
     assert 'DEVRADAR_API_BASE_URL: "http://api:8000"' in compose
-    assert '127.0.0.1:${DEVRADAR_WEB_HOST_PORT:-3000}:3000' in compose
+    assert "127.0.0.1:${DEVRADAR_WEB_HOST_PORT:-3000}:3000" in compose
     assert "condition: service_healthy" in compose
     assert "/app/.next/cache" in compose
     assert "read_only: true" in compose

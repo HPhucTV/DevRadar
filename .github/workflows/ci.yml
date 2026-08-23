@@ -108,10 +108,13 @@ jobs:
     needs: [python-quality, postgres-integration, web-quality]
     env:
       DEVRADAR_APP_IMAGE: devradar-app:ci
+      DEVRADAR_WEB_IMAGE: devradar-web:ci
     steps:
       - uses: actions/checkout@v7
       - name: Build API image
         run: docker build --pull --tag devradar-app:ci .
+      - name: Build web image
+        run: docker build --pull --tag devradar-web:ci web
       - name: Validate Compose profiles
         run: docker compose --env-file .env.example --profile crawler config --quiet
       - name: Start database and migrate
@@ -120,8 +123,9 @@ jobs:
           docker compose --env-file .env.example run --rm api python -m alembic upgrade head
       - name: Start API and run smoke
         run: |
-          docker compose --env-file .env.example up --detach api --wait
+          docker compose --env-file .env.example up --detach api web --wait
           pwsh ./scripts/smoke.ps1 -BaseUrl http://127.0.0.1:8000
+          pwsh ./scripts/web-smoke.ps1 -BaseUrl http://127.0.0.1:3000
       - name: Capture Compose smoke artifact
         if: always()
         run: |
@@ -146,20 +150,24 @@ jobs:
     needs: compose-smoke
     env:
       DEVRADAR_APP_IMAGE: devradar-app:release
+      DEVRADAR_WEB_IMAGE: devradar-web:release
     steps:
       - uses: actions/checkout@v7
       - name: Build release and known-good application images
         run: |
           docker build --pull --tag devradar-app:release .
           docker tag devradar-app:release devradar-app:known-good
+          docker build --pull --tag devradar-web:release web
+          docker tag devradar-web:release devradar-web:known-good
       - name: Deploy release image and migrate
         run: |
           docker compose --env-file .env.example --project-name devradar-rollback up --detach database --wait
           pwsh ./scripts/migrate.ps1 -EnvironmentFile .env.example -ProjectName devradar-rollback -Action upgrade
-          docker compose --env-file .env.example --project-name devradar-rollback up --detach api --wait
+          docker compose --env-file .env.example --project-name devradar-rollback up --detach api web --wait
           pwsh ./scripts/smoke.ps1 -BaseUrl http://127.0.0.1:8000
+          pwsh ./scripts/web-smoke.ps1 -BaseUrl http://127.0.0.1:3000
       - name: Roll back to known-good image
-        run: pwsh ./scripts/rollback.ps1 -EnvironmentFile .env.example -ProjectName devradar-rollback -Image devradar-app:known-good -BaseUrl http://127.0.0.1:8000
+        run: pwsh ./scripts/rollback.ps1 -EnvironmentFile .env.example -ProjectName devradar-rollback -Image devradar-app:known-good -WebImage devradar-web:known-good -BaseUrl http://127.0.0.1:8000 -WebBaseUrl http://127.0.0.1:3000
       - name: Capture rollback artifact
         if: always()
         run: |
@@ -222,9 +230,10 @@ jobs:
         run: |
           docker build --pull --tag devradar-app:ci --build-arg DEVRADAR_INSTALL_BROWSER=false .
           docker build --pull --tag devradar-crawler:ci --build-arg DEVRADAR_INSTALL_BROWSER=true .
+          docker build --pull --tag devradar-web:ci web
       - name: Trivy full reports (fixed and unfixed findings)
         run: |
-          for image in devradar-app:ci devradar-crawler:ci; do
+          for image in devradar-app:ci devradar-crawler:ci devradar-web:ci; do
             docker run --rm \
               --volume /var/run/docker.sock:/var/run/docker.sock \
               "$TRIVY_IMAGE" image --quiet --format table --severity HIGH,CRITICAL \
@@ -232,7 +241,7 @@ jobs:
           done
       - name: Trivy fixable critical/high gate
         run: |
-          for image in devradar-app:ci devradar-crawler:ci; do
+          for image in devradar-app:ci devradar-crawler:ci devradar-web:ci; do
             docker run --rm \
               --volume /var/run/docker.sock:/var/run/docker.sock \
               "$TRIVY_IMAGE" image --quiet --format table --severity HIGH,CRITICAL \
