@@ -1,6 +1,7 @@
 # Local-only project tracking
 /TASK_BOARD.md
 /.superpowers/
+/.worktrees/
 
 # Secrets and local environment
 .env
