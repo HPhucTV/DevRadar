@@ -22,6 +22,7 @@ from devradar.api.common import (
     pagination_data,
 )
 from devradar.catalog.models import Job, JobStatus
+from devradar.ingestion.models import Source, SourceApprovalStatus
 from devradar.intelligence.evaluation import canonicalize_skill_name
 from devradar.intelligence.extraction import (
     CANONICALIZATION_VERSION,
@@ -212,6 +213,7 @@ def _analytics_rows(
     rows = session.execute(
         select(cohort_column, latest.c.output_data)
         .select_from(Job)
+        .join(Source, Source.id == Job.source_id)
         .outerjoin(
             latest,
             and_(
@@ -220,7 +222,7 @@ def _analytics_rows(
                 latest.c.result_rank == 1,
             ),
         )
-        .where(*conditions)
+        .where(Source.approval_status == SourceApprovalStatus.APPROVED, *conditions)
         .order_by(cohort_column.asc(), Job.id.asc())
     ).all()
     return [

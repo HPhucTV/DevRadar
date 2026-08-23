@@ -7,9 +7,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, time
 from enum import StrEnum
+from ipaddress import ip_address
 from types import MappingProxyType
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import unquote, urlsplit, urlunsplit
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -29,6 +30,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from devradar.auth import models as _auth_models  # noqa: F401 - registers auth_users FK target
 from devradar.platform.database import Base
 
 
@@ -40,11 +42,11 @@ _ALLOWED_MAPPING_FIELDS = frozenset(
     {"title", "company", "location", "salary", "description", "postedAt", "externalId", "jobUrl"}
 )
 _HOST_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$")
+_ENCODED_BOUNDARY_PATTERN = re.compile(r"%(?:25|2e|2f|5c)", re.IGNORECASE)
 _DEFAULT_TIMEZONE = "Asia/Ho_Chi_Minh"
 _DEFAULT_INTERVAL_MINUTES = 360
 _MIN_INTERVAL_MINUTES = 5
 _MAX_INTERVAL_MINUTES = 7 * 24 * 60
-_MAX_PAGE_BUDGET = 100
 _MAX_ITEM_BUDGET = 10_000
 _MAX_BYTE_BUDGET = 10_000_000
 _MAX_REQUESTS_PER_MINUTE = 60
@@ -71,6 +73,39 @@ class CustomScheduleKind(StrEnum):
     DAILY_AT = "daily_at"
 
 
+def path_has_dot_segments(value: str) -> bool:
+    """Reject raw or repeatedly encoded path traversal syntax."""
+
+    decoded = value
+    for _ in range(len(value) + 1):
+        normalized = decoded.replace("\\", "/")
+        if any(segment in {".", ".."} for segment in normalized.split("/")):
+            return True
+        next_value = unquote(decoded)
+        if next_value == decoded:
+            return False
+        decoded = next_value
+    return True
+
+
+def path_has_unsafe_boundary_syntax(value: str) -> bool:
+    """Reject paths whose transport representation can change the saved boundary."""
+
+    if not value.isascii() or any(
+        ord(character) <= 32 or ord(character) == 127 for character in value
+    ):
+        return True
+    return bool(_ENCODED_BOUNDARY_PATTERN.search(value)) or path_has_dot_segments(value)
+
+
+def host_is_ip_literal(value: str) -> bool:
+    try:
+        ip_address(value)
+    except ValueError:
+        return False
+    return True
+
+
 def _normalize_base_url(value: str) -> tuple[str, str, str]:
     raw = value.strip()
     parsed = urlsplit(raw)
@@ -83,10 +118,10 @@ def _normalize_base_url(value: str) -> tuple[str, str, str]:
     if parsed.query or parsed.fragment:
         raise ValueError("base_url must not contain query or fragment")
     hostname = parsed.hostname.casefold()
-    if not _HOST_PATTERN.fullmatch(hostname) or "." not in hostname:
+    if not _HOST_PATTERN.fullmatch(hostname) or "." not in hostname or host_is_ip_literal(hostname):
         raise ValueError("base_url host is invalid")
     path = parsed.path or "/"
-    if not path.startswith("/") or "//" in path:
+    if not path.startswith("/") or "//" in path or path_has_unsafe_boundary_syntax(path):
         raise ValueError("base_url path must be absolute and bounded")
     normalized_path = path.rstrip("/") or "/"
     normalized = urlunsplit(("https", hostname, normalized_path, "", ""))
@@ -102,7 +137,13 @@ def _normalize_path_prefixes(
     normalized: list[str] = []
     for raw in prefixes:
         prefix = raw.strip()
-        if not prefix.startswith("/") or "//" in prefix or "?" in prefix or "#" in prefix:
+        if (
+            not prefix.startswith("/")
+            or "//" in prefix
+            or "?" in prefix
+            or "#" in prefix
+            or path_has_unsafe_boundary_syntax(prefix)
+        ):
             raise ValueError("allowed_path_prefixes must be absolute path prefixes")
         prefix = prefix.rstrip("/") or "/"
         if base_path != "/" and prefix != base_path and not prefix.startswith(f"{base_path}/"):
@@ -119,7 +160,7 @@ def _normalize_hosts(
     normalized: list[str] = []
     for raw in hosts:
         host = raw.strip().casefold()
-        if not _HOST_PATTERN.fullmatch(host) or "." not in host:
+        if not _HOST_PATTERN.fullmatch(host) or "." not in host or host_is_ip_literal(host):
             raise ValueError("allowed_hosts must contain hostnames only")
         if host not in normalized:
             normalized.append(host)
@@ -164,7 +205,6 @@ class CustomSourceProfileDraft:
     interval_minutes: int | None
     daily_at: time | None
     timezone: str
-    page_budget: int
     item_budget: int
     byte_budget: int
     requests_per_minute: int
@@ -183,10 +223,9 @@ class CustomSourceProfileDraft:
         allowed_path_prefixes: tuple[str, ...] | list[str] | None = None,
         field_mapping: Mapping[str, str] | None = None,
         schedule_kind: CustomScheduleKind = CustomScheduleKind.INTERVAL,
-        interval_minutes: int | None = _DEFAULT_INTERVAL_MINUTES,
+        interval_minutes: int | None = None,
         daily_at: time | None = None,
         timezone: str = _DEFAULT_TIMEZONE,
-        page_budget: int = 10,
         item_budget: int = 500,
         byte_budget: int = 2_000_000,
         requests_per_minute: int = 2,
@@ -205,18 +244,23 @@ class CustomSourceProfileDraft:
             schedule_kind = CustomScheduleKind(schedule_kind)
         normalized_timezone = _validate_timezone(timezone)
         if schedule_kind is CustomScheduleKind.INTERVAL:
+            interval_minutes = (
+                _DEFAULT_INTERVAL_MINUTES if interval_minutes is None else interval_minutes
+            )
             if not isinstance(interval_minutes, int) or not (
                 _MIN_INTERVAL_MINUTES <= interval_minutes <= _MAX_INTERVAL_MINUTES
             ):
                 raise ValueError("interval_minutes must be between 5 and 10080")
             if daily_at is not None:
                 raise ValueError("daily_at is only valid for daily_at schedules")
-        elif daily_at is None:
-            raise ValueError("daily_at is required for daily_at schedules")
+        else:
+            if interval_minutes is not None:
+                raise ValueError("interval_minutes is only valid for interval schedules")
+            if daily_at is None:
+                raise ValueError("daily_at is required for daily_at schedules")
         if interval_minutes is not None and not isinstance(interval_minutes, int):
             raise ValueError("interval_minutes must be an integer")
         for value, label, maximum in (
-            (page_budget, "page_budget", _MAX_PAGE_BUDGET),
             (item_budget, "item_budget", _MAX_ITEM_BUDGET),
             (byte_budget, "byte_budget", _MAX_BYTE_BUDGET),
             (requests_per_minute, "requests_per_minute", _MAX_REQUESTS_PER_MINUTE),
@@ -234,7 +278,6 @@ class CustomSourceProfileDraft:
             interval_minutes=interval_minutes,
             daily_at=daily_at,
             timezone=normalized_timezone,
-            page_budget=page_budget,
             item_budget=item_budget,
             byte_budget=byte_budget,
             requests_per_minute=requests_per_minute,
@@ -264,8 +307,8 @@ class CustomSourceProfile(Base):
             name="ck_custom_source_profiles_schedule_boundary",
         ),
         CheckConstraint(
-            "page_budget BETWEEN 1 AND 100 AND item_budget BETWEEN 1 AND 10000 "
-            "AND byte_budget BETWEEN 1 AND 10000000 AND requests_per_minute BETWEEN 1 AND 60",
+            "item_budget BETWEEN 1 AND 10000 AND byte_budget BETWEEN 1 AND 10000000 "
+            "AND requests_per_minute BETWEEN 1 AND 60",
             name="ck_custom_source_profiles_budgets",
         ),
         CheckConstraint(
@@ -278,7 +321,9 @@ class CustomSourceProfile(Base):
         ),
         CheckConstraint("length(btrim(name)) > 0", name="ck_custom_source_profiles_name_not_blank"),
         CheckConstraint(
-            "base_url ~ '^https://[^/?#]+(/[^?#]*)?$'",
+            "base_url ~ '^[!-~]+$' "
+            "AND base_url ~* '^https://[a-z0-9][a-z0-9.-]*[.][a-z][a-z0-9-]*(/[^?#]*)?$' "
+            "AND base_url !~* '(%2e|%25|%2f|%5c|(^|/)[.]{1,2}(/|$))'",
             name="ck_custom_source_profiles_https_base_url",
         ),
         CheckConstraint(
@@ -362,7 +407,6 @@ class CustomSourceProfile(Base):
     timezone: Mapped[str] = mapped_column(
         String(64), default=_DEFAULT_TIMEZONE, server_default=text("'Asia/Ho_Chi_Minh'")
     )
-    page_budget: Mapped[int] = mapped_column(Integer, default=10, server_default=text("10"))
     item_budget: Mapped[int] = mapped_column(Integer, default=500, server_default=text("500"))
     byte_budget: Mapped[int] = mapped_column(
         Integer, default=2_000_000, server_default=text("2000000")

@@ -150,6 +150,21 @@ def test_redirect_limit_is_enforced() -> None:
     assert captured.value.code is FetchErrorCode.TOO_MANY_REDIRECTS
 
 
+def test_successful_redirect_chain_is_preserved_without_response_body() -> None:
+    transport = SequenceTransport(
+        (
+            _response(status=302, payload=b"", headers={"location": "/jobs/final"}),
+            _response(content_type="text/html", payload=b"<html></html>"),
+        )
+    )
+    policy = replace(VNG_CAREERS.fetch_policy, allowed_path_prefixes=("/jobs",))
+
+    result = _fetcher(transport).fetch("https://career.vng.com.vn/jobs", policy)
+
+    assert result.final_url == "https://career.vng.com.vn/jobs/final"
+    assert result.redirect_chain == ("https://career.vng.com.vn/jobs/final",)
+
+
 @pytest.mark.parametrize(
     ("response", "expected_code"),
     [

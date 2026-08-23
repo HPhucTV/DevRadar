@@ -6,7 +6,11 @@ from dataclasses import dataclass
 from enum import StrEnum
 from urllib.parse import urlsplit, urlunsplit
 
-from devradar.custom_sources.models import CustomSourceProfileDraft
+from devradar.custom_sources.models import (
+    CustomSourceProfileDraft,
+    host_is_ip_literal,
+    path_has_unsafe_boundary_syntax,
+)
 from devradar.ingestion.safe_http import FetchError, FetchErrorCode
 from devradar.ingestion.source_registry import FetchPolicy
 
@@ -79,6 +83,7 @@ def validate_custom_target(url: str, policy: FetchPolicy) -> str:
         or parsed.password
         or port is not None
         or parsed.fragment
+        or host_is_ip_literal(host)
     ):
         raise FetchError(
             FetchErrorCode.INVALID_URL,
@@ -86,6 +91,12 @@ def validate_custom_target(url: str, policy: FetchPolicy) -> str:
             retryable=False,
         )
     path = parsed.path or "/"
+    if path_has_unsafe_boundary_syntax(path):
+        raise FetchError(
+            FetchErrorCode.INVALID_URL,
+            "Custom source URL path has unsafe boundary syntax.",
+            retryable=False,
+        )
     if host not in policy.allowed_hosts or not _path_is_allowed(path, policy.allowed_path_prefixes):
         raise FetchError(
             FetchErrorCode.POLICY_BLOCKED,

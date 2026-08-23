@@ -71,9 +71,11 @@ def list_sources(
     pagination: Annotated[PaginationQuery, Query()],
     session: DatabaseSession,
 ) -> SourceListResponse:
-    total_items = session.scalar(select(func.count()).select_from(Source)) or 0
+    approved = Source.approval_status == SourceApprovalStatus.APPROVED
+    total_items = session.scalar(select(func.count()).select_from(Source).where(approved)) or 0
     sources = session.scalars(
         select(Source)
+        .where(approved)
         .order_by(Source.name.asc(), Source.id.asc())
         .offset((pagination.page - 1) * pagination.page_size)
         .limit(pagination.page_size)
@@ -96,7 +98,12 @@ def get_source(
     source_id: Annotated[UUID, Path(alias="sourceId")],
     session: DatabaseSession,
 ) -> SourceDetailResponse:
-    source = session.get(Source, source_id)
+    source = session.scalar(
+        select(Source).where(
+            Source.id == source_id,
+            Source.approval_status == SourceApprovalStatus.APPROVED,
+        )
+    )
     if source is None:
         raise HTTPException(status_code=404)
     summary = _summary(source)

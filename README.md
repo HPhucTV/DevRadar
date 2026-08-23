@@ -101,6 +101,7 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [V6-012 production web Compose](docs/evidence/V6-012-production-web-compose.md): standalone web image, hardened Compose, BFF smoke và dual-image deploy/rollback evidence.
 - [V6-013 DigitalOcean production foundation](docs/evidence/V6-013-digitalocean-production-foundation.md): patched Caddy scratch ingress, immutable release contract, firewall cleanup, local Compose smoke và exact-SHA seven-job CI; chưa claim live provider.
 - [V6-014 backup/Uptime evidence](docs/evidence/V6-014-backup-uptime.md): custom restic build/scan, local encrypted init/backup/check/retention/restore smoke, exact-SHA seven-job CI và provider boundary chưa có credential.
+- [V6-016 custom source evidence](docs/evidence/V6-016-custom-source-profiles.md): owner-local protected profile, live preview gate, schedule/worker/history flow, full PostgreSQL/web/static gates và no-bypass boundary đã pass; production example vẫn default-disable.
 - [Operations](docs/OPERATIONS.md): test, security, observability, retention, CI/CD và deployment gates.
 - [Source discovery](docs/sources/SHORTLIST.md): evidence và approval outcome; VNG, NAVER Vietnam/Greenhouse và MoMo đã được duyệt cho bounded Vietnam scope, RemoteJobs.org được duyệt riêng cho V3 remote cohort có attribution, GeoComply/Lever vẫn `permission_required`.
 - [Pre-V1 local evidence](docs/evidence/PRE-007-local-prerequisites.md): Docker/PostgreSQL capability và constraint đã xác minh.
@@ -133,6 +134,8 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [DeepSeek V3 spike module](src/devradar/intelligence/deepseek_spike.py): synthetic-only, fail-closed JSON extraction spike; không phải production provider adapter.
 - [Roadmap](docs/ROADMAP.md): kế hoạch V1–V6 và definition of done.
 - [Architecture Decision Records](docs/decisions/README.md): quyết định đã chấp nhận và quyết định còn đề xuất.
+- [Custom source profile design](docs/superpowers/specs/2026-08-23-custom-source-profile-design.md): URL owner-local, bounded parser/scheduler và preview gate.
+- [Custom source profile ADR](docs/decisions/0024-accept-local-custom-source-profiles-without-bypass.md): boundary local/protected và cấm vượt access control.
 - [V6-001 auth ADR](docs/decisions/0015-accept-v6-authentication-strategy.md): session-based authentication, CSRF, role và owner-header migration boundary.
 - [Ý tưởng ban đầu](DevRadar_Agentic_Job_Market_Intelligence.md): tài liệu tham khảo gốc, không phải bằng chứng trạng thái triển khai.
 
@@ -303,6 +306,25 @@ docker compose --env-file .env.example --profile crawler run --rm crawler work-o
 ```
 
 Queue rỗng trả `{"processed": false}` và exit `0`. Command này có thể gọi network nếu có pending run hợp lệ; nó chỉ resolve source từ allow-list đã duyệt và không nhận URL tùy ý.
+
+Custom source profiles đã hoàn tất cho boundary local/protected. Chúng không nâng source thành globally approved và chỉ được bật sau preview thành công. Khi feature flag local đã bật, worker opt-in xử lý profile enabled/degraded:
+
+```powershell
+$env:DEVRADAR_CUSTOM_SOURCES_LOCAL_ENABLED = 'true'
+try {
+    .venv\Scripts\python -m devradar.cli custom-source-worker --once --deadline-minutes 10
+} finally {
+    Remove-Item Env:\DEVRADAR_CUSTOM_SOURCES_LOCAL_ENABLED -ErrorAction SilentlyContinue
+}
+```
+
+Trong Compose, service `crawler` vẫn không tự chạy network khi được bật; dùng command tường minh sau khi database/API đã sẵn sàng:
+
+```powershell
+docker compose --env-file .env.example --profile crawler run --rm crawler custom-source-worker --once --deadline-minutes 10
+```
+
+`DEVRADAR_CUSTOM_SOURCES_LOCAL_ENABLED` mặc định `false` và phải giữ `false` trên public deployment. CAPTCHA, authentication, paywall và anti-bot response bị chặn an toàn, không có thao tác vượt kiểm soát truy cập. Full PostgreSQL/browser/Compose evidence của flow local/protected đã pass tại [V6-016 evidence](docs/evidence/V6-016-custom-source-profiles.md); public deployment vẫn chưa được mở.
 
 Migration phải chạy trước application feature dùng database. Health hiện vẫn là process liveness, không phải database readiness; PostgreSQL integration evidence được kiểm tra riêng.
 

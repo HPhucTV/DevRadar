@@ -399,3 +399,24 @@ phép nhưng wildcard `*` bị cấm.
 - AlertRule/dispatch của owner khác trả `404`; delete rule đã xóa lặp lại trả `204`.
 - Upload sai magic bytes, vượt request/file/decode/archive limit hoặc malformed bị reject/cleanup. V5-003 chưa có hard CPU timeout/process sandbox nên endpoint vẫn local/protected.
 - Field addition giữ backward compatibility; breaking fixture phải fail contract test.
+
+## Custom source profiles (local/protected)
+
+Các endpoint dưới đây nằm dưới `/api/v1/custom-sources`, yêu cầu session authenticated và feature flag `DEVRADAR_CUSTOM_SOURCES_LOCAL_ENABLED=true`. Mutation và preview cần CSRF. Mọi truy vấn đều owner-scoped; profile của owner khác trả `404` generic.
+
+| Method | Resource | Phase/điều kiện |
+|---|---|---|
+| `GET /custom-sources?page=1&pageSize=50` | list profile | V6 local/protected |
+| `POST /custom-sources` | tạo profile draft | V6 local/protected, HTTPS + permission acknowledgement |
+| `GET /custom-sources/{profileId}` | đọc profile | V6 local/protected, owner |
+| `PATCH /custom-sources/{profileId}` | sửa mapping/lịch hoặc `status=enabled\|paused` | preview thành công trước `enabled` |
+| `DELETE /custom-sources/{profileId}` | retire mềm | giữ dữ liệu lịch sử |
+| `POST /custom-sources/{profileId}/preview` | bounded preview | không ghi canonical ingestion |
+| `GET /custom-sources/{profileId}/crawl-runs` | lịch sử crawl | owner, pagination |
+| `POST /custom-sources/{profileId}/crawl-runs` | enqueue manual run | owner, `Idempotency-Key`, profile enabled/degraded |
+
+Create/patch dùng `name`, `base_url`, `allowed_hosts`, `allowed_path_prefixes`, `parser_mode`, `field_mapping`, `schedule_kind`, đúng một trong `interval_minutes`/`daily_at`, `timezone`, `item_budget`, `byte_budget` và `requests_per_minute`. Generic adapter fetch đúng một configured document mỗi run; API không quảng cáo pagination/page budget khi chưa có deterministic next-page contract. `base_url` chỉ HTTPS hostname, không IP literal, user-info/custom port/query/fragment; path và path prefix phải dùng printable ASCII, không chứa raw/encoded dot segment, encoded slash/backslash hoặc nested percent. `field_mapping` chỉ selector/JSON path subset đã được parser hỗ trợ, JSON path được đánh giá relative theo từng job record và `parser_mode` phải khớp MIME type. Request không có field cho cookie, credential, proxy, auth header, challenge handling hoặc URL override.
+
+Profile response dùng `data` envelope và không trả raw HTML, credential, cookie hay response body. Preview trả `profile`, query-stripped `final_url`/`redirect_chain`, `coverage_status=unknown`, mọi candidate hợp lệ cùng provenance/confidence/warnings và safe `failures`; preview không tạo `Job`, `JobChange`, `CrawlRun`, `missing` hoặc `removed`. `blocked` với `block_reason=permission_required` là terminal cho lần crawl đó và không có API action để vượt access control. Các lỗi chính: `403 custom_sources_disabled`, `404 profile_not_found`, `409 preview_required|profile_not_schedulable|source_run_active`, `422 custom_source_invalid|custom_source_request_invalid|permission_acknowledgement_required`, `503 backend_unavailable`.
+
+Các global/public read surface `GET /sources`, `GET /jobs`, job detail/change history, semantic search và skill analytics chỉ đọc `Source.approval_status=approved`. Approved-source crawl history, CV match generation và alert dispatch cũng loại `owner_authorized_local`. V6-016 chỉ mở profile/run history qua owner-scoped `/custom-sources`; owner-scoped custom-job catalog/analytics chưa có contract nên dữ liệu custom không được lẫn vào public market claims hoặc tenant khác.

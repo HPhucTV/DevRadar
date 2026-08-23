@@ -58,6 +58,22 @@ def test_work_one_reports_empty_queue_without_network(
     assert captured.err == ""
 
 
+def test_custom_source_worker_can_poll_once_without_network(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cli, "get_database_url", lambda: "sqlite://")
+    monkeypatch.setenv("DEVRADAR_CUSTOM_SOURCES_LOCAL_ENABLED", "true")
+    monkeypatch.setattr(cli, "work_one_custom_source", lambda session, *, deadline: None)
+
+    exit_code = main(["custom-source-worker", "--once"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert json.loads(captured.out) == {"lastStatus": None, "processed": 0}
+    assert captured.err == ""
+
+
 def test_download_embedding_model_uses_fixed_boundary_without_database(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

@@ -19,6 +19,9 @@ function forwardedHeaders(request: Request, init: RequestInit): Headers {
   const origin = request.headers.get("origin");
   if (origin) headers.set("origin", origin);
   for (const [key, value] of new Headers(init.headers).entries()) headers.set(key, value);
+  if (typeof init.body === "string" && !headers.has("content-type")) {
+    headers.set("content-type", "application/json");
+  }
   return headers;
 }
 

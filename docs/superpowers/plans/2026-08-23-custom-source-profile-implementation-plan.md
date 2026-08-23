@@ -6,7 +6,9 @@
 
 **Architecture:** Giữ static approved registry cho public/reproducible sources. Thêm CustomSourceProfile owner-scoped gắn với một Source có status owner_authorized_local; profile cung cấp bounded host/path policy, parser mapping và schedule. Preview chạy trước để kiểm tra parser, sau đó PostgreSQL-backed scheduler/worker tạo CrawlRun và tái sử dụng snapshot, normalization, deduplication, change detection cùng health workflow hiện tại.
 
-**Tech Stack:** Python, FastAPI, SQLAlchemy, Alembic, PostgreSQL, existing Playwright runtime cho browser fallback, Next.js App Router, TypeScript, native HTML parsing; không thêm dependency runtime.
+**Tech Stack:** Python, FastAPI, SQLAlchemy, Alembic, PostgreSQL, Next.js App Router, TypeScript và native HTML parsing; không thêm dependency runtime.
+
+**Release scope adjustment:** Trước closeout, implementation được thu hẹp còn một configured document qua HTTP cho mỗi run. `pageBudget`, generic pagination và browser fallback bị loại/defer vì chưa có contract xác định hoặc source cần thiết đã được duyệt; các bước bên dưới được đọc theo scope release này.
 
 **Safety boundary:** Không nhận arbitrary URL trong public API, không lưu credential/cookie/browser profile, không bypass CAPTCHA/auth/paywall/anti-bot. 401/403/429, challenge marker, paywall hoặc redirect/policy failure phải chuyển profile thành blocked với safe reason và không tự retry.
 
@@ -67,11 +69,11 @@ Expected: FAIL because the custom status, draft validator and model do not exist
 
 - [ ] Step 2: Add typed enums and profile draft validation.
 
-Define CustomSourceStatus values draft, preview_ready, enabled, degraded, blocked, paused and retired; CustomParserMode values auto, html and json; and CustomScheduleKind values interval and daily_at. Add CustomSourceProfileDraft validation for HTTPS, no user-info/custom port/fragment, bounded path prefixes, parser mapping keys, timezone, schedule limits, positive page/item/byte budgets, rate limit and explicit permission acknowledgement. Normalize the base URL once and never accept a per-run URL override.
+Define CustomSourceStatus values draft, preview_ready, enabled, degraded, blocked, paused and retired; CustomParserMode values auto, html and json; and CustomScheduleKind values interval and daily_at. Add CustomSourceProfileDraft validation for HTTPS, no user-info/custom port/fragment, bounded path prefixes, parser mapping keys, timezone, schedule limits, positive item/byte budgets, rate limit and explicit permission acknowledgement. Normalize the base URL once and never accept a per-run URL override.
 
 - [ ] Step 3: Add SQLAlchemy profile mapping and source constraint changes.
 
-Create CustomSourceProfile with UUID primary key, unique source_id foreign key to sources, owner user_id foreign key to auth_users, name/status/base URL/allowed hosts/path prefixes, parser mode/version/JSONB field mapping, schedule kind/interval/daily time/timezone, page/item/byte/request budgets, permission acknowledgement timestamp, block reason and timestamps. Extend the source approval check constraint and SQLAlchemy enum length to accept owner_authorized_local while keeping approved review-date requirements unchanged. Import the new model module in migrations/env.py.
+Create CustomSourceProfile with UUID primary key, unique source_id foreign key to sources, owner user_id foreign key to auth_users, name/status/base URL/allowed hosts/path prefixes, parser mode/version/JSONB field mapping, schedule kind/interval/daily time/timezone, item/byte/request budgets, permission acknowledgement timestamp, block reason and timestamps. Extend the source approval check constraint and SQLAlchemy enum length to accept owner_authorized_local while keeping approved review-date requirements unchanged. Import the new model module in migrations/env.py.
 
 - [ ] Step 4: Write and run Alembic migration.
 
@@ -151,7 +153,7 @@ Expected: FAIL until fixtures are parsed into bounded candidates.
 
 Implement HybridCustomParser.parse(payload, content_type, mapping) by validating JSON/API and JSON-LD shapes, parsing bounded HTML with existing project extraction, applying a documented selector subset and JSON path mapping for title/company/location/salary/description/postedAt/externalId/jobUrl, preserving raw values/parser version/source path/warnings, rejecting unsupported selectors instead of guessing, and detecting challenge markers before parsing.
 
-CustomSourceAdapter must implement JobSourceAdapter, never commit data, never navigate outside profile policy, and use fresh browser context only when explicitly selected. Browser fallback reuses existing Playwright sandbox/route restrictions and never solves challenges.
+CustomSourceAdapter must implement JobSourceAdapter, never commit data and never navigate outside profile policy. V6-016 uses SafeHttpFetcher for exactly one configured document per run; browser fallback and generic pagination require a later explicit contract and remain deferred.
 
 - [ ] Step 5: Run parser/adapter tests and commit.
 
@@ -411,7 +413,7 @@ Record exact SHA and CI URL in the handoff. Do not claim public production suppo
 - Spec coverage: domain/migration (Task 1), network/parser (Task 2), preview/API (Task 3), schedule/worker (Task 4), UI/BFF (Task 5), docs/config (Task 6), verification (Task 7).
 - No bypass path is present; challenge and permission failures are explicit negative cases.
 - Static approved registry remains unchanged for public sources; custom status is owner-local and feature-flagged.
-- No new runtime dependency is planned; browser fallback reuses existing Playwright only.
+- No new runtime dependency is planned; browser fallback and generic pagination remain deferred.
 - Preview is non-canonical, preventing false removal or unreviewed dataset pollution.
 - Scheduler uses PostgreSQL row locks and existing CrawlRun idempotency; no Redis/worker pool is introduced.
 - Every public endpoint has owner/CSRF/error/pagination requirements and corresponding tests.

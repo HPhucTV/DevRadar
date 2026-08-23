@@ -428,6 +428,10 @@ Privacy/source policy center đã có `GET /api/v1/privacy`, same-origin BFF `/a
 deletion, deterministic-first/không external CV-JD LLM và `geocomply-lever=permission_required`. [Evidence](evidence/V6-010-privacy-policy-center.md)
 ghi API/web/Compose/browser smoke; không claim public deployment hoặc managed provider.
 
+### V6-016 closeout (`Done`)
+
+Custom source profiles đã hoàn tất theo [ADR-024](decisions/0024-accept-local-custom-source-profiles-without-bypass.md): owner-local/protected URL, preview gate, deterministic multi-record/card mapping, PostgreSQL schedule và bounded one-document HTTP worker. `owner_authorized_local` không nâng source thành global `approved`, không đi vào global catalog/analytics/matching/alerts; challenge/permission failure bị `blocked` và không retry. [Thiết kế](superpowers/specs/2026-08-23-custom-source-profile-design.md), [implementation plan](superpowers/plans/2026-08-23-custom-source-profile-implementation-plan.md) và [evidence](evidence/V6-016-custom-source-profiles.md) ghi PostgreSQL integration, full gates, live authenticated create → preview → enable → queue → worker → history → retire browser flow, fixture cleanup và security/privacy regression fixes. Production example vẫn default-disable; generic pagination/browser fallback, owner-scoped custom-job catalog và public custom-source support chưa thuộc V6-016; task này không đóng V6.
+
 ## 9. Quy tắc cập nhật roadmap
 
 - Chỉ đổi status khi kiểm tra exit criteria và link evidence cụ thể.

@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from html.parser import HTMLParser
 from urllib.parse import urlsplit
 
+from devradar.custom_sources.models import CustomParserMode
 from devradar.custom_sources.policy import CustomFetchOutcome, classify_custom_response
 from devradar.ingestion.normalization import normalize_text
 
 _PARSER_VERSION = "custom-hybrid-v1"
+_MAX_HTML_DEPTH = 256
+_MAX_HTML_NODES = 50_000
 _FIELD_NAMES = frozenset(
     {"title", "company", "location", "salary", "description", "postedAt", "externalId", "jobUrl"}
 )
@@ -72,6 +76,8 @@ class CustomParseResult:
     candidates: tuple[CustomCandidate, ...] = ()
     failures: tuple[CustomParseFailure, ...] = ()
     parser_version: str = _PARSER_VERSION
+    final_url: str | None = None
+    redirect_chain: tuple[str, ...] = ()
 
 
 @dataclass(slots=True)
@@ -82,7 +88,13 @@ class _HtmlNode:
     text_parts: list[str] = field(default_factory=list)
 
     def text(self) -> str:
-        return " ".join(self.text_parts + [child.text() for child in self.children]).strip()
+        parts: list[str] = []
+        stack = [self]
+        while stack:
+            current = stack.pop()
+            parts.extend(current.text_parts)
+            stack.extend(reversed(current.children))
+        return " ".join(parts).strip()
 
 
 class _TreeParser(HTMLParser):
@@ -90,8 +102,12 @@ class _TreeParser(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.root = _HtmlNode("__root__", {})
         self._stack = [self.root]
+        self._node_count = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self._node_count += 1
+        if self._node_count > _MAX_HTML_NODES or len(self._stack) > _MAX_HTML_DEPTH:
+            raise ValueError("HTML structure exceeds parser limits")
         node = _HtmlNode(tag.casefold(), {key.casefold(): value or "" for key, value in attrs})
         self._stack[-1].children.append(node)
         if tag.casefold() not in {
@@ -127,9 +143,11 @@ class _TreeParser(HTMLParser):
 
 def _all_nodes(node: _HtmlNode) -> list[_HtmlNode]:
     result: list[_HtmlNode] = []
-    for child in node.children:
-        result.append(child)
-        result.extend(_all_nodes(child))
+    stack = list(reversed(node.children))
+    while stack:
+        current = stack.pop()
+        result.append(current)
+        stack.extend(reversed(current.children))
     return result
 
 
@@ -243,8 +261,12 @@ def _candidate_from_record(
     provenance = [
         CustomFieldProvenance(
             field_name=_PROVENANCE_NAMES.get(field, field),
-            source_path=f"{source_prefix}.{field}",
-            method=method,
+            source_path=(
+                f"mapping:{mapping[field]}"
+                if mapping is not None and field in mapping
+                else f"{source_prefix}.{field}"
+            ),
+            method="mapping" if mapping is not None and field in mapping else method,
         )
         for field, value in values.items()
         if value is not None
@@ -257,19 +279,46 @@ def _candidate_from_record(
         return None
     if urlsplit(job_url).scheme != "https" or not urlsplit(job_url).hostname:
         return None
+    optional_values = {
+        "location": _clean(values["location"]),
+        "salary": _clean(values["salary"]),
+        "description": _clean(values["description"]),
+        "posted_at": _clean(values["postedAt"]),
+    }
     return CustomCandidate(
         external_id=external_id,
         job_url=job_url,
         title=title,
         company=company,
-        location=_clean(values["location"]),
-        salary=_clean(values["salary"]),
-        description=_clean(values["description"]),
-        posted_at=_clean(values["postedAt"]),
+        location=optional_values["location"],
+        salary=optional_values["salary"],
+        description=optional_values["description"],
+        posted_at=optional_values["posted_at"],
         provenance=tuple(provenance),
         confidence=confidence,
         parser_version=_PARSER_VERSION,
+        warnings=tuple(
+            f"missing_optional:{field_name}"
+            for field_name, value in optional_values.items()
+            if value is None
+        ),
     )
+
+
+def _warn_duplicate_identities(
+    candidates: tuple[CustomCandidate, ...],
+) -> tuple[CustomCandidate, ...]:
+    external_ids = Counter(candidate.external_id for candidate in candidates)
+    job_urls = Counter(candidate.job_url for candidate in candidates)
+    annotated: list[CustomCandidate] = []
+    for candidate in candidates:
+        warnings = list(candidate.warnings)
+        if external_ids[candidate.external_id] > 1:
+            warnings.append("duplicate_external_id")
+        if job_urls[candidate.job_url] > 1:
+            warnings.append("duplicate_job_url")
+        annotated.append(replace(candidate, warnings=tuple(warnings)))
+    return tuple(annotated)
 
 
 class HybridCustomParser:
@@ -282,6 +331,8 @@ class HybridCustomParser:
         payload: bytes | str,
         content_type: str,
         mapping: Mapping[str, str] | None = None,
+        *,
+        mode: CustomParserMode = CustomParserMode.AUTO,
     ) -> CustomParseResult:
         raw = payload.encode("utf-8") if isinstance(payload, str) else payload
         classification = classify_custom_response(200, content_type, raw[:8192])
@@ -319,15 +370,36 @@ class HybridCustomParser:
                 )
             )
         mime_type = content_type.split(";", 1)[0].strip().casefold()
-        if mime_type in {"application/json", "application/ld+json"}:
-            return self._parse_json(text, normalized_mapping)
-        if mime_type in {"text/html", "application/xhtml+xml"}:
-            return self._parse_html(text, normalized_mapping)
-        return CustomParseResult(
-            failures=(
-                CustomParseFailure("unsupported_content", "Source content type is unsupported."),
+        if (
+            mode is CustomParserMode.JSON
+            and mime_type not in {"application/json", "application/ld+json"}
+        ) or (
+            mode is CustomParserMode.HTML
+            and mime_type not in {"text/html", "application/xhtml+xml"}
+        ):
+            return CustomParseResult(
+                failures=(
+                    CustomParseFailure(
+                        "parser_mode_mismatch",
+                        "Source content type does not match the saved parser mode.",
+                    ),
+                )
             )
-        )
+        if mime_type in {"application/json", "application/ld+json"}:
+            result = self._parse_json(text, normalized_mapping)
+        elif mime_type in {"text/html", "application/xhtml+xml"}:
+            result = self._parse_html(text, normalized_mapping)
+        else:
+            return CustomParseResult(
+                failures=(
+                    CustomParseFailure(
+                        "unsupported_content", "Source content type is unsupported."
+                    ),
+                )
+            )
+        if result.candidates:
+            return replace(result, candidates=_warn_duplicate_identities(result.candidates))
+        return result
 
     def _parse_json(self, text: str, mapping: Mapping[str, str]) -> CustomParseResult:
         try:
@@ -366,7 +438,7 @@ class HybridCustomParser:
             mapped_record = dict(record)
             for field_name, expression in mapping.items():
                 try:
-                    mapped_record[field_name] = _json_path(document, expression)
+                    mapped_record[field_name] = _json_path(record, expression)
                 except ValueError:
                     return CustomParseResult(
                         failures=(
@@ -380,6 +452,7 @@ class HybridCustomParser:
                 source_prefix=f"{prefix}[{index}]",
                 method="json",
                 confidence=0.92,
+                mapping=mapping,
             )
             if candidate is not None:
                 candidates.append(candidate)
@@ -432,7 +505,7 @@ class HybridCustomParser:
         if jsonld_candidates and not mapping:
             return CustomParseResult(candidates=tuple(jsonld_candidates))
         try:
-            html_candidate = self._parse_html_mapping(tree.root, mapping)
+            html_candidates = self._parse_html_mapping(tree.root, mapping)
         except ValueError:
             return CustomParseResult(
                 failures=(
@@ -441,8 +514,8 @@ class HybridCustomParser:
                     ),
                 )
             )
-        if html_candidate is not None:
-            return CustomParseResult(candidates=(html_candidate,))
+        if html_candidates:
+            return CustomParseResult(candidates=html_candidates)
         if jsonld_candidates:
             return CustomParseResult(candidates=tuple(jsonld_candidates))
         if invalid_jsonld:
@@ -461,7 +534,7 @@ class HybridCustomParser:
         self,
         root: _HtmlNode,
         mapping: Mapping[str, str],
-    ) -> CustomCandidate | None:
+    ) -> tuple[CustomCandidate, ...]:
         cards = tuple(
             node
             for node in _all_nodes(root)
@@ -470,6 +543,7 @@ class HybridCustomParser:
         )
         if not cards:
             cards = (root,)
+        candidates: list[CustomCandidate] = []
         for card in cards:
             values: dict[str, object] = {}
             provenance: list[CustomFieldProvenance] = []
@@ -481,12 +555,15 @@ class HybridCustomParser:
                 value = node.attrs.get(attribute, "") if attribute else node.text()
                 values[field_name] = value
                 provenance.append(
-                    CustomFieldProvenance(field_name, f"mapping:{expression}", "mapping")
+                    CustomFieldProvenance(
+                        _PROVENANCE_NAMES.get(field_name, field_name),
+                        f"mapping:{expression}",
+                        "mapping",
+                    )
                 )
-            values.setdefault(
-                "externalId", card.attrs.get("data-job-id") or card.attrs.get("data-id")
-            )
-            if values.get("externalId"):
+            fallback_external_id = card.attrs.get("data-job-id") or card.attrs.get("data-id")
+            if "externalId" not in values and fallback_external_id:
+                values["externalId"] = fallback_external_id
                 provenance.append(CustomFieldProvenance("external_id", "html:data-job-id", "html"))
             if "jobUrl" not in values:
                 links = tuple(
@@ -520,8 +597,10 @@ class HybridCustomParser:
                 confidence=0.78 if mapping else 0.68,
             )
             if candidate is not None:
-                return replace(
-                    candidate,
-                    provenance=tuple((*provenance, *candidate.provenance)),
+                candidates.append(
+                    replace(
+                        candidate,
+                        provenance=tuple(provenance),
+                    )
                 )
-        return None
+        return tuple(candidates)

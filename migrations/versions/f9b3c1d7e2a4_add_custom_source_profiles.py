@@ -80,7 +80,6 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("'Asia/Ho_Chi_Minh'"),
         ),
-        sa.Column("page_budget", sa.Integer(), nullable=False, server_default=sa.text("10")),
         sa.Column("item_budget", sa.Integer(), nullable=False, server_default=sa.text("500")),
         sa.Column("byte_budget", sa.Integer(), nullable=False, server_default=sa.text("2000000")),
         sa.Column("requests_per_minute", sa.Integer(), nullable=False, server_default=sa.text("2")),
@@ -119,8 +118,8 @@ def upgrade() -> None:
             name="ck_custom_source_profiles_schedule_boundary",
         ),
         sa.CheckConstraint(
-            "page_budget BETWEEN 1 AND 100 AND item_budget BETWEEN 1 AND 10000 "
-            "AND byte_budget BETWEEN 1 AND 10000000 AND requests_per_minute BETWEEN 1 AND 60",
+            "item_budget BETWEEN 1 AND 10000 AND byte_budget BETWEEN 1 AND 10000000 "
+            "AND requests_per_minute BETWEEN 1 AND 60",
             name="ck_custom_source_profiles_budgets",
         ),
         sa.CheckConstraint(
@@ -135,7 +134,9 @@ def upgrade() -> None:
             "length(btrim(name)) > 0", name="ck_custom_source_profiles_name_not_blank"
         ),
         sa.CheckConstraint(
-            "base_url ~ '^https://[^/?#]+(/[^?#]*)?$'",
+            "base_url ~ '^[!-~]+$' "
+            "AND base_url ~* '^https://[a-z0-9][a-z0-9.-]*[.][a-z][a-z0-9-]*(/[^?#]*)?$' "
+            "AND base_url !~* '(%2e|%25|%2f|%5c|(^|/)[.]{1,2}(/|$))'",
             name="ck_custom_source_profiles_https_base_url",
         ),
         sa.CheckConstraint(
@@ -179,6 +180,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    has_custom_rows = op.get_bind().scalar(
+        sa.text(
+            "SELECT EXISTS (SELECT 1 FROM custom_source_profiles) "
+            "OR EXISTS (SELECT 1 FROM sources WHERE adapter_key = 'custom_source')"
+        )
+    )
+    if has_custom_rows:
+        raise RuntimeError("Remove custom source rows before downgrading this migration.")
     op.drop_index("ix_custom_source_profiles_status_next_run", table_name="custom_source_profiles")
     op.drop_index("ix_custom_source_profiles_owner_status", table_name="custom_source_profiles")
     op.drop_table("custom_source_profiles")

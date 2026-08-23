@@ -289,3 +289,18 @@ V1 dùng hash schema `job-content-v1`: canonical URL; title/company/description;
 - Từ V2, không tạo JobChange khi `job_content_hash` không đổi.
 - Một JobSkill phải có evidence/extraction provenance.
 - Match score phải nằm trong `[0, 1]`, có scoring version và component evidence.
+
+## 8. Owner-local custom source profile
+
+`CustomSourceProfile` là cấu hình owner-scoped cho một URL mà operator xác nhận mình có quyền truy cập. Nó không thay thế `Source` trong registry và không biến URL đó thành source `approved` dùng chung.
+
+- `SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL`: trạng thái riêng cho source local/protected; không tham gia claim dataset approved.
+- `CustomSourceStatus`: `draft → preview_ready → enabled`; lỗi có thể đưa profile sang `degraded` hoặc `blocked`; chỉ profile `enabled`/`degraded` mới được pause, và `retired` là terminal.
+- `permission_acknowledged_at`: bằng chứng operator đã xác nhận quyền truy cập, không phải chứng nhận pháp lý và không thay thế review terms/robots.
+- `CustomSourceProfile` giữ HTTPS hostname base URL cùng printable-ASCII host/path boundary không có raw/encoded dot segment, encoded slash/backslash hoặc nested percent, parser mode/mapping, item/byte/rate budget và lịch. Generic adapter hiện fetch đúng một configured document mỗi run; không lưu credential, cookie hoặc persistent browser profile.
+
+Preview là non-canonical: nó không tạo `CrawlRun`, `RawJobSnapshot`, `Job` hoặc `JobChange`. Chỉ profile có preview thành công mới được enable schedule. Crawl thật đi qua `CrawlRun → RawJobSnapshot → Job` hiện hành; một crawl lỗi, partial hoặc coverage unknown không tạo tín hiệu `missing`/`removed`.
+
+`blocked` với `block_reason=permission_required` bao gồm HTTP access denial, CAPTCHA/challenge, paywall hoặc anti-bot marker. Trạng thái này không được tự retry và UI không cung cấp hành động vượt qua kiểm soát truy cập.
+
+`owner_authorized_local` không đồng nghĩa quyền đọc global. `Source`, `Job`, `CrawlRun` và derived result từ profile này bị loại khỏi public/approved catalog, analytics, CV matching và alert dispatch cho tới khi có owner-scoped custom-job contract.

@@ -61,10 +61,16 @@ def _payload(*, skills: bool = True) -> dict[str, object]:
     }
 
 
-def _seed(session: Session, *, job_count: int = 1) -> tuple[ResumeProfile, list[Job]]:
+def _seed(
+    session: Session,
+    *,
+    job_count: int = 1,
+    source_name: str = "Generation fixture",
+    profile_content_hash: str = "c" * 64,
+) -> tuple[ResumeProfile, list[Job]]:
     now = datetime.now(UTC)
     source = Source(
-        name="Generation fixture",
+        name=source_name,
         base_url="https://careers.example.test/careers",
         adapter_key="generation_fixture",
         approval_status=SourceApprovalStatus.APPROVED,
@@ -126,7 +132,7 @@ def _seed(session: Session, *, job_count: int = 1) -> tuple[ResumeProfile, list[
         jobs.append(job)
     profile = ResumeProfile(
         owner_hash="b" * 64,
-        content_hash="c" * 64,
+        content_hash=profile_content_hash,
         file_name_sanitized="private-profile.pdf",
         source_format="pdf",
         parser_version="resume-profile-parser-v1",
@@ -283,6 +289,42 @@ def test_generation_only_considers_active_jobs_with_current_compatible_embedding
         assert report.unavailable_jobs == 1
         assert report.stored_matches == 1
         assert session.scalar(select(JobMatch.job_id)) == jobs[0].id
+    engine.dispose()
+
+
+@pytest.mark.postgresql
+def test_generation_excludes_owner_local_jobs_from_global_match_catalog(
+    fresh_postgresql_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(DATABASE_URL_ENV, fresh_postgresql_url)
+    command.upgrade(Config(str(PROJECT_ROOT / "alembic.ini")), "head")
+    engine = create_engine(fresh_postgresql_url)
+    with Session(engine) as session:
+        profile, approved_jobs = _seed(session, job_count=1)
+        _, custom_jobs = _seed(
+            session,
+            job_count=1,
+            source_name="Owner local fixture",
+            profile_content_hash="d" * 64,
+        )
+        custom_source = session.get(Source, custom_jobs[0].source_id)
+        assert custom_source is not None
+        custom_source.approval_status = SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL
+        session.commit()
+
+        report = generate_job_matches(
+            session,
+            profile_id=profile.id,
+            owner_hash=profile.owner_hash,
+            now=profile.created_at,
+            embed_profile=lambda _text: tuple([1.0] + [0.0] * (EMBEDDING_DIMENSION - 1)),
+        )
+
+        assert report.considered_jobs == 1
+        assert report.available_jobs == 1
+        assert session.scalar(select(func.count()).select_from(JobMatch)) == 1
+        assert session.scalar(select(JobMatch.job_id)) == approved_jobs[0].id
     engine.dispose()
 
 

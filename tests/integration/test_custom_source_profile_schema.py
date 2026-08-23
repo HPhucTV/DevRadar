@@ -66,7 +66,6 @@ def test_custom_source_profile_schema_enforces_owner_and_schedule(
                 schedule_kind=CustomScheduleKind.DAILY_AT,
                 daily_at=time(9, 0),
                 timezone="Asia/Ho_Chi_Minh",
-                page_budget=10,
                 item_budget=500,
                 byte_budget=2_000_000,
                 requests_per_minute=2,
@@ -89,7 +88,6 @@ def test_custom_source_profile_schema_enforces_owner_and_schedule(
                 interval_minutes=None,
                 daily_at=time(9, 0),
                 timezone="Asia/Ho_Chi_Minh",
-                page_budget=10,
                 item_budget=500,
                 byte_budget=2_000_000,
                 requests_per_minute=2,
@@ -99,5 +97,116 @@ def test_custom_source_profile_schema_enforces_owner_and_schedule(
             with pytest.raises(IntegrityError, match="ck_custom_source_profiles_schedule_boundary"):
                 session.commit()
             session.rollback()
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.postgresql
+def test_custom_source_profile_schema_rejects_unsafe_base_urls(
+    fresh_postgresql_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(DATABASE_URL_ENV, fresh_postgresql_url)
+    command.upgrade(_alembic_config(), "head")
+    engine = create_engine(fresh_postgresql_url)
+    try:
+        with Session(engine) as session:
+            user = User(username=f"owner{uuid4().hex[:8]}", password_hash="x" * 64)
+            session.add(user)
+            session.commit()
+            for unsafe_url in (
+                "https://user@example.test/jobs",
+                "https://example.test:443/jobs",
+                "https://8.8.8.8/jobs",
+                "https://example.test/jobs/../admin",
+                "https://example.test/jobs/%252e%252e/admin",
+                "https://example.test/công-việc",
+                "https://example.test/jobs%2farchive",
+                "https://example.test/jobs%25archive",
+            ):
+                source = Source(
+                    name=f"Custom {uuid4().hex[:8]}",
+                    base_url=unsafe_url,
+                    adapter_key="custom_source",
+                    approval_status=SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL,
+                    rate_limit_policy={"requests_per_minute": 2, "concurrency": 1},
+                    allowed_hosts=["example.test"],
+                )
+                session.add(source)
+                session.flush()
+                session.add(
+                    CustomSourceProfile(
+                        source_id=source.id,
+                        owner_user_id=user.id,
+                        name="Unsafe profile",
+                        status=CustomSourceStatus.DRAFT,
+                        base_url=unsafe_url,
+                        allowed_hosts=["example.test"],
+                        allowed_path_prefixes=["/jobs"],
+                        parser_mode=CustomParserMode.AUTO,
+                        field_mapping={},
+                        schedule_kind=CustomScheduleKind.INTERVAL,
+                        interval_minutes=360,
+                        timezone="Asia/Ho_Chi_Minh",
+                        item_budget=500,
+                        byte_budget=2_000_000,
+                        requests_per_minute=2,
+                        permission_acknowledged_at=datetime.now(UTC),
+                    )
+                )
+                with pytest.raises(
+                    IntegrityError, match="ck_custom_source_profiles_https_base_url"
+                ):
+                    session.commit()
+                session.rollback()
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.postgresql
+def test_custom_source_profile_downgrade_refuses_existing_custom_rows(
+    fresh_postgresql_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(DATABASE_URL_ENV, fresh_postgresql_url)
+    command.upgrade(_alembic_config(), "head")
+    engine = create_engine(fresh_postgresql_url)
+    try:
+        with Session(engine) as session:
+            user = User(username=f"owner{uuid4().hex[:8]}", password_hash="x" * 64)
+            source = Source(
+                name=f"Custom {uuid4().hex[:8]}",
+                base_url="https://example.test/jobs",
+                adapter_key="custom_source",
+                approval_status=SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL,
+                rate_limit_policy={"requests_per_minute": 2, "concurrency": 1},
+                allowed_hosts=["example.test"],
+            )
+            session.add_all((user, source))
+            session.flush()
+            session.add(
+                CustomSourceProfile(
+                    source_id=source.id,
+                    owner_user_id=user.id,
+                    name="Existing profile",
+                    status=CustomSourceStatus.DRAFT,
+                    base_url="https://example.test/jobs",
+                    allowed_hosts=["example.test"],
+                    allowed_path_prefixes=["/jobs"],
+                    parser_mode=CustomParserMode.AUTO,
+                    field_mapping={},
+                    schedule_kind=CustomScheduleKind.INTERVAL,
+                    interval_minutes=360,
+                    timezone="Asia/Ho_Chi_Minh",
+                    item_budget=500,
+                    byte_budget=2_000_000,
+                    requests_per_minute=2,
+                    permission_acknowledged_at=datetime.now(UTC),
+                )
+            )
+            session.commit()
+
+            with pytest.raises(RuntimeError, match="custom source rows"):
+                command.downgrade(_alembic_config(), "a7b8c9d0e1f2")
+
+            assert "custom_source_profiles" in inspect(engine).get_table_names()
     finally:
         engine.dispose()

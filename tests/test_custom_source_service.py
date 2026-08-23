@@ -139,3 +139,95 @@ def test_arbitrary_url_field_and_unapproved_status_transition_are_rejected(
             profile_id=profile.id,
             status=CustomSourceStatus.ENABLED,
         )
+
+
+def test_paused_profile_can_resume_after_a_successful_preview(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DEVRADAR_CUSTOM_SOURCES_LOCAL_ENABLED", "true")
+    session = FakeSession()
+    profile = create_profile(session, owner_user_id=uuid4(), draft=_draft())  # type: ignore[arg-type]
+    preview_profile(
+        session,  # type: ignore[arg-type]
+        owner_user_id=profile.owner_user_id,
+        profile_id=profile.id,
+        runner=lambda current: CustomParseResult(
+            candidates=(
+                CustomCandidate(
+                    external_id="1",
+                    job_url="https://example.test/jobs/1",
+                    title="Backend",
+                    company="Example",
+                    provenance=(CustomFieldProvenance("title", "html:heading", "html"),),
+                    confidence=0.8,
+                ),
+            )
+        ),
+    )
+    update_profile(
+        session,  # type: ignore[arg-type]
+        owner_user_id=profile.owner_user_id,
+        profile_id=profile.id,
+        status=CustomSourceStatus.ENABLED,
+    )
+    update_profile(
+        session,  # type: ignore[arg-type]
+        owner_user_id=profile.owner_user_id,
+        profile_id=profile.id,
+        status=CustomSourceStatus.PAUSED,
+    )
+    update_profile(
+        session,  # type: ignore[arg-type]
+        owner_user_id=profile.owner_user_id,
+        profile_id=profile.id,
+        status=CustomSourceStatus.ENABLED,
+    )
+    assert profile.status is CustomSourceStatus.ENABLED
+
+
+@pytest.mark.parametrize(
+    ("current_status", "expected_code"),
+    [
+        (CustomSourceStatus.DRAFT, "preview_required"),
+        (CustomSourceStatus.BLOCKED, "preview_required"),
+        (CustomSourceStatus.RETIRED, "profile_retired"),
+    ],
+)
+def test_invalid_state_cannot_use_pause_to_bypass_preview_gate(
+    monkeypatch: pytest.MonkeyPatch,
+    current_status: CustomSourceStatus,
+    expected_code: str,
+) -> None:
+    monkeypatch.setenv("DEVRADAR_CUSTOM_SOURCES_LOCAL_ENABLED", "true")
+    session = FakeSession()
+    profile = create_profile(session, owner_user_id=uuid4(), draft=_draft())  # type: ignore[arg-type]
+    profile.status = current_status
+    if current_status is CustomSourceStatus.BLOCKED:
+        profile.block_reason = "permission_required"
+
+    with pytest.raises(CustomSourceServiceError) as captured:
+        update_profile(
+            session,  # type: ignore[arg-type]
+            owner_user_id=profile.owner_user_id,
+            profile_id=profile.id,
+            status=CustomSourceStatus.PAUSED,
+        )
+
+    assert captured.value.code == expected_code
+    assert profile.status is current_status
+
+
+def test_owner_cannot_set_workflow_managed_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DEVRADAR_CUSTOM_SOURCES_LOCAL_ENABLED", "true")
+    session = FakeSession()
+    profile = create_profile(session, owner_user_id=uuid4(), draft=_draft())  # type: ignore[arg-type]
+
+    with pytest.raises(CustomSourceServiceError, match="controlled"):
+        update_profile(
+            session,  # type: ignore[arg-type]
+            owner_user_id=profile.owner_user_id,
+            profile_id=profile.id,
+            status=CustomSourceStatus.PREVIEW_READY,
+        )

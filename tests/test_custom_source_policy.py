@@ -37,6 +37,25 @@ def test_custom_policy_rejects_private_dns_and_path_escape() -> None:
         fetcher.fetch(draft.base_url, policy)
     assert captured.value.code is FetchErrorCode.POLICY_BLOCKED
 
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://example.test/jobs/../admin",
+        "https://example.test/jobs/%2e%2e/admin",
+        "https://example.test/jobs/%252e%252e/admin",
+        "https://example.test/jobs/%2e%2e%2fadmin",
+        "https://example.test/jobs/..%5cadmin",
+    ],
+)
+def test_custom_policy_rejects_raw_or_encoded_dot_segment_escape(url: str) -> None:
+    policy = build_custom_fetch_policy(_draft())
+
+    with pytest.raises(FetchError) as captured:
+        validate_custom_target(url, policy)
+
+    assert captured.value.code in {FetchErrorCode.INVALID_URL, FetchErrorCode.POLICY_BLOCKED}
+
     with pytest.raises(FetchError) as captured:
         validate_custom_target("https://example.test/admin", policy)
     assert captured.value.code is FetchErrorCode.POLICY_BLOCKED
@@ -71,6 +90,7 @@ def test_custom_policy_revalidates_redirect_host_and_path() -> None:
         "http://example.test/jobs",
         "https://user:pass@example.test/jobs",
         "https://example.test:443/jobs",
+        "https://8.8.8.8/jobs",
         "https://example.test/jobs#section",
     ],
 )
@@ -93,7 +113,7 @@ def test_challenge_response_is_permission_required_and_not_transient() -> None:
 
 
 def test_policy_limits_are_derived_from_persisted_profile() -> None:
-    draft = _draft(page_budget=4, item_budget=25, byte_budget=123_456, requests_per_minute=3)
+    draft = _draft(item_budget=25, byte_budget=123_456, requests_per_minute=3)
     policy = build_custom_fetch_policy(draft)
     assert policy.allowed_hosts == ("example.test",)
     assert policy.allowed_path_prefixes == ("/jobs",)

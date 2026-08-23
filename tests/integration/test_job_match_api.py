@@ -3,15 +3,19 @@ from __future__ import annotations
 from collections.abc import Iterator
 from hashlib import sha256
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
+from devradar.catalog.models import Job
+from devradar.ingestion.models import Source, SourceApprovalStatus
 from devradar.main import app
+from devradar.matching.models import JobMatch
 from devradar.platform.database import DATABASE_URL_ENV, _database_engine
 from integration.test_job_match_generation import _seed
 
@@ -120,6 +124,33 @@ def test_generate_replay_get_pagination_and_min_score(
     assert '"embedding":' not in listed.text.casefold()
     assert fake.calls == 2
     del database_url
+
+
+@pytest.mark.postgresql
+def test_match_list_hides_rows_when_job_source_is_not_globally_approved(
+    match_api: tuple[TestClient, str, str, FakeEmbeddingModel],
+) -> None:
+    client, database_url, profile_id, _ = match_api
+    headers = {OWNER_HEADER: OWNER_TOKEN}
+    assert client.post(f"/api/v1/resume-profiles/{profile_id}/matches", headers=headers).is_success
+
+    engine = create_engine(database_url)
+    with Session(engine) as session:
+        source = session.scalar(
+            select(Source)
+            .join(Job, Job.source_id == Source.id)
+            .join(JobMatch, JobMatch.job_id == Job.id)
+            .where(JobMatch.resume_profile_id == UUID(profile_id))
+        )
+        assert source is not None
+        source.approval_status = SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL
+        session.commit()
+    engine.dispose()
+
+    listed = client.get(f"/api/v1/resume-profiles/{profile_id}/matches", headers=headers)
+    assert listed.status_code == 200
+    assert listed.json()["data"] == []
+    assert listed.json()["pagination"]["totalItems"] == 0
 
 
 @pytest.mark.postgresql

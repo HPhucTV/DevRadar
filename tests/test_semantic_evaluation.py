@@ -40,7 +40,9 @@ def test_semantic_dataset_is_versioned_synthetic_and_held_out_complete() -> None
 
 
 def test_semantic_model_selection_fixture_is_frozen_and_development_only() -> None:
-    raw = DEVELOPMENT_SELECTION_PATH.read_bytes()
+    # Normalize checkout line endings before hashing so the frozen blob hash is
+    # stable on Windows worktrees with core.autocrlf enabled.
+    raw = DEVELOPMENT_SELECTION_PATH.read_bytes().replace(b"\r\n", b"\n")
     payload = json.loads(raw)
 
     assert payload["datasetVersion"] == "semantic-retrieval-dev-v2"

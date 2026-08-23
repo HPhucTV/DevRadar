@@ -70,6 +70,7 @@ class FetchResult:
     content_type: str
     payload: bytes
     raw_content_hash: str
+    redirect_chain: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         _require_https_url(self.final_url, "final_url")
@@ -80,6 +81,8 @@ class FetchResult:
         _require_sha256(self.raw_content_hash, "raw_content_hash")
         if sha256(self.payload).hexdigest() != self.raw_content_hash:
             raise ValueError("raw_content_hash does not match payload")
+        for redirect_url in self.redirect_chain:
+            _require_https_url(redirect_url, "redirect_chain")
 
 
 @dataclass(frozen=True, slots=True)

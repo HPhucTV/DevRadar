@@ -23,6 +23,7 @@ from devradar.alerts.delivery import (
 )
 from devradar.alerts.models import AlertDelivery, AlertDeliveryStatus, AlertRule
 from devradar.catalog.models import Job, JobStatus
+from devradar.ingestion.models import Source, SourceApprovalStatus
 from devradar.intelligence.embeddings import (
     EMBEDDING_INPUT_SCHEMA_VERSION,
     EMBEDDING_MODEL_ID,
@@ -96,7 +97,12 @@ def _candidate_jobs(
     now: datetime,
     max_items: int,
 ) -> list[Job]:
-    conditions: list[ColumnElement[bool]] = [Job.status == JobStatus.ACTIVE]
+    conditions: list[ColumnElement[bool]] = [
+        Job.status == JobStatus.ACTIVE,
+        Job.source_id.in_(
+            select(Source.id).where(Source.approval_status == SourceApprovalStatus.APPROVED)
+        ),
+    ]
     if rule.company_query:
         pattern = _literal_pattern(rule.company_query)
         conditions.append(

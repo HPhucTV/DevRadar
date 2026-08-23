@@ -13,6 +13,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from devradar.catalog.models import Job, JobLevel, JobStatus
+from devradar.ingestion.models import Source, SourceApprovalStatus
 from devradar.ingestion.normalization import normalize_text
 from devradar.intelligence.embeddings import (
     EMBEDDING_DIMENSION,
@@ -278,17 +279,21 @@ def _persist_current_matches(
         if active_profile is None:
             raise MatchProfileUnavailable
 
+        approved_source_ids = select(Source.id).where(
+            Source.approval_status == SourceApprovalStatus.APPROVED
+        )
+        public_job_conditions = (
+            Job.status == JobStatus.ACTIVE,
+            Job.source_id.in_(approved_source_ids),
+        )
         considered_jobs = (
-            session.scalar(
-                select(func.count()).select_from(Job).where(Job.status == JobStatus.ACTIVE)
-            )
-            or 0
+            session.scalar(select(func.count()).select_from(Job).where(*public_job_conditions)) or 0
         )
         distance = JobEmbedding.embedding.cosine_distance(list(vector)).label("distance")
         rows = session.execute(
             select(Job, distance)
             .join(JobEmbedding, _compatible_embedding_clause())
-            .where(Job.status == JobStatus.ACTIVE)
+            .where(*public_job_conditions)
         ).all()
         jobs = [job for job, _distance in rows]
         extractions = _current_extractions(session, jobs)

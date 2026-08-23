@@ -14,6 +14,11 @@ test("light editorial token contract is present and old green theme is gone", as
   assert.doesNotMatch(css, /prefers-color-scheme:\s*dark/);
 });
 
+test("document does not force horizontal overflow at a 320px viewport", async () => {
+  const css = await source("src/app/globals.css");
+  assert.doesNotMatch(css, /html\{[^}]*min-width:\s*320px/);
+});
+
 test("shared shell and route surfaces use redesign primitives", async () => {
   const shell = await source("src/components/app-shell.tsx");
   const overview = await source("src/app/(dashboard)/page.tsx");

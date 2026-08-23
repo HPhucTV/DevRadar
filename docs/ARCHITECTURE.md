@@ -204,3 +204,7 @@ ADR mới là bắt buộc khi:
 - đổi hệ thống lưu trữ authoritative;
 - thay đổi API versioning, auth strategy hoặc privacy/retention mặc định;
 - cho phép crawler nhận URL ngoài source registry.
+
+Custom source profile là ngoại lệ có kiểm soát cho URL do owner nhập trong local/protected deployment. Nó không mở public arbitrary fetch: URL được persist thành `CustomSourceProfile`, gắn với `SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL`, rồi bị giới hạn bởi host/path policy, DNS/IP validation, redirect revalidation và budget. Static approved registry vẫn là đường duy nhất cho public/reproducible crawl.
+
+Luồng mới là `CustomSourceProfile → PostgreSQL scheduler → CrawlRun → CustomSourceAdapter → RawJobSnapshot → Job/JobChange`. Preview là read/parse-only gate trước khi enable; challenge, permission denial hoặc paywall đi tới `blocked` và không retry. Adapter generic V6-016 fetch một configured document qua HTTP và parse nhiều records/cards; pagination cùng browser fallback vẫn deferred. Public/global catalog, analytics, matching và alerts tiếp tục chỉ consume source `approved`; custom profile/run history đi qua owner-scoped API riêng. Redis, distributed worker và browser persistent profile không thuộc topology này.

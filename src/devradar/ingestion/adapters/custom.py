@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime
 
 from devradar.custom_sources.models import CustomSourceProfileDraft
@@ -11,6 +12,7 @@ from devradar.custom_sources.policy import (
     CustomFetchOutcome,
     build_custom_fetch_policy,
     classify_custom_response,
+    validate_custom_target,
 )
 from devradar.ingestion.adapters.html_text import html_to_text
 from devradar.ingestion.contracts import (
@@ -33,19 +35,35 @@ HttpFetch = Callable[[str, FetchPolicy], FetchResult]
 
 
 class CustomSourceAdapterError(RuntimeError):
-    def __init__(self, code: str, safe_summary: str, *, retryable: bool = False) -> None:
+    def __init__(
+        self,
+        code: str,
+        safe_summary: str,
+        *,
+        retryable: bool = False,
+        retry_after_seconds: int | None = None,
+    ) -> None:
         super().__init__(safe_summary)
         self.code = code
         self.safe_summary = safe_summary
         self.retryable = retryable
+        self.retry_after_seconds = retry_after_seconds
 
 
 def _safe_fetch_error(error: FetchError) -> CustomSourceAdapterError:
-    if error.http_status in {401, 402, 403} or error.code is FetchErrorCode.HTTP_ERROR:
+    if error.http_status in {401, 402, 403}:
         return CustomSourceAdapterError("permission_required", "Source requires permission.")
     if error.code is FetchErrorCode.RATE_LIMITED:
         return CustomSourceAdapterError(
-            "rate_limited", "Source rate limited the request.", retryable=True
+            "rate_limited",
+            "Source rate limited the request.",
+            retryable=True,
+            retry_after_seconds=error.retry_after_seconds,
+        )
+    if error.code is FetchErrorCode.HTTP_ERROR:
+        return CustomSourceAdapterError(
+            "policy_blocked",
+            "Custom source returned a non-success status.",
         )
     return CustomSourceAdapterError(
         error.code.value, "Custom source request failed.", retryable=error.retryable
@@ -71,6 +89,7 @@ class CustomSourceAdapter(JobSourceAdapter):
         self._fetch_policy = build_custom_fetch_policy(profile)
         self._http_fetch = http_fetch or SafeHttpFetcher().fetch
         self._parser = parser or HybridCustomParser()
+        self._last_fetch_result: FetchResult | None = None
         self._last_results: dict[tuple[str, str], FetchResult] = {}
         self._last_candidates: dict[tuple[str, str], CustomCandidate] = {}
 
@@ -81,12 +100,14 @@ class CustomSourceAdapter(JobSourceAdapter):
                 "source_config_mismatch",
                 "Custom source run context did not match the saved profile.",
             )
+        self._last_fetch_result = None
         self._last_results = {}
         self._last_candidates = {}
         try:
             result = self._http_fetch(self._profile.base_url, self._fetch_policy)
         except FetchError as error:
             raise _safe_fetch_error(error) from error
+        self._last_fetch_result = result
         classification = classify_custom_response(
             result.http_status,
             result.content_type,
@@ -102,15 +123,29 @@ class CustomSourceAdapter(JobSourceAdapter):
             result.payload,
             result.content_type,
             self._profile.field_mapping,
+            mode=self._profile.parser_mode,
         )
         if parsed.failures:
             failure = parsed.failures[0]
             raise CustomSourceAdapterError(failure.code, failure.safe_summary)
+        if len(parsed.candidates) > self._profile.item_budget:
+            raise CustomSourceAdapterError(
+                "item_budget_exceeded",
+                "Custom source exceeded the saved item budget.",
+            )
         listings: list[ListingRef] = []
         for candidate in parsed.candidates:
+            try:
+                canonical_url = validate_custom_target(candidate.job_url, self._fetch_policy)
+            except FetchError as error:
+                raise CustomSourceAdapterError(
+                    "policy_blocked",
+                    "Custom source candidate URL was outside its saved boundary.",
+                ) from error
+            candidate = replace(candidate, job_url=canonical_url)
             listing = ListingRef(
                 external_id=candidate.external_id,
-                canonical_url=candidate.job_url,
+                canonical_url=canonical_url,
                 metadata={
                     "title": candidate.title,
                     "company": candidate.company,
@@ -144,6 +179,9 @@ class CustomSourceAdapter(JobSourceAdapter):
     def preview_candidates(self) -> tuple[CustomCandidate, ...]:
         return tuple(self._last_candidates.values())
 
+    def preview_fetch_result(self) -> FetchResult | None:
+        return self._last_fetch_result
+
     def parse(self, snapshot: RawSnapshot) -> ParsedJob | ParseFailure:
         if snapshot.source_key != self._source_key:
             return ParseFailure(
@@ -151,10 +189,19 @@ class CustomSourceAdapter(JobSourceAdapter):
                 stage="custom_parse",
                 safe_summary="Custom source snapshot did not match the saved profile.",
             )
+        try:
+            snapshot_url = validate_custom_target(snapshot.source_url, self._fetch_policy)
+        except FetchError:
+            return ParseFailure(
+                error_code="policy_blocked",
+                stage="custom_parse",
+                safe_summary="Custom source snapshot URL was outside its saved boundary.",
+            )
         result = self._parser.parse(
             snapshot.raw_content,
             snapshot.content_type,
             self._profile.field_mapping,
+            mode=self._profile.parser_mode,
         )
         if result.failures:
             failure = result.failures[0]
@@ -175,12 +222,21 @@ class CustomSourceAdapter(JobSourceAdapter):
                 safe_summary="Custom source snapshot did not contain the requested job.",
             )
         candidate = candidates[0]
-        if candidate.job_url != snapshot.source_url:
+        try:
+            candidate_url = validate_custom_target(candidate.job_url, self._fetch_policy)
+        except FetchError:
+            return ParseFailure(
+                error_code="policy_blocked",
+                stage="custom_parse",
+                safe_summary="Custom source candidate URL was outside its saved boundary.",
+            )
+        if candidate_url != snapshot_url:
             return ParseFailure(
                 error_code="provenance_mismatch",
                 stage="custom_parse",
                 safe_summary="Custom source snapshot URL did not match the requested job.",
             )
+        candidate = replace(candidate, job_url=candidate_url)
         return self._to_parsed_job(candidate)
 
     def _to_parsed_job(self, candidate: CustomCandidate) -> ParsedJob | ParseFailure:

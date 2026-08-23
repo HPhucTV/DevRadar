@@ -14,7 +14,7 @@ from devradar.ingestion.models import (
     ParseStatus,
     RawJobSnapshot,
     Source,
-    SourceApprovalStatus,
+    source_status_is_ingestible,
 )
 from devradar.ingestion.safe_http import FetchError, validate_fetch_target
 from devradar.ingestion.source_registry import SourceConfig
@@ -101,7 +101,7 @@ def persist_raw_snapshot(
     fetch_result: FetchResult,
     provenance_url: str | None = None,
 ) -> RawJobSnapshot:
-    if source_config.approval_status is not SourceApprovalStatus.APPROVED:
+    if not source_status_is_ingestible(source_config.approval_status):
         raise SnapshotPersistenceError(
             "source_not_approved",
             "Raw snapshot persistence requires an approved source.",
@@ -119,7 +119,8 @@ def persist_raw_snapshot(
             "Raw snapshot persistence requires a persisted source.",
         )
     if (
-        database_source.approval_status is not SourceApprovalStatus.APPROVED
+        not source_status_is_ingestible(database_source.approval_status)
+        or database_source.approval_status is not source_config.approval_status
         or database_source.name != source_config.name
         or database_source.base_url != source_config.base_url
         or database_source.adapter_key != source_config.adapter_key

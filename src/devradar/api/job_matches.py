@@ -27,6 +27,7 @@ from devradar.api.resume_profiles import (
     require_cv_local_enabled,
 )
 from devradar.catalog.models import Job, JobStatus
+from devradar.ingestion.models import Source, SourceApprovalStatus
 from devradar.intelligence.embeddings import (
     EMBEDDING_INPUT_SCHEMA_VERSION,
     EMBEDDING_MODEL_ID,
@@ -257,6 +258,7 @@ def list_matches_for_profile(
         JobMatch.embedding_revision == EMBEDDING_MODEL_REVISION,
         JobMatch.embedding_dimension == 384,
         Job.status == JobStatus.ACTIVE,
+        Source.approval_status == SourceApprovalStatus.APPROVED,
     )
     conditions = [current]
     if min_score is not None:
@@ -266,6 +268,7 @@ def list_matches_for_profile(
             select(func.count())
             .select_from(JobMatch)
             .join(Job, Job.id == JobMatch.job_id)
+            .join(Source, Source.id == Job.source_id)
             .where(*conditions)
         )
         or 0
@@ -273,6 +276,7 @@ def list_matches_for_profile(
     rows = session.execute(
         select(JobMatch, Job)
         .join(Job, Job.id == JobMatch.job_id)
+        .join(Source, Source.id == Job.source_id)
         .where(*conditions)
         .order_by(JobMatch.overall_score.desc(), JobMatch.job_id.asc())
         .offset((pagination.page - 1) * pagination.page_size)

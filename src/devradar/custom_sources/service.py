@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
@@ -38,6 +39,8 @@ class CustomSourceServiceError(RuntimeError):
 class PreviewResult:
     candidates: tuple[CustomCandidate, ...]
     failures: tuple[object, ...]
+    final_url: str | None
+    redirect_chain: tuple[str, ...]
 
 
 PreviewRunner = Callable[[CustomSourceProfile], CustomParseResult]
@@ -68,7 +71,6 @@ def _profile_draft(profile: CustomSourceProfile) -> CustomSourceProfileDraft:
         interval_minutes=profile.interval_minutes,
         daily_at=profile.daily_at,
         timezone=profile.timezone,
-        page_budget=profile.page_budget,
         item_budget=profile.item_budget,
         byte_budget=profile.byte_budget,
         requests_per_minute=profile.requests_per_minute,
@@ -116,7 +118,6 @@ def create_profile(
         interval_minutes=draft.interval_minutes,
         daily_at=draft.daily_at,
         timezone=draft.timezone,
-        page_budget=draft.page_budget,
         item_budget=draft.item_budget,
         byte_budget=draft.byte_budget,
         requests_per_minute=draft.requests_per_minute,
@@ -149,23 +150,38 @@ def update_profile(
     ensure_custom_sources_enabled()
     profile = _owned_profile(session, owner_user_id=owner_user_id, profile_id=profile_id)
     if status is not None:
+        if status not in {
+            CustomSourceStatus.ENABLED,
+            CustomSourceStatus.PAUSED,
+            CustomSourceStatus.RETIRED,
+        }:
+            raise CustomSourceServiceError(
+                "status_transition_invalid",
+                "This status is controlled by the preview or crawl workflow.",
+            )
         if (
-            status is CustomSourceStatus.ENABLED
-            and profile.status is not CustomSourceStatus.PREVIEW_READY
+            profile.status is CustomSourceStatus.RETIRED
+            and status is not CustomSourceStatus.RETIRED
         ):
+            raise CustomSourceServiceError(
+                "profile_retired",
+                "A retired profile cannot change status.",
+            )
+        if status is CustomSourceStatus.ENABLED and profile.status not in {
+            CustomSourceStatus.PREVIEW_READY,
+            CustomSourceStatus.PAUSED,
+        }:
             raise CustomSourceServiceError(
                 "preview_required",
                 "A successful preview is required before enabling a custom source.",
             )
-        if status in {CustomSourceStatus.BLOCKED, CustomSourceStatus.DEGRADED}:
+        if status is CustomSourceStatus.PAUSED and profile.status not in {
+            CustomSourceStatus.ENABLED,
+            CustomSourceStatus.DEGRADED,
+        }:
             raise CustomSourceServiceError(
-                "status_transition_invalid",
-                "Blocked or degraded status is controlled by the crawl workflow.",
-            )
-        if status is CustomSourceStatus.DRAFT and profile.status is not CustomSourceStatus.DRAFT:
-            raise CustomSourceServiceError(
-                "status_transition_invalid",
-                "A published custom source cannot be moved back to draft directly.",
+                "preview_required",
+                "A custom source can only be paused after it has been enabled.",
             )
         if status is CustomSourceStatus.RETIRED:
             profile.status = CustomSourceStatus.RETIRED
@@ -195,7 +211,6 @@ def update_profile(
         profile.interval_minutes = draft.interval_minutes
         profile.daily_at = draft.daily_at
         profile.timezone = draft.timezone
-        profile.page_budget = draft.page_budget
         profile.item_budget = draft.item_budget
         profile.byte_budget = draft.byte_budget
         profile.requests_per_minute = draft.requests_per_minute
@@ -210,6 +225,7 @@ def update_profile(
                 "concurrency": 1,
             }
             source.approval_status = SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL
+    profile.updated_at = _now()
     session.flush()
     return profile
 
@@ -230,6 +246,7 @@ def _adapter_preview(adapter: CustomSourceAdapter, context: RunContext) -> Custo
     try:
         adapter.discover(context)
     except Exception as error:
+        fetch_result = adapter.preview_fetch_result()
         return CustomParseResult(
             failures=(
                 type(
@@ -240,10 +257,22 @@ def _adapter_preview(adapter: CustomSourceAdapter, context: RunContext) -> Custo
                         "safe_summary": "Custom source preview could not be completed safely.",
                     },
                 )(),
-            )
+            ),
+            final_url=fetch_result.final_url if fetch_result is not None else None,
+            redirect_chain=fetch_result.redirect_chain if fetch_result is not None else (),
         )
     candidates = adapter.preview_candidates()
-    return CustomParseResult(candidates=candidates)
+    fetch_result = adapter.preview_fetch_result()
+    return CustomParseResult(
+        candidates=candidates,
+        final_url=fetch_result.final_url if fetch_result is not None else None,
+        redirect_chain=fetch_result.redirect_chain if fetch_result is not None else (),
+    )
+
+
+def _safe_preview_url(value: str) -> str:
+    parsed = urlsplit(value)
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
 
 
 def preview_profile(
@@ -258,7 +287,9 @@ def preview_profile(
     if profile.status is CustomSourceStatus.RETIRED:
         raise CustomSourceServiceError("profile_retired", "A retired profile cannot be previewed.")
     result = (runner or _run_preview)(profile)
-    profile.last_preview_at = _now()
+    previewed_at = _now()
+    profile.last_preview_at = previewed_at
+    profile.updated_at = previewed_at
     if result.candidates:
         profile.status = CustomSourceStatus.PREVIEW_READY
         profile.block_reason = None
@@ -271,4 +302,9 @@ def preview_profile(
         else:
             profile.status = CustomSourceStatus.DRAFT
     session.flush()
-    return PreviewResult(candidates=result.candidates, failures=result.failures)
+    return PreviewResult(
+        candidates=result.candidates,
+        failures=result.failures,
+        final_url=_safe_preview_url(result.final_url) if result.final_url is not None else None,
+        redirect_chain=tuple(_safe_preview_url(value) for value in result.redirect_chain),
+    )

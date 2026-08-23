@@ -152,7 +152,15 @@ def test_secret_scan_allows_public_environment_examples() -> None:
 
 def test_secret_scan_rejects_non_example_environment_override(tmp_path: Path) -> None:
     alternate_index = tmp_path / "index"
-    shutil.copyfile(Path(".git/index"), alternate_index)
+    git_index = Path(
+        subprocess.run(
+            ["git", "rev-parse", "--git-path", "index"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+    )
+    shutil.copyfile(git_index, alternate_index)
     environment = os.environ | {"GIT_INDEX_FILE": str(alternate_index.resolve())}
     blob = subprocess.run(
         ["git", "rev-parse", "HEAD:.env.example"],

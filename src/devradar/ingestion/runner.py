@@ -139,6 +139,18 @@ def source_matches_config(source: Source, config: SourceConfig) -> bool:
     )
 
 
+def custom_source_matches_config(source: Source, config: SourceConfig) -> bool:
+    """Validate a persisted owner-local source without treating it as globally approved."""
+
+    return bool(
+        source.name == config.name
+        and source.base_url == config.base_url
+        and source.adapter_key == config.adapter_key
+        and source.approval_status is SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL
+        and source.allowed_hosts == list(config.fetch_policy.allowed_hosts)
+    )
+
+
 def _ensure_source(session: Session, config: SourceConfig) -> UUID:
     source = session.scalar(select(Source).where(Source.name == config.name))
     if source is None:
@@ -441,6 +453,70 @@ def run_approved_source(
     attempt_number: int = 1,
     claimed_run_id: UUID | None = None,
 ) -> RunReport:
+    return _run_source(
+        session,
+        config=config,
+        adapter=adapter,
+        deadline=deadline,
+        max_items=max_items,
+        trigger_type=trigger_type,
+        trigger_key=trigger_key,
+        scheduled_for=scheduled_for,
+        retry_of_run_id=retry_of_run_id,
+        attempt_number=attempt_number,
+        claimed_run_id=claimed_run_id,
+        expected_status=SourceApprovalStatus.APPROVED,
+    )
+
+
+def run_custom_source(
+    session: Session,
+    *,
+    config: SourceConfig,
+    adapter: JobSourceAdapter,
+    persisted_source_id: UUID,
+    deadline: datetime,
+    max_items: int | None = None,
+    trigger_type: CrawlTriggerType = CrawlTriggerType.MANUAL,
+    trigger_key: str | None = None,
+    scheduled_for: datetime | None = None,
+    retry_of_run_id: UUID | None = None,
+    attempt_number: int = 1,
+    claimed_run_id: UUID | None = None,
+) -> RunReport:
+    return _run_source(
+        session,
+        config=config,
+        adapter=adapter,
+        deadline=deadline,
+        max_items=max_items,
+        trigger_type=trigger_type,
+        trigger_key=trigger_key,
+        scheduled_for=scheduled_for,
+        retry_of_run_id=retry_of_run_id,
+        attempt_number=attempt_number,
+        claimed_run_id=claimed_run_id,
+        expected_status=SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL,
+        persisted_source_id=persisted_source_id,
+    )
+
+
+def _run_source(
+    session: Session,
+    *,
+    config: SourceConfig,
+    adapter: JobSourceAdapter,
+    deadline: datetime,
+    max_items: int | None = None,
+    trigger_type: CrawlTriggerType = CrawlTriggerType.MANUAL,
+    trigger_key: str | None = None,
+    scheduled_for: datetime | None = None,
+    retry_of_run_id: UUID | None = None,
+    attempt_number: int = 1,
+    claimed_run_id: UUID | None = None,
+    expected_status: SourceApprovalStatus,
+    persisted_source_id: UUID | None = None,
+) -> RunReport:
     """Own one claimed run lifecycle; network work happens outside DB transactions."""
 
     if session.in_transaction():
@@ -448,8 +524,8 @@ def run_approved_source(
             "transaction_already_active",
             "Ingestion runner requires a fresh session transaction boundary.",
         )
-    if config.approval_status is not SourceApprovalStatus.APPROVED:
-        raise IngestionRunError("source_not_approved", "Ingestion requires an approved source.")
+    if config.approval_status is not expected_status:
+        raise IngestionRunError("source_not_approved", "Ingestion source status is not permitted.")
     if adapter.adapter_key != config.adapter_key or not adapter.adapter_version.strip():
         raise IngestionRunError(
             "adapter_config_mismatch",
@@ -504,11 +580,27 @@ def run_approved_source(
                 "Only retry runs may carry retry relation or attempt number greater than one.",
             )
 
-    try:
-        source_id = _ensure_source(session, config)
-    except Exception:
-        session.rollback()
-        raise
+    if expected_status is SourceApprovalStatus.APPROVED:
+        try:
+            source_id = _ensure_source(session, config)
+        except Exception:
+            session.rollback()
+            raise
+    else:
+        if persisted_source_id is None:
+            raise IngestionRunError(
+                "source_id_required",
+                "Owner-local ingestion requires its persisted source identity.",
+            )
+        source_id = persisted_source_id
+        persisted_source = session.get(Source, source_id)
+        if persisted_source is None or not custom_source_matches_config(persisted_source, config):
+            session.rollback()
+            raise IngestionRunError(
+                "source_config_mismatch",
+                "Persisted owner-local source does not match its profile configuration.",
+            )
+        session.commit()
     source = session.get(Source, source_id)
     if source is None:
         session.rollback()

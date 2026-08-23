@@ -298,3 +298,27 @@ Acceptance bắt buộc:
 4. Từ V2, Job xuất hiện lại tạo `reactivated` và giữ history.
 5. Source chưa approved không thể chạy dù adapter tồn tại.
 6. Browser/LLM không được gọi khi structured parser đã đủ schema.
+
+## Owner-local custom source profiles
+
+Custom source profile là capability local/protected dành cho single operator. API nhận một URL khi tạo hoặc sửa profile, lưu URL cùng host/path boundary đã chuẩn hóa, rồi mọi crawl sau đó chỉ dùng cấu hình đã lưu. API không nhận URL override cho từng run và `crawl --source` vẫn chỉ nhận exact key trong static registry.
+
+Profile tạo một `Source` có `approval_status=owner_authorized_local`, không được tính vào inventory `approved` hoặc claim thị trường công khai. Lifecycle là:
+
+```text
+draft -> preview_ready -> enabled -> degraded/blocked
+                         |             |
+                       paused        retired
+```
+
+`paused` chỉ nhận transition từ `enabled`/`degraded` và có thể resume về `enabled` vì profile đã qua preview; `draft`/`blocked` phải preview thành công trước. `retired` là terminal và không thể được phục hồi bằng PATCH status.
+
+Preview chạy parser hybrid theo thứ tự JSON/API, JSON-LD rồi bounded HTML mapping, đồng thời enforce `parser_mode` đã lưu. JSON field mapping được đánh giá relative theo từng job record để multi-record document không lặp value của record đầu. Preview trả final URL/redirect chain đã bỏ query, coverage `unknown`, mọi candidate hợp lệ, warning, confidence và provenance nhưng không ghi `CrawlRun`, snapshot, Job, JobChange hay absence signal. Chỉ sau preview thành công mới cho phép `enabled` và scheduler PostgreSQL tạo một trigger key ổn định.
+
+Worker custom dùng cùng pipeline persistence và change detection hiện hành. Generic adapter V6-016 fetch đúng một configured document mỗi run, parse đủ JSON records/JSON-LD/HTML cards và enforce item/byte/rate budget; generic pagination bị defer cho tới khi có next-page contract xác định. Mỗi request vẫn qua HTTPS-only hostname, host/path allow-list, DNS/IP private-reserved rejection, redirect revalidation và timeout. Saved path/path prefix chỉ dùng printable ASCII; raw/encoded dot segment, encoded slash/backslash và nested percent đều bị từ chối để transport không thể đổi boundary đã lưu. Không lưu credential, cookie hoặc persistent browser profile. Browser fallback chưa được triển khai; nếu bổ sung phải có explicit policy, fresh context và không giải challenge.
+
+HTTP `401/402/403`, CAPTCHA/challenge, paywall, anti-bot marker, redirect/policy escape và unsupported content đưa profile vào `blocked` với reason an toàn, không retry. Chỉ lỗi network/server/rate-limit transient mới dùng retry bounded. Crawl fail, partial hoặc unknown coverage không được chuyển Job thành `missing` hoặc `removed`; chỉ complete run qua absence policy mới được dùng cho lifecycle đó.
+
+Permission acknowledgement chỉ ghi nhận cam kết của operator, không phải legal certification. Operator phải tự kiểm tra quyền truy cập, robots/terms, rate limit và phạm vi tái sử dụng nội dung trước khi bật profile.
+
+`owner_authorized_local` không tham gia global/public source/job/run views, semantic search, skill analytics, CV match generation hoặc alert dispatch. V6-016 chỉ expose profile và crawl history qua owner-scoped API; custom-job catalog/derived views cần owner join riêng trước khi được mở.

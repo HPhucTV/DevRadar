@@ -56,6 +56,9 @@ class ApiSeed:
     source_naver_id: UUID
     failed_run_id: UUID
     first_job_id: UUID
+    custom_source_id: UUID
+    custom_run_id: UUID
+    custom_job_id: UUID
 
 
 def _uuid(value: int) -> UUID:
@@ -211,6 +214,13 @@ def _seed_database(session: Session) -> ApiSeed:
         base_url="https://boards-api.greenhouse.io",
         adapter_key="naver-greenhouse-v1",
     )
+    source_custom = _source(
+        source_id=_uuid(3),
+        name="Owner Private Source",
+        base_url="https://private.example.test",
+        adapter_key="custom_source",
+    )
+    source_custom.approval_status = SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL
     successful_vng_run = _run(
         run_id=_uuid(11),
         source_id=source_vng.id,
@@ -241,9 +251,16 @@ def _seed_database(session: Session) -> ApiSeed:
         status=CrawlRunStatus.PENDING,
         coverage_status=CoverageStatus.UNKNOWN,
     )
-    session.add_all((source_vng, source_naver))
+    custom_run = _run(
+        run_id=_uuid(15),
+        source_id=source_custom.id,
+        started_at=NOW - timedelta(minutes=30),
+        status=CrawlRunStatus.SUCCEEDED,
+        coverage_status=CoverageStatus.COMPLETE,
+    )
+    session.add_all((source_vng, source_naver, source_custom))
     session.flush()
-    session.add_all((successful_vng_run, failed_run, successful_naver_run, pending_run))
+    session.add_all((successful_vng_run, failed_run, successful_naver_run, pending_run, custom_run))
     session.flush()
 
     first_snapshot = _snapshot(
@@ -271,7 +288,15 @@ def _seed_database(session: Session) -> ApiSeed:
         external_id="vng-alpha",
     )
     previous_first_snapshot.fetched_at = NOW - timedelta(minutes=1)
-    session.add_all((first_snapshot, second_snapshot, third_snapshot, previous_first_snapshot))
+    custom_snapshot = _snapshot(
+        snapshot_id=_uuid(25),
+        run=custom_run,
+        source_url="https://private.example.test/jobs/private-1",
+        external_id="private-1",
+    )
+    session.add_all(
+        (first_snapshot, second_snapshot, third_snapshot, previous_first_snapshot, custom_snapshot)
+    )
     session.flush()
 
     first_job = _job(
@@ -322,13 +347,30 @@ def _seed_database(session: Session) -> ApiSeed:
         posted_at=NOW - timedelta(days=4),
         last_seen_at=NOW - timedelta(hours=2),
     )
-    session.add_all((first_job, second_job, third_job))
+    custom_job = _job(
+        job_id=_uuid(34),
+        source_id=source_custom.id,
+        snapshot=custom_snapshot,
+        external_id="private-1",
+        canonical_url=custom_snapshot.source_url,
+        title="Owner Private Engineer",
+        company_name="Owner Private Company",
+        location="Private",
+        city="Private",
+        level="senior",
+        salary_min=None,
+        salary_max=None,
+        posted_at=NOW,
+        last_seen_at=NOW + timedelta(minutes=1),
+    )
+    session.add_all((first_job, second_job, third_job, custom_job))
     session.flush()
     embeddings: list[JobEmbedding] = []
     for job, axis, direction in (
         (first_job, 0, 1.0),
         (second_job, 1, 1.0),
         (third_job, 0, -1.0),
+        (custom_job, 0, 1.0),
     ):
         vector = [0.0] * EMBEDDING_DIMENSION
         vector[axis] = direction
@@ -351,6 +393,7 @@ def _seed_database(session: Session) -> ApiSeed:
         (first_job, "python"),
         (second_job, "sql"),
         (third_job, "kubernetes"),
+        (custom_job, "private-skill"),
     ):
         session.add(
             ExtractionResult(
@@ -411,6 +454,18 @@ def _seed_database(session: Session) -> ApiSeed:
                 change_type=JobChangeType.UPDATED,
                 detected_at=NOW,
             ),
+            JobChange(
+                id=_uuid(43),
+                job_id=custom_job.id,
+                crawl_run_id=custom_run.id,
+                from_snapshot_id=None,
+                to_snapshot_id=custom_snapshot.id,
+                field_name="status",
+                old_value=None,
+                new_value="active",
+                change_type=JobChangeType.CREATED,
+                detected_at=NOW,
+            ),
         )
     )
     session.commit()
@@ -419,6 +474,9 @@ def _seed_database(session: Session) -> ApiSeed:
         source_naver_id=source_naver.id,
         failed_run_id=failed_run.id,
         first_job_id=first_job.id,
+        custom_source_id=source_custom.id,
+        custom_run_id=custom_run.id,
+        custom_job_id=custom_job.id,
     )
 
 
@@ -534,6 +592,13 @@ def test_read_api_uses_postgresql_and_enforces_public_contract(
     assert "ratelimitpolicy" not in _json(source_detail.json())
     assert "allowedhosts" not in _json(source_detail.json())
 
+    custom_source_detail = client.get(f"/api/v1/sources/{seed.custom_source_id}")
+    assert custom_source_detail.status_code == 404
+    custom_job_filter = client.get("/api/v1/jobs", params={"sourceId": str(seed.custom_source_id)})
+    assert custom_job_filter.json()["pagination"]["totalItems"] == 0
+    assert client.get(f"/api/v1/jobs/{seed.custom_job_id}").status_code == 404
+    assert client.get(f"/api/v1/jobs/{seed.custom_job_id}/changes").status_code == 404
+
     runs = client.get("/api/v1/crawl-runs", params={"pageSize": 2})
     assert runs.status_code == 200
     assert runs.json()["data"][0]["id"] == str(seed.failed_run_id)
@@ -546,6 +611,9 @@ def test_read_api_uses_postgresql_and_enforces_public_contract(
         "message": "Crawl run failed safely.",
     }
     assert "database-secret" not in _json(failed_detail.json())
+    custom_runs = client.get("/api/v1/crawl-runs", params={"sourceId": str(seed.custom_source_id)})
+    assert custom_runs.json()["pagination"]["totalItems"] == 0
+    assert client.get(f"/api/v1/crawl-runs/{seed.custom_run_id}").status_code == 404
 
     missing_id = _uuid(999)
     for path in (
@@ -617,6 +685,16 @@ def test_job_search_applies_semantic_skill_and_source_filters_before_ranking(
     skill_filtered = client.get("/api/v1/jobs", params={"skill": "Python"})
     assert [item["title"] for item in skill_filtered.json()["data"]] == ["Alpha Backend Engineer"]
 
+    private_semantic = client.get(
+        "/api/v1/jobs",
+        params={
+            "query": "private",
+            "searchMode": "semantic",
+            "sourceId": str(seed.custom_source_id),
+        },
+    )
+    assert private_semantic.json()["pagination"]["totalItems"] == 0
+
 
 @pytest.mark.postgresql
 def test_semantic_search_reports_safe_unavailable_error(
@@ -664,6 +742,10 @@ def test_skill_frequency_and_trends_publish_denominator_and_coverage(
     )
     assert source_frequency.json()["meta"]["cohortSize"] == 2
     assert [item["name"] for item in source_frequency.json()["data"]] == ["python", "sql"]
+    private_frequency = client.get(
+        "/api/v1/skills", params={"sourceId": str(seed.custom_source_id)}
+    )
+    assert private_frequency.json()["meta"]["cohortSize"] == 0
 
     trends = client.get(
         "/api/v1/skill-trends",
@@ -828,6 +910,10 @@ def test_openapi_exposes_v3_contract_with_camel_case_parameters() -> None:
         "/api/v1/alert-rules",
         "/api/v1/alert-rules/{ruleId}",
         "/api/v1/alert-rules/{ruleId}/dispatch",
+        "/api/v1/custom-sources",
+        "/api/v1/custom-sources/{profileId}",
+        "/api/v1/custom-sources/{profileId}/preview",
+        "/api/v1/custom-sources/{profileId}/crawl-runs",
     }
     assert set(openapi["paths"]) == expected_paths
     assert set(openapi["paths"]["/api/v1/crawl-runs"]) == {"get", "post"}

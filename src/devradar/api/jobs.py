@@ -24,7 +24,12 @@ from devradar.api.common import (
 )
 from devradar.api.errors import ApiContractError
 from devradar.catalog.models import Job, JobChange, JobChangeType, JobLevel, JobStatus
-from devradar.ingestion.models import ParseStatus, RawJobSnapshot, Source
+from devradar.ingestion.models import (
+    ParseStatus,
+    RawJobSnapshot,
+    Source,
+    SourceApprovalStatus,
+)
 from devradar.intelligence.embeddings import (
     EMBEDDING_DIMENSION,
     EMBEDDING_INPUT_SCHEMA_VERSION,
@@ -225,7 +230,11 @@ def _like_pattern(value: str) -> str:
 
 
 def _conditions(filters: JobQuery) -> list[ColumnElement[bool]]:
-    conditions: list[ColumnElement[bool]] = []
+    conditions: list[ColumnElement[bool]] = [
+        Job.source_id.in_(
+            select(Source.id).where(Source.approval_status == SourceApprovalStatus.APPROVED)
+        )
+    ]
     if filters.status is not None:
         conditions.append(Job.status == filters.status)
     if filters.source_id is not None:
@@ -404,7 +413,10 @@ def get_job(
         select(Job, Source, RawJobSnapshot)
         .join(Source, Source.id == Job.source_id)
         .join(RawJobSnapshot, RawJobSnapshot.id == Job.current_snapshot_id)
-        .where(Job.id == job_id)
+        .where(
+            Job.id == job_id,
+            Source.approval_status == SourceApprovalStatus.APPROVED,
+        )
     ).one_or_none()
     if row is None:
         raise HTTPException(status_code=404)
@@ -439,7 +451,17 @@ def list_job_changes(
     pagination: Annotated[PaginationQuery, Query()],
     session: DatabaseSession,
 ) -> JobChangeListResponse:
-    if session.get(Job, job_id) is None:
+    if (
+        session.scalar(
+            select(Job.id)
+            .join(Source, Source.id == Job.source_id)
+            .where(
+                Job.id == job_id,
+                Source.approval_status == SourceApprovalStatus.APPROVED,
+            )
+        )
+        is None
+    ):
         raise HTTPException(status_code=404)
     total_items = (
         session.scalar(

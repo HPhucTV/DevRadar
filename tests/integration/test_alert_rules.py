@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from devradar.alerts.delivery import AlertConnectorError, AlertMessage, DeliveryResult
 from devradar.alerts.models import AlertDelivery, AlertDeliveryStatus, AlertRule
 from devradar.api.alert_rules import AlertRuleCreate
+from devradar.ingestion.models import Source, SourceApprovalStatus
 from devradar.main import app
 from devradar.platform.database import DATABASE_URL_ENV, _database_engine
 from integration.test_job_match_generation import _seed
@@ -174,6 +175,41 @@ def test_dispatch_filters_replays_without_duplicate_and_records_safe_delivery(
             assert session.scalar(select(AlertDelivery)) is None
     finally:
         engine.dispose()
+
+
+@pytest.mark.postgresql
+def test_dispatch_excludes_owner_local_jobs_from_global_alert_catalog(
+    alert_api: tuple[TestClient, str, FakeConnector],
+) -> None:
+    client, database_url, connector = alert_api
+    engine = _database_engine(database_url)
+    with Session(engine) as session:
+        _, custom_jobs = _seed(
+            session,
+            job_count=1,
+            source_name="Owner local alert fixture",
+            profile_content_hash="d" * 64,
+        )
+        custom_source = session.get(Source, custom_jobs[0].source_id)
+        assert custom_source is not None
+        custom_source.approval_status = SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL
+        session.commit()
+    engine.dispose()
+
+    headers = {OWNER_HEADER: OWNER_ONE}
+    created = client.post(
+        "/api/v1/alert-rules",
+        headers=headers,
+        json={"name": "Approved jobs only", "companyQuery": "Example"},
+    )
+    dispatched = client.post(
+        f"/api/v1/alert-rules/{created.json()['data']['id']}/dispatch",
+        headers=headers,
+    )
+
+    assert dispatched.status_code == 200
+    assert dispatched.json()["data"]["consideredJobs"] == 2
+    assert len(connector.calls) == 2
 
 
 @pytest.mark.postgresql

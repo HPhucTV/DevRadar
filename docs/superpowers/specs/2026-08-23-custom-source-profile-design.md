@@ -14,12 +14,12 @@ Custom source là profile `local/protected` do owner tạo. Nó không trở th�
   1. JSON/API hoặc JSON-LD;
   2. HTML semantic selectors;
   3. selector/JSON-path mapping do owner chỉnh trong profile nếu auto-detection chưa đủ.
-- Browser rendering chỉ là fallback được bật rõ ràng cho profile; không dùng persistent browser profile và không bypass access control.
+- V6-016 chỉ triển khai HTTP/structured-content path. Browser rendering và generic pagination được defer; nếu mở sau này phải có explicit profile contract, fresh context và không bypass access control.
 - Crawl custom chỉ chạy qua authenticated owner/operator flow và same-origin BFF; không nhận URL tùy ý trong public API hoặc mỗi lần run.
 - Source status riêng là `owner_authorized_local`, `paused`, `blocked` hoặc `retired`; không tái sử dụng `approved` để che khác biệt policy.
 - Khi gặp `401`, `403`, CAPTCHA, paywall, anti-bot challenge hoặc redirect ngoài boundary, run dừng fail-closed, profile chuyển `blocked` với `blockReason=permission_required` hoặc policy error và không tự retry.
 - User phải chịu trách nhiệm xác nhận quyền truy cập/khai thác source; checkbox không biến một source không được phép thành hợp pháp.
-- Vẫn giữ HTTPS-only, DNS/private-IP blocking, redirect revalidation, response/page/time budget, rate limit và provenance.
+- Vẫn giữ HTTPS-only hostname, IP/dot-segment rejection, DNS/private-IP blocking, redirect revalidation, response/item/time budget, rate limit và provenance.
 
 ## Không nằm trong phạm vi
 
@@ -41,7 +41,7 @@ Owner mở `Sources → Add custom source` và nhập:
 - path prefix được phép, mặc định là path của base URL;
 - parser mode: `auto`, `html` hoặc `json`;
 - optional field mapping cho `title`, `company`, `location`, `salary`, `description`, `postedAt`, `externalId` và `jobUrl`;
-- crawl budget: page limit, item limit, response byte limit và rate limit;
+- crawl budget: item limit, response byte limit và rate limit; mỗi run fetch đúng một configured document;
 - lịch `interval` hoặc `daily_at` cùng timezone IANA;
 - xác nhận owner có quyền sử dụng source trong local/protected deployment.
 
@@ -77,11 +77,11 @@ Owner UI
   → CustomSourceProfile + schedule
   → direct PostgreSQL-backed scheduler
   → bounded custom adapter
-  → SafeHttpFetcher / ephemeral browser fallback
+  → SafeHttpFetcher
   → RawJobSnapshot + parser candidates
   → deterministic validation/normalization
   → JobUpsert source-scoped identity
-  → JobChange/source health/analytics
+  → JobChange/source health + owner-scoped run history
 ```
 
 Custom adapter phải tái sử dụng `SafeHttpFetcher`, `RunContext`, snapshot persistence, normalization, deduplication, change detection và health workflow hiện tại. Adapter không được tự commit hoặc tự quyết định retry.
@@ -94,7 +94,7 @@ Mỗi custom `Job` phải truy ngược được tới custom profile, `Source`,
 - Chỉ HTTPS; reject localhost, IP literal, private, loopback, link-local, multicast, reserved và metadata ranges sau khi resolve tất cả DNS records.
 - Mỗi redirect phải revalidate scheme, host, path và resolved addresses; không follow redirect ra ngoài profile boundary.
 - Không nhận arbitrary headers, cookies, proxy, custom DNS hoặc credential từ browser.
-- `browser` fallback dùng fresh ephemeral context, chặn download/popup/service worker/external protocol và giới hạn page/request/byte/time/memory budget.
+- Browser fallback chưa thuộc V6-016. Nếu có ADR/task sau này, nó phải dùng fresh ephemeral context, chặn download/popup/service worker/external protocol và giới hạn request/byte/time/memory budget.
 - HTTP `401/403/429`, access challenge markers, CAPTCHA/paywall markers và repeated layout failure là policy/data stop, không phải transient retry.
 
 ## Schedule contract
@@ -145,6 +145,7 @@ Mutation không nhận URL tự do ngoài create/update profile. Response dùng 
 - Failed/partial/challenge run không làm false removal và chuyển đúng `blocked`/`degraded`.
 - Rerun cùng input idempotent; source-scoped external ID/canonical URL không tạo duplicate.
 - Public unauthenticated request, arbitrary URL field, cross-owner profile ID và unapproved transition đều bị từ chối.
+- Global source/job/run views, semantic/analytics, CV matching và alert dispatch không được đọc `owner_authorized_local`.
 - 401/403/429/CAPTCHA/paywall marker không được retry tự động.
 
 ## Trade-off

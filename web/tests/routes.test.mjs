@@ -13,6 +13,7 @@ const expected = [
   ["crawler-health", "/crawler-health", "implemented", true],
   ["cv-match", "/cv-match", "implemented", true],
   ["alerts", "/alerts", "implemented", true],
+  ["custom-sources", "/sources", "implemented", true],
   ["privacy", "/privacy", "implemented", false],
 ];
 
@@ -39,7 +40,7 @@ test("route manifest owns the current dashboard surface", async () => {
     "GET /api/v1/resume-profiles/{profileId}/matches",
     "DELETE /api/v1/resume-profiles/{profileId}",
   ]);
-  assert.equal(routes.filter(({ showInNav }) => showInNav).length, 6);
+  assert.equal(routes.filter(({ showInNav }) => showInNav).length, 7);
 });
 
 test("crawler health route exposes the operator ingestion contract", async () => {

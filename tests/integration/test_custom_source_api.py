@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -19,7 +20,7 @@ from devradar.auth.service import (
     hash_password,
 )
 from devradar.catalog.models import Job, JobChange
-from devradar.custom_sources.models import CustomSourceProfile
+from devradar.custom_sources.models import CustomSourceProfile, CustomSourceStatus
 from devradar.custom_sources.parser import CustomCandidate, CustomFieldProvenance, CustomParseResult
 from devradar.ingestion.models import CrawlRun, Source
 from devradar.main import app
@@ -27,6 +28,14 @@ from devradar.platform.database import DATABASE_URL_ENV, _database_engine
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PASSWORD = "custom-source-test-password"
+
+
+def test_patch_openapi_only_advertises_owner_status_transitions() -> None:
+    with TestClient(app) as client:
+        document = client.get("/api/v1/openapi.json").json()
+
+    status_schema = document["components"]["schemas"]["CustomSourcePatch"]["properties"]["status"]
+    assert status_schema["anyOf"][0]["enum"] == ["enabled", "paused"]
 
 
 @pytest.fixture
@@ -61,7 +70,6 @@ def _payload() -> dict[str, object]:
         "scheduleKind": "interval",
         "intervalMinutes": 360,
         "timezone": "Asia/Ho_Chi_Minh",
-        "pageBudget": 10,
         "itemBudget": 500,
         "byteBudget": 2000000,
         "requestsPerMinute": 2,
@@ -126,8 +134,11 @@ def test_preview_does_not_create_job_missing_removed_or_change_event(
                     company="Example",
                     provenance=(CustomFieldProvenance("title", "json:$.title", "json"),),
                     confidence=0.91,
+                    warnings=("coverage_unknown",),
                 ),
-            )
+            ),
+            final_url="https://example.test/jobs/final",
+            redirect_chain=("https://example.test/jobs/final",),
         ),
     )
     response = client.post(
@@ -136,6 +147,10 @@ def test_preview_does_not_create_job_missing_removed_or_change_event(
     )
     assert response.status_code == 200
     assert response.json()["data"]["candidates"][0]["externalId"] == "fixture-1"
+    assert response.json()["data"]["candidates"][0]["warnings"] == ["coverage_unknown"]
+    assert response.json()["data"]["finalUrl"] == "https://example.test/jobs/final"
+    assert response.json()["data"]["redirectChain"] == ["https://example.test/jobs/final"]
+    assert response.json()["data"]["coverageStatus"] == "unknown"
     with Session(_database_engine(database_url)) as session:
         assert session.scalar(select(func.count()).select_from(Job)) == 0
         assert session.scalar(select(func.count()).select_from(JobChange)) == 0
@@ -186,6 +201,12 @@ def test_arbitrary_url_field_and_unapproved_status_transition_are_rejected(
         headers={"X-DevRadar-CSRF": csrf},
     )
     assert response.status_code == 422
+    unsupported_page_budget = client.post(
+        "/api/v1/custom-sources",
+        json={**_payload(), "pageBudget": 10},
+        headers={"X-DevRadar-CSRF": csrf},
+    )
+    assert unsupported_page_budget.status_code == 422
     created = client.post(
         "/api/v1/custom-sources", json=_payload(), headers={"X-DevRadar-CSRF": csrf}
     )
@@ -197,3 +218,104 @@ def test_arbitrary_url_field_and_unapproved_status_transition_are_rejected(
     )
     assert enabled.status_code == 409
     assert enabled.json()["error"]["code"] == "preview_required"
+
+
+@pytest.mark.postgresql
+def test_custom_crawl_request_is_idempotent_and_owner_scoped(
+    custom_source_api: tuple[TestClient, str, str],
+) -> None:
+    client, database_url, csrf = custom_source_api
+    created = client.post(
+        "/api/v1/custom-sources", json=_payload(), headers={"X-DevRadar-CSRF": csrf}
+    )
+    profile_id = created.json()["data"]["id"]
+    with Session(_database_engine(database_url)) as session:
+        profile = session.get(CustomSourceProfile, UUID(profile_id))
+        assert profile is not None
+        profile.status = CustomSourceStatus.ENABLED
+        session.commit()
+    headers = {"X-DevRadar-CSRF": csrf, "Idempotency-Key": "custom-run-123"}
+    first = client.post(f"/api/v1/custom-sources/{profile_id}/crawl-runs", headers=headers)
+    second = client.post(f"/api/v1/custom-sources/{profile_id}/crawl-runs", headers=headers)
+    assert first.status_code == second.status_code == 202
+    assert first.json()["data"]["id"] == second.json()["data"]["id"]
+    history = client.get(f"/api/v1/custom-sources/{profile_id}/crawl-runs")
+    assert history.status_code == 200
+    assert history.json()["pagination"]["totalItems"] == 1
+
+
+@pytest.mark.postgresql
+def test_daily_schedule_create_and_patch_clear_interval_boundary(
+    custom_source_api: tuple[TestClient, str, str],
+) -> None:
+    client, _, csrf = custom_source_api
+    daily = _payload()
+    daily["scheduleKind"] = "daily_at"
+    daily["dailyAt"] = "09:30:00"
+    daily.pop("intervalMinutes")
+    created_daily = client.post(
+        "/api/v1/custom-sources", json=daily, headers={"X-DevRadar-CSRF": csrf}
+    )
+    assert created_daily.status_code == 201
+    assert created_daily.json()["data"]["intervalMinutes"] is None
+
+    created_interval = client.post(
+        "/api/v1/custom-sources", json=_payload(), headers={"X-DevRadar-CSRF": csrf}
+    )
+    profile_id = created_interval.json()["data"]["id"]
+    created_updated_at = datetime.fromisoformat(created_interval.json()["data"]["updatedAt"])
+    patched = client.patch(
+        f"/api/v1/custom-sources/{profile_id}",
+        json={"scheduleKind": "daily_at", "dailyAt": "09:30:00"},
+        headers={"X-DevRadar-CSRF": csrf},
+    )
+    assert patched.status_code == 200
+    assert patched.json()["data"]["intervalMinutes"] is None
+    assert datetime.fromisoformat(patched.json()["data"]["updatedAt"]) > created_updated_at
+
+
+@pytest.mark.postgresql
+def test_patch_rejects_invalid_domain_values_and_workflow_status(
+    custom_source_api: tuple[TestClient, str, str],
+) -> None:
+    client, _, csrf = custom_source_api
+    created = client.post(
+        "/api/v1/custom-sources", json=_payload(), headers={"X-DevRadar-CSRF": csrf}
+    )
+    profile_id = created.json()["data"]["id"]
+
+    invalid_url = client.patch(
+        f"/api/v1/custom-sources/{profile_id}",
+        json={"baseUrl": "http://127.0.0.1/admin"},
+        headers={"X-DevRadar-CSRF": csrf},
+    )
+    assert invalid_url.status_code == 422
+
+    unmanaged_status = client.patch(
+        f"/api/v1/custom-sources/{profile_id}",
+        json={"status": "preview_ready"},
+        headers={"X-DevRadar-CSRF": csrf},
+    )
+    assert unmanaged_status.status_code == 422
+
+
+@pytest.mark.postgresql
+def test_create_rejects_paths_that_cannot_reach_the_fetch_boundary(
+    custom_source_api: tuple[TestClient, str, str],
+) -> None:
+    client, _, csrf = custom_source_api
+
+    for base_url in (
+        "https://example.test/công-việc",
+        "https://example.test/jobs%2farchive",
+        "https://example.test/jobs%25archive",
+    ):
+        payload = _payload()
+        payload["baseUrl"] = base_url
+        response = client.post(
+            "/api/v1/custom-sources",
+            json=payload,
+            headers={"X-DevRadar-CSRF": csrf},
+        )
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "custom_source_invalid"

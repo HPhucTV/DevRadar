@@ -42,6 +42,9 @@ Không âm thầm chọn một phía khi hai nguồn cùng cấp mâu thuẫn. G
 - Chỉ crawl `Source` đã qua gate trong `docs/INGESTION.md` và có trạng thái `approved`.
 - Không bypass CAPTCHA, authentication, anti-bot, paywall, access control hoặc giới hạn được công bố.
 - API công khai không nhận URL crawl tùy ý. Mọi request outbound phải được sinh từ cấu hình allow-list và được kiểm tra chống SSRF/redirect ngoài phạm vi.
+- Custom source profile là ngoại lệ owner-local/protected: URL chỉ được lưu qua profile đã xác thực, không được truyền URL override theo từng run và không được dùng để tạo arbitrary fetch proxy. `DEVRADAR_CUSTOM_SOURCES_LOCAL_ENABLED` mặc định `false` và không được bật trên public deployment.
+- Custom profile phải qua preview thành công trước `enabled`; `owner_authorized_local` không đồng nghĩa với global `approved`. Permission acknowledgement chỉ là cam kết của operator, không phải legal certification.
+- HTTP access denial, CAPTCHA/challenge, paywall hoặc anti-bot phải chuyển profile sang `blocked` với `permission_required`, không retry và không cung cấp action để vượt kiểm soát truy cập.
 - Ưu tiên HTTP/structured data; chỉ dùng browser khi source đã duyệt thực sự cần JavaScript rendering.
 - Mọi `Job` phải truy ngược được tới `RawJobSnapshot`, `Source`, URL và `CrawlRun`.
 - Ingestion phải idempotent. Rerun cùng input không được tạo thêm job hoặc change event giả.
@@ -176,6 +179,14 @@ docker compose --env-file .env.example --profile crawler run --rm crawler crawl 
 ```
 
 `--max-items` tạo coverage `incomplete` dù run thành công; không dùng run đó làm completeness/removal signal. Service `crawler` cần giữ non-root, read-only filesystem, `no-new-privileges`, capability tối thiểu và seccomp profile cùng version Playwright. Network-level egress control chưa được chứng minh ở V1; application route/IP policy vẫn bắt buộc.
+
+Custom profile worker là command opt-in local/protected; không thay đổi static registry và không nhận URL trên CLI:
+
+```powershell
+$env:DEVRADAR_CUSTOM_SOURCES_LOCAL_ENABLED = 'true'
+.venv\Scripts\python -m devradar.cli custom-source-worker --once --deadline-minutes 10
+Remove-Item Env:\DEVRADAR_CUSTOM_SOURCES_LOCAL_ENABLED -ErrorAction SilentlyContinue
+```
 
 ### Khi thay đổi dependency
 

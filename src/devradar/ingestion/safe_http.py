@@ -8,7 +8,7 @@ import socket
 import ssl
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from enum import StrEnum
 from hashlib import sha256
@@ -274,6 +274,7 @@ class SafeHttpFetcher:
     def _fetch_serialized(self, url: str, policy: FetchPolicy) -> FetchResult:
         current_url = url
         redirect_count = 0
+        redirect_chain: list[str] = []
 
         while True:
             try:
@@ -288,6 +289,8 @@ class SafeHttpFetcher:
                 raise
 
             host = parsed.hostname.lower() if parsed.hostname else ""
+            if redirect_count and (not redirect_chain or redirect_chain[-1] != normalized_url):
+                redirect_chain.append(normalized_url)
             self._wait_for_slot(host, policy)
             addresses = self._resolve_and_validate(host)
             target = parsed.path or "/"
@@ -330,7 +333,8 @@ class SafeHttpFetcher:
                 current_url = urljoin(normalized_url, location)
                 continue
 
-            return self._validate_response(normalized_url, response, policy)
+            result = self._validate_response(normalized_url, response, policy)
+            return replace(result, redirect_chain=tuple(redirect_chain))
 
     def _resolve_and_validate(self, host: str) -> tuple[str, ...]:
         try:

@@ -13,6 +13,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from devradar.custom_sources.models import CustomSourceProfile, CustomSourceStatus
+from devradar.custom_sources.scheduler import custom_profile_config_version
 from devradar.ingestion.models import (
     CoverageStatus,
     CrawlRun,
@@ -176,5 +178,97 @@ def request_crawl_run(
                 "source_run_active",
                 "Source already has a pending or running crawl run.",
             ) from None
+        raise
+    return RequestedRun(crawl_run, reused=False)
+
+
+def request_custom_crawl_run(
+    session: Session,
+    *,
+    source_id: UUID,
+    owner_user_id: UUID,
+    idempotency_key: str,
+    requested_at: datetime | None = None,
+) -> RequestedRun:
+    """Enqueue one owner-scoped custom run without accepting a URL override."""
+
+    if session.in_transaction():
+        session.rollback()
+    if not _IDEMPOTENCY_KEY_PATTERN.fullmatch(idempotency_key):
+        raise RunRequestError(
+            "invalid_idempotency_key",
+            "Idempotency key must be 8..128 safe ASCII characters.",
+        )
+    now = requested_at or datetime.now(UTC)
+    if now.tzinfo is None or now.utcoffset() is None:
+        raise RunRequestError("invalid_request_time", "Requested time must include a UTC offset.")
+    requester = f"custom-owner:{owner_user_id}"
+    trigger_key = (
+        f"custom-api:{sha256(f'{requester}:{source_id}:{idempotency_key}'.encode()).hexdigest()}"
+    )
+    request_hash = _request_hash(source_id)
+    existing = session.scalar(
+        select(CrawlRun).where(
+            CrawlRun.requested_by == requester,
+            CrawlRun.trigger_key == trigger_key,
+        )
+    )
+    if existing is not None:
+        result = _resolve_existing(existing, request_hash=request_hash)
+        session.rollback()
+        return result
+    profile = session.scalar(
+        select(CustomSourceProfile).where(
+            CustomSourceProfile.source_id == source_id,
+            CustomSourceProfile.owner_user_id == owner_user_id,
+        )
+    )
+    if profile is None:
+        session.rollback()
+        raise RunRequestError("profile_not_found", "Custom source profile was not found.")
+    if profile.status not in {CustomSourceStatus.ENABLED, CustomSourceStatus.DEGRADED}:
+        session.rollback()
+        raise RunRequestError(
+            "profile_not_schedulable",
+            "Custom source profile is not enabled for crawling.",
+        )
+    active = session.scalar(
+        select(CrawlRun).where(
+            CrawlRun.source_id == source_id,
+            CrawlRun.status.in_((CrawlRunStatus.PENDING, CrawlRunStatus.RUNNING)),
+        )
+    )
+    if active is not None:
+        session.rollback()
+        raise RunRequestError(
+            "source_run_active", "Source already has a pending or running crawl run."
+        )
+    crawl_run = CrawlRun(
+        source_id=source_id,
+        trigger_type=CrawlTriggerType.MANUAL,
+        trigger_key=trigger_key,
+        requested_at=now,
+        requested_by=requester,
+        request_hash=request_hash,
+        status=CrawlRunStatus.PENDING,
+        coverage_status=CoverageStatus.UNKNOWN,
+        adapter_version="pending",
+        config_version=custom_profile_config_version(profile),
+    )
+    session.add(crawl_run)
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        existing = session.scalar(
+            select(CrawlRun).where(
+                CrawlRun.requested_by == requester,
+                CrawlRun.trigger_key == trigger_key,
+            )
+        )
+        if existing is not None:
+            result = _resolve_existing(existing, request_hash=request_hash)
+            session.rollback()
+            return result
         raise
     return RequestedRun(crawl_run, reused=False)

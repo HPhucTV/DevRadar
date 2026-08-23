@@ -40,6 +40,13 @@ class SourceApprovalStatus(StrEnum):
     RETIRED = "retired"
 
 
+def source_status_is_ingestible(status: SourceApprovalStatus) -> bool:
+    return status in {
+        SourceApprovalStatus.APPROVED,
+        SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL,
+    }
+
+
 class SourceHealthStatus(StrEnum):
     UNKNOWN = "unknown"
     HEALTHY = "healthy"

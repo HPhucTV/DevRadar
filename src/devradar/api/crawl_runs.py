@@ -29,6 +29,8 @@ from devradar.ingestion.models import (
     CrawlRun,
     CrawlRunStatus,
     CrawlTriggerType,
+    Source,
+    SourceApprovalStatus,
 )
 from devradar.platform.database import get_database_session
 
@@ -141,7 +143,14 @@ def _data(crawl_run: CrawlRun) -> CrawlRunData:
 
 
 def _conditions(filters: CrawlRunQuery) -> list[ColumnElement[bool]]:
-    conditions: list[ColumnElement[bool]] = []
+    conditions: list[ColumnElement[bool]] = [
+        select(Source.id)
+        .where(
+            Source.id == CrawlRun.source_id,
+            Source.approval_status == SourceApprovalStatus.APPROVED,
+        )
+        .exists()
+    ]
     if filters.source_id is not None:
         conditions.append(CrawlRun.source_id == filters.source_id)
     if filters.status is not None:
@@ -239,7 +248,14 @@ def get_crawl_run(
     run_id: Annotated[UUID, Path(alias="runId")],
     session: DatabaseSession,
 ) -> CrawlRunDetailResponse:
-    crawl_run = session.get(CrawlRun, run_id)
+    crawl_run = session.scalar(
+        select(CrawlRun)
+        .join(Source, Source.id == CrawlRun.source_id)
+        .where(
+            CrawlRun.id == run_id,
+            Source.approval_status == SourceApprovalStatus.APPROVED,
+        )
+    )
     if crawl_run is None:
         raise HTTPException(status_code=404)
     return CrawlRunDetailResponse(data=_data(crawl_run))

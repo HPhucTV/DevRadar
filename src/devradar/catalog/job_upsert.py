@@ -24,7 +24,7 @@ from devradar.ingestion.models import (
     ParseStatus,
     RawJobSnapshot,
     Source,
-    SourceApprovalStatus,
+    source_status_is_ingestible,
 )
 from devradar.ingestion.normalization import (
     CanonicalJobContent,
@@ -104,8 +104,9 @@ def _validate_source_boundary(
     source_config: SourceConfig,
 ) -> None:
     if (
-        database_source.approval_status is not SourceApprovalStatus.APPROVED
-        or source_config.approval_status is not SourceApprovalStatus.APPROVED
+        not source_status_is_ingestible(database_source.approval_status)
+        or not source_status_is_ingestible(source_config.approval_status)
+        or database_source.approval_status is not source_config.approval_status
         or database_source.name != source_config.name
         or database_source.base_url != source_config.base_url
         or database_source.adapter_key != source_config.adapter_key

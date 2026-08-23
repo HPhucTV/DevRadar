@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 import getpass
 import json
+import os
 import sys
+import time
 from collections.abc import Sequence
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
@@ -18,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from devradar.auth.service import hash_password
 from devradar.automation.orchestrator import orchestrate_source
-from devradar.automation.worker import work_one_pending_run
+from devradar.automation.worker import work_one_custom_source, work_one_pending_run
 from devradar.ingestion.models import CrawlRunStatus
 from devradar.ingestion.runner import IngestionRunError, resolve_approved_source
 from devradar.ingestion.source_registry import V3_SOURCE_REGISTRY
@@ -55,6 +57,13 @@ def _embedding_batch_size(value: str) -> int:
     return parsed
 
 
+def _poll_seconds(value: str) -> int:
+    parsed = _positive_int(value)
+    if parsed > 300:
+        raise argparse.ArgumentTypeError("poll seconds must not exceed 300")
+    return parsed
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="devradar")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -81,6 +90,26 @@ def _parser() -> argparse.ArgumentParser:
         type=_deadline_minutes,
         default=60,
         help="hard run deadline from now (1..360, default 60)",
+    )
+    custom_worker = subparsers.add_parser(
+        "custom-source-worker", help="poll and run enabled owner-local custom source profiles"
+    )
+    custom_worker.add_argument(
+        "--deadline-minutes",
+        type=_deadline_minutes,
+        default=60,
+        help="hard worker deadline from now (1..360, default 60)",
+    )
+    custom_worker.add_argument(
+        "--poll-seconds",
+        type=_poll_seconds,
+        default=_poll_seconds(os.environ.get("DEVRADAR_CUSTOM_SOURCE_POLL_SECONDS", "10")),
+        help="sleep between empty polls (1..300, default 10)",
+    )
+    custom_worker.add_argument(
+        "--once",
+        action="store_true",
+        help="poll once and exit when no run is available",
     )
     subparsers.add_parser(
         "download-embedding-model",
@@ -196,6 +225,30 @@ def main(argv: Sequence[str] | None = None) -> int:
                     print(json.dumps({"processed": False}))
                     return 0
                 result = worker_result
+            elif args.command == "custom-source-worker":
+                processed = 0
+                last_status: CrawlRunStatus | None = None
+                while datetime.now(UTC) < deadline:
+                    custom_result = work_one_custom_source(session, deadline=deadline)
+                    if custom_result is None:
+                        if args.once:
+                            break
+                        time.sleep(args.poll_seconds)
+                        continue
+                    processed += len(custom_result.reports)
+                    last_status = custom_result.final_report.status
+                    if args.once:
+                        break
+                print(
+                    json.dumps(
+                        {
+                            "processed": processed,
+                            "lastStatus": last_status.value if last_status else None,
+                        },
+                        sort_keys=True,
+                    )
+                )
+                return 0 if last_status in {None, CrawlRunStatus.SUCCEEDED} else 1
             else:
                 raise AssertionError("argparse accepted an unsupported command")
             report = result.final_report
