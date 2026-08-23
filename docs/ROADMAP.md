@@ -365,8 +365,8 @@ này được kiểm thử thật.
 Custom PostgreSQL backup, isolated restore drill, bounded health monitor và runbooks đã có tại
 [V6-005 evidence](evidence/V6-005-backup-monitoring.md). Local archive/restore/monitor đã pass; scheduled
 remote CI runs #20/#21 cũng đã pass backup/restore drill và lưu metadata artifact không chứa dump. Encrypted
-off-host backup có schedule, RPO/RTO, key rotation và public uptime provider evidence còn mở. V6-011 đã
-cài bounded GitHub Issues route cho unsuccessful `main` CI; chưa nâng status trước remote routing drill.
+off-host backup có schedule, RPO/RTO, key rotation và public uptime provider evidence còn mở. [V6-011](evidence/V6-011-github-incident-alerting.md)
+đã hoàn tất bounded GitHub Issues route với remote dispatch, owner-assigned safe issue và cleanup drill.
 
 ### V6-006 evidence (`Done`)
 
@@ -378,7 +378,7 @@ quyết định không thêm Redis/worker pool; topology chỉ được đánh g
 
 [Public release review](evidence/V6-007-public-release-review.md) đã kiểm các boundary local/protected,
 nhưng chưa có HTTPS ingress/hostname thật, managed secret provider và rotation, GitHub Actions run trên
-remote đã pass. Vẫn chưa có off-host encrypted backup với RPO/RTO hoặc public privacy/alert evidence.
+remote đã pass. Vẫn chưa có off-host encrypted backup với RPO/RTO hoặc public privacy/uptime evidence.
 Không đóng V6 cho tới khi các provider/operator evidence này tồn tại.
 
 ### V6-008 progress (`Done`)

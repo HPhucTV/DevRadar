@@ -95,6 +95,9 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [V6-005 backup/monitor evidence](docs/evidence/V6-005-backup-monitoring.md): custom backup, isolated restore drill, bounded monitor và runbooks.
 - [V6-007 public release review](docs/evidence/V6-007-public-release-review.md): local/protected evidence và boundary chưa được cấp cho public deployment.
 - [V6-008 operator ingestion console](docs/evidence/V6-008-operator-ingestion-console.md): source health, approved-source enqueue, pending history và browser/security evidence.
+- [V6-009 crawl status polling](docs/evidence/V6-009-crawl-status-polling.md): bounded run-detail polling, worker completion visibility và browser/PostgreSQL evidence.
+- [V6-010 privacy policy center](docs/evidence/V6-010-privacy-policy-center.md): public privacy route, retention/AI/source policy contract và API/web/browser evidence.
+- [V6-011 GitHub incident alerting](docs/evidence/V6-011-github-incident-alerting.md): least-privilege unsuccessful-CI route, owner-assigned safe issue và remote dispatch/cleanup drill.
 - [Operations](docs/OPERATIONS.md): test, security, observability, retention, CI/CD và deployment gates.
 - [Source discovery](docs/sources/SHORTLIST.md): evidence và approval outcome; VNG, NAVER Vietnam/Greenhouse và MoMo đã được duyệt cho bounded Vietnam scope, RemoteJobs.org được duyệt riêng cho V3 remote cohort có attribution, GeoComply/Lever vẫn `permission_required`.
 - [Pre-V1 local evidence](docs/evidence/PRE-007-local-prerequisites.md): Docker/PostgreSQL capability và constraint đã xác minh.

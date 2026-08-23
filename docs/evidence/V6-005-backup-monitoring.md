@@ -1,7 +1,7 @@
 # V6-005 — Backup/restore, monitoring và runbooks
 
 **Ngày ghi nhận:** 2026-08-23
-**Trạng thái:** `In Progress` — local drill đã pass; lịch backup/encryption/alert provider public còn thiếu.
+**Trạng thái:** `In Progress` — local drill và CI incident route đã pass; off-host backup/public uptime provider còn thiếu.
 
 ## Đã triển khai
 
@@ -42,8 +42,12 @@ lặp lại đầy đủ drill và hoàn tất `success`. Artifact `remote-backu
 bytes, digest `sha256:f77dcc6b3733d4064683315ba420d27ad3d2fbc9221ba20c090e01c794b73c5b`, chưa expired và hết hạn
 ngày 2026-09-06; dump tiếp tục bị xóa trước bước upload.
 
+[V6-011 GitHub incident alerting](V6-011-github-incident-alerting.md) đã kiểm chứng owner-assigned issue
+route cho unsuccessful `main` CI và manual drill qua GitHub Actions/Issues thật. Capability này cung cấp
+CI incident routing, không được dùng làm evidence cho public endpoint availability.
+
 ## Boundary còn mở
 
 - Chưa có scheduled encrypted backup trên deployment provider hoặc off-host retention evidence.
-- Chưa test object-storage access policy, key rotation, restore RPO/RTO hoặc alert routing thật.
+- Chưa test object-storage access policy, key rotation, restore RPO/RTO hoặc public uptime alert routing.
 - `health` là process health; database readiness và business SLO vẫn cần smoke/run metrics riêng.

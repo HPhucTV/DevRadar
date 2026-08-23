@@ -12,6 +12,7 @@
 | Deploy/migration/rollback | [V6-004 evidence](V6-004-ci-deploy.md) | Local fresh DB deploy và application-image rollback pass; không tự downgrade |
 | Remote CI/rollback/artifact | [V6-004 evidence](V6-004-ci-deploy.md) | Run #21 trên SHA `ebc12f2` pass cả bảy jobs; PostgreSQL, Compose, rollback và backup metadata artifacts retention 14 ngày |
 | Protected `main` | [V6-004 evidence](V6-004-ci-deploy.md) | Strict seven-check branch protection, linear history và conversation resolution bật; force-push/deletion tắt; admin bypass được giữ cho single owner |
+| CI incident route | [V6-011 evidence](V6-011-github-incident-alerting.md) | Manual dispatch tạo safe owner-assigned issue qua GitHub Actions/Issues; issue được verify và đóng `completed` |
 | Backup/restore/monitor | [V6-005 evidence](V6-005-backup-monitoring.md) | Local archive 610,431,168 bytes restore pass; remote CI runs #20/#21 lặp lại backup/restore drill và metadata artifact không chứa dump |
 | Queue decision | [V6-006 evidence](V6-006-queue-pressure.md) và [ADR-018](../decisions/0018-do-not-add-redis-worker-pool-after-v6-benchmark.md) | Giữ PostgreSQL queue/one-shot worker |
 | Container advisory | [ADR-019](../decisions/0019-accept-pinned-trivy-container-gate.md) | API/crawler scan có 0 fixable HIGH/CRITICAL; unfixed residual risk được theo dõi |
@@ -22,7 +23,7 @@
 - Chưa có managed secret provider, rotation/revocation drill và operator access audit.
 - Chưa có off-host encrypted PostgreSQL backup schedule, retention, RPO/RTO và restore timestamp/operator
   evidence; local archive không chứng minh durability production.
-- Chưa có alert routing/incident contact thật hoặc privacy/terms notice đã publish cho public traffic.
+- Chưa có external uptime alert cho public endpoint hoặc privacy/terms notice đã publish cho public traffic.
 
 ## External-state audit ngày 2026-08-23
 
