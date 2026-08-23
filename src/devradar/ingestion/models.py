@@ -35,6 +35,7 @@ def _enum_values(enum_class: type[PythonEnum]) -> list[str]:
 class SourceApprovalStatus(StrEnum):
     CANDIDATE = "candidate"
     APPROVED = "approved"
+    OWNER_AUTHORIZED_LOCAL = "owner_authorized_local"
     PAUSED = "paused"
     RETIRED = "retired"
 
@@ -81,7 +82,8 @@ class Source(Base):
     __tablename__ = "sources"
     __table_args__ = (
         CheckConstraint(
-            "approval_status IN ('candidate', 'approved', 'paused', 'retired')",
+            "approval_status IN ('candidate', 'approved', 'owner_authorized_local', 'paused', "
+            "'retired')",
             name="ck_sources_approval_status",
         ),
         CheckConstraint(
@@ -132,7 +134,7 @@ class Source(Base):
             create_constraint=False,
             validate_strings=True,
             values_callable=_enum_values,
-            length=16,
+            length=32,
         ),
         default=SourceApprovalStatus.CANDIDATE,
         server_default=text("'candidate'"),

@@ -67,6 +67,7 @@ blob-report/
 /temp/
 /pgdata/
 /postgres-data/
+/.tools/
 *.log
 *.db
 *.sqlite
