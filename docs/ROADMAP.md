@@ -353,8 +353,9 @@ pass. Unfixed advisory vẫn là residual risk được theo dõi, không phải
 
 CI workflow, Dependabot, Compose image override, migration command surface, deploy/rollback scripts và
 health smoke đã có tại [V6-004 evidence](evidence/V6-004-ci-deploy.md). Local fresh-database deploy và
-application-image rollback đã pass. GitHub Actions run #17 trên SHA `be67e89` đã pass toàn bộ Python,
-PostgreSQL, web, Compose, remote rollback và Trivy jobs; hai artifact retention 14 ngày đã được lưu.
+application-image rollback đã pass. GitHub Actions run #21 trên SHA `ebc12f2` đã pass toàn bộ bảy job
+Python, PostgreSQL, web, Compose, remote rollback, remote backup/restore và Trivy; bốn artifact retention
+14 ngày đã được lưu.
 Public HTTPS ingress và managed secret store vẫn chưa có evidence; không nâng status tới khi các boundary
 này được kiểm thử thật.
 
@@ -362,7 +363,7 @@ này được kiểm thử thật.
 
 Custom PostgreSQL backup, isolated restore drill, bounded health monitor và runbooks đã có tại
 [V6-005 evidence](evidence/V6-005-backup-monitoring.md). Local archive/restore/monitor đã pass; scheduled
-remote CI run #20 cũng đã pass backup/restore drill và lưu metadata artifact không chứa dump. Encrypted
+remote CI runs #20/#21 cũng đã pass backup/restore drill và lưu metadata artifact không chứa dump. Encrypted
 off-host backup có schedule, RPO/RTO, key rotation, alert routing và provider evidence còn mở.
 
 ### V6-006 evidence (`Done`)

@@ -46,6 +46,12 @@ smoke, rollback về `devradar-app:known-good`, rồi lưu hai artifact: `compos
 (`2.25 KB`, digest `sha256:4c67dee7ef01ca6cd59c1f5cdca258a303ec6353cd90b7d391ac7e8b480852b4`) và
 `remote-rollback-32615319636` (`2.29 KB`, digest `sha256:b207f99896f400a9e0eaf24c173062b6bee06870daabe0d615bc16802524977e`).
 
+Latest full checkpoint: [GitHub Actions run #21](https://github.com/HPhucTV/DevRadar/actions/runs/32616323067)
+trên SHA `ebc12f2` hoàn tất `success` ngày 2026-08-23. Cả bảy job Python, PostgreSQL, web, Compose,
+remote rollback, remote backup/restore và Trivy đều `success`. Bốn artifact `postgresql-tests`,
+`compose-smoke`, `remote-rollback` và `remote-backup` chưa expired, có retention đến 2026-09-06;
+artifact backup chỉ chứa metadata/database log và không chứa dump.
+
 ## Boundary còn mở
 
 - HTTPS public ingress, managed secret store và deploy host/public smoke vẫn cần được cấu hình ở V6-004

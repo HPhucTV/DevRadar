@@ -37,6 +37,11 @@ archive, restore vào database tạm và xóa archive trước artifact upload. 
 artifact chưa expired và hết hạn ngày 2026-09-06. Cùng run này, PostgreSQL JUnit, Compose smoke và remote
 rollback artifacts cũng được lưu với retention 14 ngày.
 
+[GitHub Actions run #21](https://github.com/HPhucTV/DevRadar/actions/runs/32616323067) trên SHA `ebc12f2`
+lặp lại đầy đủ drill và hoàn tất `success`. Artifact `remote-backup-32616323067` có kích thước `1,723`
+bytes, digest `sha256:f77dcc6b3733d4064683315ba420d27ad3d2fbc9221ba20c090e01c794b73c5b`, chưa expired và hết hạn
+ngày 2026-09-06; dump tiếp tục bị xóa trước bước upload.
+
 ## Boundary còn mở
 
 - Chưa có scheduled encrypted backup trên deployment provider hoặc off-host retention evidence.

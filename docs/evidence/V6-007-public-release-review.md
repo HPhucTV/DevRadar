@@ -10,8 +10,8 @@
 | Auth/session/CSRF/authorization | Default và PostgreSQL integration suites; V6-002 evidence | Local/protected runtime có test; chưa phải public endpoint evidence |
 | API/web hardening | [V6-003 evidence](V6-003-hardening.md) | Done; rate limit, headers, CORS, secret guard và Trivy gate pass |
 | Deploy/migration/rollback | [V6-004 evidence](V6-004-ci-deploy.md) | Local fresh DB deploy và application-image rollback pass; không tự downgrade |
-| Remote CI/rollback/artifact | [V6-004 evidence](V6-004-ci-deploy.md) | Run #17 trên SHA `be67e89` pass toàn bộ jobs; rollback drill và hai artifact retention 14 ngày |
-| Backup/restore/monitor | [V6-005 evidence](V6-005-backup-monitoring.md) | Local archive 610,431,168 bytes restore pass; remote CI run #20 backup/restore drill và metadata artifact pass |
+| Remote CI/rollback/artifact | [V6-004 evidence](V6-004-ci-deploy.md) | Run #21 trên SHA `ebc12f2` pass cả bảy jobs; PostgreSQL, Compose, rollback và backup metadata artifacts retention 14 ngày |
+| Backup/restore/monitor | [V6-005 evidence](V6-005-backup-monitoring.md) | Local archive 610,431,168 bytes restore pass; remote CI runs #20/#21 lặp lại backup/restore drill và metadata artifact không chứa dump |
 | Queue decision | [V6-006 evidence](V6-006-queue-pressure.md) và [ADR-018](../decisions/0018-do-not-add-redis-worker-pool-after-v6-benchmark.md) | Giữ PostgreSQL queue/one-shot worker |
 | Container advisory | [ADR-019](../decisions/0019-accept-pinned-trivy-container-gate.md) | API/crawler scan có 0 fixable HIGH/CRITICAL; unfixed residual risk được theo dõi |
 
