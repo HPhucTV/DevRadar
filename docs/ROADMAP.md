@@ -362,7 +362,8 @@ này được kiểm thử thật.
 
 Custom PostgreSQL backup, isolated restore drill, bounded health monitor và runbooks đã có tại
 [V6-005 evidence](evidence/V6-005-backup-monitoring.md). Local archive/restore/monitor đã pass; scheduled
-encrypted off-host backup, RPO/RTO, key rotation, alert routing và provider evidence còn mở.
+remote CI run #20 cũng đã pass backup/restore drill và lưu metadata artifact không chứa dump. Encrypted
+off-host backup có schedule, RPO/RTO, key rotation, alert routing và provider evidence còn mở.
 
 ### V6-006 evidence (`Done`)
 

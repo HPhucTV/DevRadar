@@ -30,6 +30,13 @@ Fresh rerun ngày 2026-08-23 trên Compose database mới: `backup.ps1` tạo cu
 `devradar_restore_d86624348b86` và xác nhận `alembic_version`, sau đó tự drop database. `monitor.ps1`
 trả JSON `status=ok`, `latencyMs=458.292`, `thresholdMs=2000`. Archive local đã được xóa sau kiểm tra.
 
+[GitHub Actions run #20](https://github.com/HPhucTV/DevRadar/actions/runs/32615955128) trên SHA `54573e5`
+hoàn tất `success` sau `428` giây. Remote runner build application image, migrate PostgreSQL, tạo custom
+archive, restore vào database tạm và xóa archive trước artifact upload. Artifact
+`remote-backup-32615955128` chỉ chứa metadata/database log (`1,743` bytes), không chứa database dump;
+artifact chưa expired và hết hạn ngày 2026-09-06. Cùng run này, PostgreSQL JUnit, Compose smoke và remote
+rollback artifacts cũng được lưu với retention 14 ngày.
+
 ## Boundary còn mở
 
 - Chưa có scheduled encrypted backup trên deployment provider hoặc off-host retention evidence.
