@@ -151,7 +151,7 @@ def _selector_match(node: _HtmlNode, selector: str) -> bool:
     return node.tag == selector.casefold()
 
 
-def _select(root: _HtmlNode, expression: str) -> tuple[_HtmlNode, str | None]:
+def _select(root: _HtmlNode, expression: str) -> tuple[tuple[_HtmlNode, ...], str | None]:
     selector, separator, attribute = expression.partition("@")
     if separator and (not attribute or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", attribute)):
         raise ValueError("attribute selector is invalid")
@@ -223,7 +223,9 @@ def _record_value(record: Mapping[str, object], field_name: str) -> object:
         location = record.get("jobLocation")
         if isinstance(location, list) and location:
             location = location[0]
-        return _nested_value(location or {}, "address", "addressLocality")
+        return _nested_value(
+            location if isinstance(location, Mapping) else {}, "address", "addressLocality"
+        )
     if field_name == "externalId":
         return _nested_value(record, "identifier", "value")
     return None

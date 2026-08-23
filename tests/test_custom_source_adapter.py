@@ -10,7 +10,7 @@ import pytest
 from devradar.custom_sources.models import CustomSourceProfileDraft
 from devradar.custom_sources.policy import build_custom_fetch_policy
 from devradar.ingestion.adapters.custom import CustomSourceAdapter, CustomSourceAdapterError
-from devradar.ingestion.contracts import RawSnapshot, RunContext
+from devradar.ingestion.contracts import FetchResult, RawSnapshot, RunContext
 from devradar.ingestion.safe_http import FetchError, FetchErrorCode
 
 FIXTURES = Path(__file__).parent / "fixtures" / "custom_sources"
@@ -24,9 +24,7 @@ def _draft() -> CustomSourceProfileDraft:
     )
 
 
-def _fetch_result(payload: bytes, *, content_type: str = "application/json"):
-    from devradar.ingestion.contracts import FetchResult
-
+def _fetch_result(payload: bytes, *, content_type: str = "application/json") -> FetchResult:
     return FetchResult(
         final_url="https://example.test/jobs",
         fetched_at=datetime(2026, 8, 23, 3, 0, tzinfo=UTC),
@@ -40,7 +38,7 @@ def _fetch_result(payload: bytes, *, content_type: str = "application/json"):
 def _run_context() -> RunContext:
     return RunContext(
         run_id=uuid4(),
-        source=type("CustomSourceIdentity", (), {"source_key": "custom-example"})(),  # type: ignore[arg-type]
+        source=type("CustomSourceIdentity", (), {"source_key": "custom-example"})(),
         deadline=datetime.now(UTC) + timedelta(minutes=5),
         correlation_id="custom-test",
     )
