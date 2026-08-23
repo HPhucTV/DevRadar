@@ -90,6 +90,7 @@ V1 dùng page-based pagination vì dataset portfolio còn bounded và UI cần t
 | Method và path | Mục đích | Phase | Quyền tối thiểu |
 |---|---|---|---|
 | `GET /api/v1/health` | Process liveness; không tuyên bố database/source readiness | V1 scaffold | local/read |
+| `GET /api/v1/privacy` | Policy retention, deletion, AI boundary và source permission | V6-010 — implemented | public/read; không yêu cầu session |
 | `POST /api/v1/auth/login` | Xác thực operator/owner và tạo session | V6-002 — implemented | public login; rate limit ở V6-003 |
 | `GET /api/v1/auth/me` | Đọc user của session hiện tại | V6-002 — implemented | authenticated |
 | `POST /api/v1/auth/logout` | Revoke session hiện tại và xóa cookie | V6-002 — implemented | authenticated + CSRF |
@@ -121,6 +122,11 @@ không coi UUID khó đoán là access control.
 Hai endpoint `agent-runs` từng được đề xuất cho V4 nhưng chưa implement và đã bị loại cùng runtime/schema theo [ADR-013](decisions/0013-remove-unretained-v4-agent-runtime.md). Không giữ route placeholder hoặc reserved contract cho feature đã reject.
 
 V2 Source summary bổ sung `consecutiveFailures` và safe `healthReasonCode`; Source detail bổ sung `baselineItemsFound` và `quarantinedAt`. Response không trả rate policy, allowed hosts nội bộ, request payload hoặc raw error. `healthStatus=quarantined` luôn có `quarantinedAt`; các status khác trả `null`.
+
+`GET /privacy` là read-only policy contract. Response cố định `privacy-v1`: không giữ CV file gốc mặc định,
+ResumeProfile TTL 24 giờ, owner deletion được hỗ trợ, không gửi CV/JD tới external LLM, deterministic extraction
+đứng trước model fallback, crawler chỉ dùng source allow-list và `geocomply-lever` cần permission bằng văn bản.
+Endpoint không trả secret, database configuration, raw CV/JD hoặc URL nội bộ.
 
 ## 6. Resource contracts cốt lõi
 

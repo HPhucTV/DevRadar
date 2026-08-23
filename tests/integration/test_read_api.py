@@ -809,6 +809,7 @@ def test_openapi_exposes_v3_contract_with_camel_case_parameters() -> None:
     openapi = response.json()
     expected_paths = {
         "/api/v1/health",
+        "/api/v1/privacy",
         "/api/v1/auth/login",
         "/api/v1/auth/me",
         "/api/v1/auth/logout",

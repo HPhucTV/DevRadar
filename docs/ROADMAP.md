@@ -391,6 +391,13 @@ terminal status, timeout 30 giây hoặc lỗi backend an toàn. [Evidence](evid
 ghi regression khi list page làm mất pending run, web quality gates, PostgreSQL worker claim và browser
 smoke với worker ngoài HTTP. V6-004/V6-005/V6-007 vẫn mở vì thiếu provider/public evidence.
 
+### V6-010 progress (`Done`)
+
+Privacy/source policy center đã có `GET /api/v1/privacy`, same-origin BFF `/api/devradar/privacy`, route
+`/privacy` và footer link public. Contract khóa CV file không giữ mặc định, ResumeProfile TTL 24 giờ, owner
+deletion, deterministic-first/không external CV-JD LLM và `geocomply-lever=permission_required`. [Evidence](evidence/V6-010-privacy-policy-center.md)
+ghi API/web/Compose/browser smoke; không claim public deployment hoặc managed provider.
+
 ## 9. Quy tắc cập nhật roadmap
 
 - Chỉ đổi status khi kiểm tra exit criteria và link evidence cụ thể.

@@ -13,6 +13,7 @@ const expected = [
   ["crawler-health", "/crawler-health", "implemented", true],
   ["cv-match", "/cv-match", "implemented", true],
   ["alerts", "/alerts", "implemented", true],
+  ["privacy", "/privacy", "implemented", false],
 ];
 
 test("route manifest owns the current dashboard surface", async () => {
@@ -174,4 +175,18 @@ test("BFF has bounded rate, timeout and security-header policy", async () => {
   assert.match(nextConfig, /X-Content-Type-Options/);
   assert.match(nextConfig, /Content-Security-Policy/);
   assert.match(nextConfig, /Referrer-Policy/);
+});
+
+test("privacy route exposes truthful retention, AI and source policy", async () => {
+  const routes = JSON.parse(await readFile(manifestUrl, "utf8"));
+  const route = routes.find((candidate) => candidate.id === "privacy");
+  const page = await readFile(new URL(route.pageFile, webRoot), "utf8");
+  const bff = await readFile(new URL("src/app/api/devradar/privacy/route.ts", webRoot), "utf8");
+  const shell = await readFile(new URL("src/components/app-shell.tsx", webRoot), "utf8");
+  assert.match(page, /resumeProfileTtlHours/);
+  assert.match(page, /GeoComply|Lever/);
+  assert.match(page, /external LLM/i);
+  assert.match(page, /ApiErrorState/);
+  assert.match(bff, /proxyBackend/);
+  assert.match(shell, /privacy/);
 });
