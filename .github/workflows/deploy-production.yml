@@ -1,0 +1,274 @@
+name: DevRadar production deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exact 40-character commit SHA from main with a successful DevRadar CI run
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  packages: write
+
+concurrency:
+  group: devradar-production
+  cancel-in-progress: false
+
+env:
+  IMAGE_ROOT: ghcr.io/hphuctv/devradar
+
+jobs:
+  deploy:
+    name: Publish and deploy exact SHA
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://${{ vars.DEVRADAR_DOMAIN }}
+    env:
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      DEVRADAR_DOMAIN: ${{ vars.DEVRADAR_DOMAIN }}
+      DEVRADAR_HOST: ${{ vars.DEVRADAR_HOST }}
+      DEVRADAR_SSH_USER: ${{ vars.DEVRADAR_SSH_USER }}
+      DEVRADAR_FIREWALL_ID: ${{ vars.DEVRADAR_FIREWALL_ID }}
+
+    steps:
+      - name: Check out exact release SHA
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+
+      - name: Verify main ancestry and exact successful CI run
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ($env:RELEASE_SHA -cnotmatch '^[0-9a-f]{40}$') {
+              throw "release_sha must be exactly 40 lowercase hex characters."
+          }
+          git fetch --no-tags origin main
+          if ($LASTEXITCODE -ne 0) { throw "Could not fetch origin/main." }
+          git merge-base --is-ancestor $env:RELEASE_SHA origin/main
+          if ($LASTEXITCODE -ne 0) { throw "release_sha is not an ancestor of origin/main." }
+          if ((git rev-parse HEAD) -cne $env:RELEASE_SHA) {
+              throw "Checked out commit does not match release_sha."
+          }
+
+          $headers = @{
+              Accept = "application/vnd.github+json"
+              Authorization = "Bearer $env:GITHUB_TOKEN"
+              "X-GitHub-Api-Version" = "2022-11-28"
+          }
+          $uri = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs?head_sha=$env:RELEASE_SHA&status=success&per_page=100"
+          $response = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get
+          $run = @($response.workflow_runs | Where-Object {
+              $_.name -ceq "DevRadar CI" -and
+              $_.head_sha -ceq $env:RELEASE_SHA -and
+              $_.head_branch -ceq "main" -and
+              $_.status -ceq "completed" -and
+              $_.conclusion -ceq "success"
+          } | Sort-Object -Property updated_at -Descending)[0]
+          if ($null -eq $run) { throw "No successful DevRadar CI run exists for release_sha." }
+          "VERIFIED_CI_RUN_ID=$($run.id)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Authenticate to GHCR
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username HPhucTV --password-stdin
+
+      - name: Build and publish API crawler and web images
+        shell: bash
+        run: |
+          set -euo pipefail
+          api_tag="$IMAGE_ROOT-api:$RELEASE_SHA"
+          crawler_tag="$IMAGE_ROOT-crawler:$RELEASE_SHA"
+          web_tag="$IMAGE_ROOT-web:$RELEASE_SHA"
+          ingress_tag="$IMAGE_ROOT-ingress:$RELEASE_SHA"
+
+          docker build --pull --build-arg DEVRADAR_INSTALL_BROWSER=false --tag "$api_tag" .
+          docker build --pull --build-arg DEVRADAR_INSTALL_BROWSER=true --tag "$crawler_tag" .
+          docker build --pull --tag "$web_tag" web
+          docker build --pull --tag "$ingress_tag" deploy/caddy
+          docker push "$api_tag"
+          docker push "$crawler_tag"
+          docker push "$web_tag"
+          docker push "$ingress_tag"
+
+          resolve_digest() {
+            local tag="$1"
+            docker pull "$tag" >/dev/null
+            local reference
+            reference=$(docker image inspect --format='{{index .RepoDigests 0}}' "$tag")
+            if [[ ! "$reference" =~ ^ghcr\.io/hphuctv/devradar-(api|crawler|web|ingress)@sha256:[0-9a-f]{64}$ ]]; then
+              echo "Published image did not resolve to an immutable @sha256: digest." >&2
+              return 1
+            fi
+            printf '%s' "$reference"
+          }
+
+          {
+            echo "DEVRADAR_APP_IMAGE=$(resolve_digest "$api_tag")"
+            echo "DEVRADAR_CRAWLER_IMAGE=$(resolve_digest "$crawler_tag")"
+            echo "DEVRADAR_WEB_IMAGE=$(resolve_digest "$web_tag")"
+            echo "DEVRADAR_INGRESS_IMAGE=$(resolve_digest "$ingress_tag")"
+          } >> "$GITHUB_ENV"
+
+      - name: Create metadata-only release manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-artifacts
+          printf 'release_sha=%s\nci_run_id=%s\napi_image=%s\ncrawler_image=%s\nweb_image=%s\ningress_image=%s\n' \
+            "$RELEASE_SHA" "$VERIFIED_CI_RUN_ID" "$DEVRADAR_APP_IMAGE" \
+            "$DEVRADAR_CRAWLER_IMAGE" "$DEVRADAR_WEB_IMAGE" "$DEVRADAR_INGRESS_IMAGE" \
+            > release-artifacts/release-manifest.txt
+
+      - name: Prepare and validate managed production files
+        shell: bash
+        env:
+          DEVRADAR_PRODUCTION_ENV_B64: ${{ secrets.DEVRADAR_PRODUCTION_ENV_B64 }}
+          DEVRADAR_SSH_PRIVATE_KEY: ${{ secrets.DEVRADAR_SSH_PRIVATE_KEY }}
+          DEVRADAR_SSH_KNOWN_HOSTS: ${{ secrets.DEVRADAR_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          [[ -n "$DEVRADAR_DOMAIN" ]] || { echo "DEVRADAR_DOMAIN is missing." >&2; exit 1; }
+          [[ -n "$DEVRADAR_HOST" ]] || { echo "DEVRADAR_HOST is missing." >&2; exit 1; }
+          [[ -n "$DEVRADAR_SSH_USER" ]] || { echo "DEVRADAR_SSH_USER is missing." >&2; exit 1; }
+          [[ -n "$DEVRADAR_FIREWALL_ID" ]] || { echo "DEVRADAR_FIREWALL_ID is missing." >&2; exit 1; }
+          [[ -n "$DEVRADAR_PRODUCTION_ENV_B64" ]] || { echo "Production env secret is missing." >&2; exit 1; }
+          [[ -n "$DEVRADAR_SSH_PRIVATE_KEY" ]] || { echo "SSH private key secret is missing." >&2; exit 1; }
+          [[ -n "$DEVRADAR_SSH_KNOWN_HOSTS" ]] || { echo "SSH known-host secret is missing." >&2; exit 1; }
+          [[ "$DEVRADAR_SSH_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || { echo "SSH user is invalid." >&2; exit 1; }
+
+          python - <<'PY'
+          import ipaddress
+          import os
+
+          address = ipaddress.ip_address(os.environ["DEVRADAR_HOST"])
+          if address.version != 4 or str(address) != os.environ["DEVRADAR_HOST"]:
+              raise SystemExit("DEVRADAR_HOST must be one canonical IPv4 address.")
+          PY
+
+          ssh_dir="$RUNNER_TEMP/devradar-ssh"
+          install -d -m 0700 "$ssh_dir"
+          umask 077
+          printf '%s' "$DEVRADAR_SSH_PRIVATE_KEY" > "$ssh_dir/id_ed25519"
+          printf '%s\n' "$DEVRADAR_SSH_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+          printf '%s' "$DEVRADAR_PRODUCTION_ENV_B64" | base64 --decode > "$RUNNER_TEMP/production-base.env"
+          grep -vE '^(DEVRADAR_(APP|CRAWLER|WEB|INGRESS)_IMAGE|DEVRADAR_DOMAIN)=' \
+            "$RUNNER_TEMP/production-base.env" > "$RUNNER_TEMP/devradar-production.env"
+          printf 'DEVRADAR_DOMAIN=%s\nDEVRADAR_APP_IMAGE=%s\nDEVRADAR_CRAWLER_IMAGE=%s\nDEVRADAR_WEB_IMAGE=%s\nDEVRADAR_INGRESS_IMAGE=%s\n' \
+            "$DEVRADAR_DOMAIN" "$DEVRADAR_APP_IMAGE" "$DEVRADAR_CRAWLER_IMAGE" "$DEVRADAR_WEB_IMAGE" \
+            "$DEVRADAR_INGRESS_IMAGE" \
+            >> "$RUNNER_TEMP/devradar-production.env"
+          chmod 0600 "$ssh_dir/id_ed25519" "$ssh_dir/known_hosts" "$RUNNER_TEMP/devradar-production.env"
+          pwsh ./scripts/validate-production-config.ps1 \
+            -EnvironmentFile "$RUNNER_TEMP/devradar-production.env" \
+            -Domain "$DEVRADAR_DOMAIN"
+
+      - name: Open temporary SSH firewall rule
+        shell: bash
+        env:
+          DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
+        run: |
+          set -euo pipefail
+          [[ -n "$DIGITALOCEAN_TOKEN" ]] || { echo "DIGITALOCEAN_TOKEN is missing." >&2; exit 1; }
+          runner_ipv4=$(curl --fail --silent --show-error --ipv4 https://api.ipify.org)
+          {
+            echo "DEVRADAR_RUNNER_IPV4=$runner_ipv4"
+            echo "DEVRADAR_FIREWALL_CLEANUP_REQUIRED=true"
+          } >> "$GITHUB_ENV"
+          pwsh ./scripts/digitalocean-firewall.ps1 \
+            -Action Add \
+            -FirewallId "$DEVRADAR_FIREWALL_ID" \
+            -RunnerIpv4 "$runner_ipv4"
+          echo "DEVRADAR_FIREWALL_RULE_ADDED=true" >> "$GITHUB_ENV"
+
+      - name: Transfer release contract and deploy immutable images
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ssh_key="$RUNNER_TEMP/devradar-ssh/id_ed25519"
+          known_hosts="$RUNNER_TEMP/devradar-ssh/known_hosts"
+          target="$DEVRADAR_SSH_USER@$DEVRADAR_HOST"
+          ssh_args=(-i "$ssh_key" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o UserKnownHostsFile="$known_hosts" -o StrictHostKeyChecking=yes -o ConnectTimeout=15)
+
+          ssh "${ssh_args[@]}" "$target" 'mkdir -p /opt/devradar/deploy'
+          scp "${ssh_args[@]}" compose.yaml compose.production.yaml "$target:/opt/devradar/"
+          ssh "${ssh_args[@]}" "$target" 'mkdir -p /opt/devradar/deploy/caddy'
+          scp "${ssh_args[@]}" \
+            deploy/caddy/Dockerfile deploy/caddy/Caddyfile deploy/caddy/main.go \
+            "$target:/opt/devradar/deploy/caddy/"
+          scp "${ssh_args[@]}" "$RUNNER_TEMP/devradar-production.env" \
+            "$target:/opt/devradar/.env.production.next"
+          ssh "${ssh_args[@]}" "$target" \
+            'chmod 0600 /opt/devradar/.env.production.next && mv /opt/devradar/.env.production.next /opt/devradar/.env.production'
+          printf '%s' "$GHCR_TOKEN" | ssh "${ssh_args[@]}" "$target" \
+            'docker login ghcr.io --username HPhucTV --password-stdin >/dev/null'
+
+          ssh "${ssh_args[@]}" "$target" 'bash -se' <<'REMOTE'
+          set -euo pipefail
+          cd /opt/devradar
+          compose=(docker compose --env-file .env.production -f compose.yaml -f compose.production.yaml)
+          "${compose[@]}" config --quiet
+          "${compose[@]}" pull api crawler web ingress
+          "${compose[@]}" up --detach database --wait
+          "${compose[@]}" run --rm api python -m alembic upgrade head
+          "${compose[@]}" up --detach api web ingress --wait
+          REMOTE
+
+          ssh "${ssh_args[@]}" "$target" \
+            'cd /opt/devradar && docker compose --env-file .env.production -f compose.yaml -f compose.production.yaml ps' \
+            > release-artifacts/compose-ps.txt
+
+      - name: Run external HTTPS API and web smokes
+        shell: pwsh
+        run: |
+          ./scripts/smoke.ps1 -BaseUrl "https://$env:DEVRADAR_DOMAIN" -RequireHttps -Attempts 60 -DelaySeconds 2
+          ./scripts/web-smoke.ps1 -BaseUrl "https://$env:DEVRADAR_DOMAIN" -RequireHttps
+          "external_smoke=pass" | Out-File -FilePath release-artifacts/smoke.txt -Encoding utf8
+
+      - name: Remove temporary credentials and SSH firewall rule
+        if: always()
+        shell: bash
+        env:
+          DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
+        run: |
+          set +e
+          cleanup_status=0
+          ssh_key="$RUNNER_TEMP/devradar-ssh/id_ed25519"
+          known_hosts="$RUNNER_TEMP/devradar-ssh/known_hosts"
+          if [[ "${DEVRADAR_FIREWALL_CLEANUP_REQUIRED:-}" == "true" ]]; then
+            if [[ -f "$ssh_key" && -f "$known_hosts" ]]; then
+              ssh -i "$ssh_key" -o BatchMode=yes -o IdentitiesOnly=yes \
+                -o UserKnownHostsFile="$known_hosts" -o StrictHostKeyChecking=yes -o ConnectTimeout=15 \
+                "$DEVRADAR_SSH_USER@$DEVRADAR_HOST" 'docker logout ghcr.io >/dev/null' || cleanup_status=1
+            fi
+            pwsh ./scripts/digitalocean-firewall.ps1 \
+              -Action Remove \
+              -FirewallId "$DEVRADAR_FIREWALL_ID" \
+              -RunnerIpv4 "$DEVRADAR_RUNNER_IPV4" || cleanup_status=1
+          fi
+          rm -rf "$RUNNER_TEMP/devradar-ssh" \
+            "$RUNNER_TEMP/production-base.env" \
+            "$RUNNER_TEMP/devradar-production.env"
+          exit "$cleanup_status"
+
+      - name: Upload release metadata
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-release-${{ github.run_id }}
+          path: release-artifacts/
+          if-no-files-found: ignore
+          retention-days: 14

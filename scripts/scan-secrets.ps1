@@ -1,6 +1,9 @@
 $ErrorActionPreference = "Stop"
 
-$trackedEnv = @(git ls-files ".env*" | Where-Object { $_ -notin @(".env.example", "web/.env.example") })
+$trackedEnv = @(
+    git ls-files ".env*" |
+        Where-Object { $_ -notmatch '(^|/)\.env(?:\.[^/]+)*\.example$' }
+)
 if ($trackedEnv.Count -gt 0) {
     throw "Tracked environment override detected: $($trackedEnv -join ', ')"
 }

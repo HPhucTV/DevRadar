@@ -109,14 +109,27 @@ jobs:
     env:
       DEVRADAR_APP_IMAGE: devradar-app:ci
       DEVRADAR_WEB_IMAGE: devradar-web:ci
+      DEVRADAR_INGRESS_IMAGE: devradar-ingress:ci
+      DEVRADAR_DOMAIN: http://localhost
+      DEVRADAR_HTTP_HOST_PORT: "18080"
+      DEVRADAR_HTTPS_HOST_PORT: "18443"
     steps:
       - uses: actions/checkout@v7
       - name: Build API image
         run: docker build --pull --tag devradar-app:ci .
       - name: Build web image
         run: docker build --pull --tag devradar-web:ci web
+      - name: Build ingress image
+        run: docker build --pull --tag devradar-ingress:ci deploy/caddy
       - name: Validate Compose profiles
-        run: docker compose --env-file .env.example --profile crawler config --quiet
+        run: |
+          docker compose --env-file .env.example --profile crawler config --quiet
+          docker compose --env-file .env.example -f compose.yaml -f compose.production.yaml config --quiet
+          docker run --rm \
+            --env DEVRADAR_DOMAIN=http://localhost \
+            --volume "$PWD/deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            devradar-ingress:ci \
+            validate --config /etc/caddy/Caddyfile --adapter caddyfile
       - name: Start database and migrate
         run: |
           docker compose --env-file .env.example up --detach database --wait
@@ -126,12 +139,16 @@ jobs:
           docker compose --env-file .env.example up --detach api web --wait
           pwsh ./scripts/smoke.ps1 -BaseUrl http://127.0.0.1:8000
           pwsh ./scripts/web-smoke.ps1 -BaseUrl http://127.0.0.1:3000
+          docker compose --env-file .env.example -f compose.yaml -f compose.production.yaml up --detach ingress --wait
+          curl --fail --silent --show-error http://localhost:18080/api/v1/health
+          curl --fail --silent --show-error http://localhost:18080/login >/dev/null
+          curl --fail --silent --show-error http://localhost:18080/api/devradar/privacy | grep -q privacy-v1
       - name: Capture Compose smoke artifact
         if: always()
         run: |
           mkdir -p ci-artifacts
-          docker compose --env-file .env.example ps > ci-artifacts/compose-ps.txt
-          docker compose --env-file .env.example logs > ci-artifacts/compose.log || true
+          docker compose --env-file .env.example -f compose.yaml -f compose.production.yaml ps > ci-artifacts/compose-ps.txt
+          docker compose --env-file .env.example -f compose.yaml -f compose.production.yaml logs > ci-artifacts/compose.log || true
           printf 'sha=%s\nrun_id=%s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" > ci-artifacts/metadata.txt
       - name: Upload Compose smoke artifact
         if: always()
@@ -142,7 +159,7 @@ jobs:
           retention-days: 14
       - name: Teardown without deleting named volume
         if: always()
-        run: docker compose --env-file .env.example down
+        run: docker compose --env-file .env.example -f compose.yaml -f compose.production.yaml down
 
   remote-rollback:
     name: Remote application rollback drill
@@ -231,9 +248,10 @@ jobs:
           docker build --pull --tag devradar-app:ci --build-arg DEVRADAR_INSTALL_BROWSER=false .
           docker build --pull --tag devradar-crawler:ci --build-arg DEVRADAR_INSTALL_BROWSER=true .
           docker build --pull --tag devradar-web:ci web
+          docker build --pull --tag devradar-ingress:ci deploy/caddy
       - name: Trivy full reports (fixed and unfixed findings)
         run: |
-          for image in devradar-app:ci devradar-crawler:ci devradar-web:ci; do
+          for image in devradar-app:ci devradar-crawler:ci devradar-web:ci devradar-ingress:ci; do
             docker run --rm \
               --volume /var/run/docker.sock:/var/run/docker.sock \
               "$TRIVY_IMAGE" image --quiet --format table --severity HIGH,CRITICAL \
@@ -241,7 +259,7 @@ jobs:
           done
       - name: Trivy fixable critical/high gate
         run: |
-          for image in devradar-app:ci devradar-crawler:ci devradar-web:ci; do
+          for image in devradar-app:ci devradar-crawler:ci devradar-web:ci devradar-ingress:ci; do
             docker run --rm \
               --volume /var/run/docker.sock:/var/run/docker.sock \
               "$TRIVY_IMAGE" image --quiet --format table --severity HIGH,CRITICAL \
