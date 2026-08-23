@@ -1,0 +1,41 @@
+services:
+  api:
+    restart: unless-stopped
+
+  web:
+    restart: unless-stopped
+
+  database:
+    restart: unless-stopped
+
+  ingress:
+    image: caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    environment:
+      DEVRADAR_DOMAIN: ${DEVRADAR_DOMAIN:?DEVRADAR_DOMAIN is required}
+    ports:
+      - "${DEVRADAR_HTTP_HOST_PORT:-80}:80"
+      - "${DEVRADAR_HTTPS_HOST_PORT:-443}:443"
+      - "${DEVRADAR_HTTPS_HOST_PORT:-443}:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+volumes:
+  caddy-data:
+  caddy-config:
