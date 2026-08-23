@@ -113,6 +113,20 @@ jobs:
         run: |
           docker compose --env-file .env.example up --detach api --wait
           pwsh ./scripts/smoke.ps1 -BaseUrl http://127.0.0.1:8000
+      - name: Capture Compose smoke artifact
+        if: always()
+        run: |
+          mkdir -p ci-artifacts
+          docker compose --env-file .env.example ps > ci-artifacts/compose-ps.txt
+          docker compose --env-file .env.example logs > ci-artifacts/compose.log || true
+          printf 'sha=%s\nrun_id=%s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" > ci-artifacts/metadata.txt
+      - name: Upload Compose smoke artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: compose-smoke-${{ github.run_id }}
+          path: ci-artifacts/
+          retention-days: 14
       - name: Teardown without deleting named volume
         if: always()
         run: docker compose --env-file .env.example down
