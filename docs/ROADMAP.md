@@ -353,9 +353,9 @@ pass. Unfixed advisory vẫn là residual risk được theo dõi, không phải
 
 CI workflow, Dependabot, Compose image override, migration command surface, deploy/rollback scripts và
 health smoke đã có tại [V6-004 evidence](evidence/V6-004-ci-deploy.md). Local fresh-database deploy và
-application-image rollback đã pass. Public HTTPS ingress, configured GitHub Actions run, managed secret
-store và timestamped remote rollback drill vẫn chưa có evidence; không nâng status tới khi các boundary
-này được kiểm thử thật.
+application-image rollback đã pass. GitHub Actions run #2 trên SHA `29e11b3` đã pass toàn bộ Python,
+PostgreSQL, web, Compose và Trivy jobs. Public HTTPS ingress, managed secret store và timestamped remote
+rollback drill vẫn chưa có evidence; không nâng status tới khi các boundary này được kiểm thử thật.
 
 ### V6-005 progress (`In Progress`)
 
@@ -373,8 +373,8 @@ quyết định không thêm Redis/worker pool; topology chỉ được đánh g
 
 [Public release review](evidence/V6-007-public-release-review.md) đã kiểm các boundary local/protected,
 nhưng chưa có HTTPS ingress/hostname thật, managed secret provider và rotation, GitHub Actions run trên
-remote, off-host encrypted backup với RPO/RTO, hoặc public privacy/alert evidence. Không đóng V6 và không
-push cho tới khi các provider/operator evidence này tồn tại.
+remote đã pass. Vẫn chưa có off-host encrypted backup với RPO/RTO hoặc public privacy/alert evidence.
+Không đóng V6 cho tới khi các provider/operator evidence này tồn tại.
 
 ### V6-008 progress (`Done`)
 

@@ -32,10 +32,14 @@ Fresh rerun ngày 2026-08-23 sau khi V6-010 được commit: `deploy.ps1 -SkipBu
 `deploy=pass image=devradar-app:local`, sau đó `rollback.ps1` về `devradar-app:v6-004-smoke` trả
 `rollback=pass`; cả hai health smoke đều trả `status=ok`.
 
+Remote CI evidence: [GitHub Actions run #2](https://github.com/HPhucTV/DevRadar/actions/runs/32613916422)
+trên SHA `29e11b3` hoàn tất `success` ngày 2026-08-23. Các job Python quality/default tests,
+PostgreSQL integration, web tests/lint/typecheck/build, Compose migration/API smoke và Trivy
+critical/high gate đều `success`. Run đầu tiên phát hiện `npm ci` thiếu `@emnapi/core/runtime` trên
+Linux; lockfile được regenerate bằng Node 22/npm 10 và run #2 đã xác nhận clean install.
+
 ## Boundary còn mở
 
-- GitHub Actions run thật trên remote repository chưa có evidence trong workspace; workflow đã có
-  container gate reproducible bằng Trivy digest, không cần Docker Scout credential.
 - HTTPS public ingress, managed secret store, deploy host, post-deploy smoke qua endpoint thật và rollback
   drill có timestamp/operator evidence cần được cấu hình ở V6-004 closeout.
 - Backup/restore và monitoring thuộc V6-005; queue pressure/Redis decision thuộc V6-006.
