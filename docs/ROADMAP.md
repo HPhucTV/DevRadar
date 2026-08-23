@@ -355,7 +355,8 @@ CI workflow, Dependabot, Compose image override, migration command surface, depl
 health smoke đã có tại [V6-004 evidence](evidence/V6-004-ci-deploy.md). Local fresh-database deploy và
 application-image rollback đã pass. GitHub Actions run #21 trên SHA `ebc12f2` đã pass toàn bộ bảy job
 Python, PostgreSQL, web, Compose, remote rollback, remote backup/restore và Trivy; bốn artifact retention
-14 ngày đã được lưu.
+14 ngày đã được lưu. GitHub `main` đã bật strict seven-check branch protection, linear history và
+conversation resolution; force-push/deletion bị chặn, còn admin bypass được giữ cho single owner.
 Public HTTPS ingress và managed secret store vẫn chưa có evidence; không nâng status tới khi các boundary
 này được kiểm thử thật.
 

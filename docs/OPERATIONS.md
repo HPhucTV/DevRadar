@@ -312,6 +312,11 @@ Container advisory gate dùng Trivy image chính thức với digest pinned theo
 scan riêng API và crawler image. Full HIGH/CRITICAL report phải được thu thập trước khi gate
 `--ignore-unfixed`; nếu scanner/image/socket không chạy thì fail, không suy diễn an toàn từ image build.
 
+GitHub `main` yêu cầu strict status checks theo đúng bảy job name trong workflow, linear history và
+conversation resolution. Force-push và branch deletion bị chặn. Không yêu cầu approving review vì dự án
+hiện là single-operator; `enforce_admins=false` giữ emergency owner bypass, nên mọi lần bypass phải có
+commit/evidence và một run CI terminal tương ứng thay vì được xem là gate pass mặc định.
+
 ### V6-005 backup, restore và monitoring
 
 Backup dùng custom PostgreSQL archive và stream trực tiếp từ database container; archive nằm ngoài Git,

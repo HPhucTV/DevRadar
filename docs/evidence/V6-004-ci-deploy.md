@@ -52,6 +52,12 @@ remote rollback, remote backup/restore và Trivy đều `success`. Bốn artifac
 `compose-smoke`, `remote-rollback` và `remote-backup` chưa expired, có retention đến 2026-09-06;
 artifact backup chỉ chứa metadata/database log và không chứa dump.
 
+Repository branch policy được bật cho `main` qua GitHub Branch Protection API ngày 2026-08-23 và được
+GET lại sau khi cập nhật. Policy yêu cầu branch up-to-date cùng đủ bảy job nêu trên, linear history và
+mọi review conversation phải resolved; force-push và branch deletion bị chặn. PR approval không bắt buộc
+và `enforce_admins=false` để single owner còn emergency bypass. Đây là repository-control evidence,
+không thay thế HTTPS deployment hoặc production secret evidence.
+
 ## Boundary còn mở
 
 - HTTPS public ingress, managed secret store và deploy host/public smoke vẫn cần được cấu hình ở V6-004
