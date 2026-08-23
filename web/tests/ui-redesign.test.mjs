@@ -1,0 +1,36 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+const webRoot = new URL("../", import.meta.url);
+async function source(path) { return readFile(new URL(path, webRoot), "utf8"); }
+
+test("light editorial token contract is present and old green theme is gone", async () => {
+  const css = await source("src/app/globals.css");
+  assert.match(css, /--bg:\s*#F6F8FC/i);
+  assert.match(css, /--accent:\s*#4F46E5/i);
+  assert.match(css, /Georgia/);
+  assert.doesNotMatch(css, /--bg:#f4f1e8/);
+  assert.doesNotMatch(css, /prefers-color-scheme:\s*dark/);
+});
+
+test("shared shell and route surfaces use redesign primitives", async () => {
+  const shell = await source("src/components/app-shell.tsx");
+  const overview = await source("src/app/(dashboard)/page.tsx");
+  const jobs = await source("src/components/job-list.tsx");
+  assert.match(shell, /brand-mark/);
+  assert.match(shell, /nav-group/);
+  assert.match(overview, /dashboard-grid/);
+  assert.match(jobs, /job-card/);
+});
+
+test("redesign preserves CV, crawler and privacy boundaries", async () => {
+  const cv = await source("src/components/cv-match-panel.tsx");
+  const crawler = await source("src/components/ingestion-console.tsx");
+  const privacy = await source("src/app/(dashboard)/privacy/page.tsx");
+  assert.match(cv, /MAX_RESUME_BYTES/);
+  assert.match(cv, /deleteResume/);
+  assert.match(crawler, /POLL_WINDOW_MS\s*=\s*30_000/);
+  assert.match(crawler, /approvalStatus/);
+  assert.match(privacy, /GeoComply|Lever/);
+});
