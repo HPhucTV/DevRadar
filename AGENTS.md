@@ -108,6 +108,17 @@ ghi password/hash vào log):
 .venv\Scripts\python -m devradar.cli auth-hash-password
 ```
 
+V6 supply-chain/secret gates (PowerShell, chạy từ root):
+
+```powershell
+.\scripts\scan-secrets.ps1
+.\scripts\scan-supply-chain.ps1
+```
+
+`scan-supply-chain.ps1` yêu cầu `npm audit`, `pip check` và Docker Scout critical/high; nếu Docker
+Scout chưa được đăng nhập hoặc không có advisory service thì giữ task ở trạng thái chưa hoàn tất,
+không bỏ qua scan bằng cách đổi exit code.
+
 Khi task thực sự chạy MoMo browser adapter local, cài browser binary đúng version lock bằng command đã kiểm chứng:
 
 ```powershell

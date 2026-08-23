@@ -14,7 +14,9 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
 
 from devradar.api.common import ErrorData, ErrorDetail, ErrorResponse
+from devradar.auth.service import cookie_secure
 from devradar.platform.observability import record_api_error, record_http_request
+from devradar.platform.rate_limit import check_request_rate_limit
 
 
 class ApiContractError(RuntimeError):
@@ -72,6 +74,23 @@ def _error_response(
     )
 
 
+def _apply_security_headers(response: Response) -> None:
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault(
+        "Permissions-Policy", "camera=(), geolocation=(), microphone=(), payment=()"
+    )
+    response.headers.setdefault(
+        "Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'"
+    )
+    response.headers.setdefault("Cache-Control", "no-store")
+    if cookie_secure():
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+        )
+
+
 def install_error_handlers(app: FastAPI) -> None:
     @app.middleware("http")
     async def request_id_middleware(
@@ -81,10 +100,40 @@ def install_error_handlers(app: FastAPI) -> None:
         request.state.request_id = uuid4().hex
         started_at = perf_counter()
         status_code = 500
+        response: Response
         try:
+            try:
+                rate_limit = check_request_rate_limit(request)
+            except ValueError:
+                response = _error_response(
+                    request,
+                    status_code=503,
+                    code="rate_limit_not_configured",
+                    message="Rate-limit policy is not configured safely.",
+                )
+                status_code = response.status_code
+                _apply_security_headers(response)
+                return response
+            if rate_limit is not None and not rate_limit.allowed:
+                response = _error_response(
+                    request,
+                    status_code=429,
+                    code="rate_limited",
+                    message="Request rate limit exceeded.",
+                )
+                response.headers["Retry-After"] = str(rate_limit.retry_after or 1)
+                response.headers["X-RateLimit-Limit"] = str(rate_limit.limit)
+                response.headers["X-RateLimit-Remaining"] = str(rate_limit.remaining)
+                status_code = response.status_code
+                _apply_security_headers(response)
+                return response
             response = await call_next(request)
             status_code = response.status_code
+            if rate_limit is not None:
+                response.headers["X-RateLimit-Limit"] = str(rate_limit.limit)
+                response.headers["X-RateLimit-Remaining"] = str(rate_limit.remaining)
             response.headers["X-Request-ID"] = request.state.request_id
+            _apply_security_headers(response)
             return response
         finally:
             record_http_request(

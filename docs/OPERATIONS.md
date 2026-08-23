@@ -32,6 +32,13 @@ Không dùng production secret/data trong CI. Không gọi source/LLM thật t�
 - `DEVRADAR_AUTH_SESSION_TTL_SECONDS` phải nằm trong khoảng policy; `DEVRADAR_AUTH_COOKIE_SECURE=false`
   chỉ phù hợp loopback HTTP. Deployment HTTPS phải đặt `true`. `DEVRADAR_ALLOWED_ORIGINS` là allow-list
   cụ thể, không dùng wildcard với credential.
+- `DEVRADAR_DEPLOYMENT_CLASS=LOCALHOST_SERVICE` là default duy nhất cho local. `PROTECTED`/`PUBLIC`
+  fail closed nếu auth tắt, cookie không Secure, origin wildcard, thiếu `DEVRADAR_SECRET_SOURCE=managed`
+  hoặc DSN còn password local `devradar_local_only`. Secret manager thật và rotation drill vẫn cần do
+  deployment V6-004 cung cấp; không giả vờ `.env.example` là managed secret.
+- Rate limit process-local bật mặc định: general `120/60s`, login `10/900s`, dispatch `5/60s`, map tối đa
+  `DEVRADAR_RATE_LIMIT_MAX_KEYS=10000`. Hết quota trả `429` + `Retry-After`; Redis/worker không được thêm
+  chỉ để chia sẻ counter trước benchmark V6-006.
 - Session cookie là HttpOnly và chỉ PostgreSQL hash được lưu. CSRF cookie có thể đọc ở browser để gửi
   `X-DevRadar-CSRF`; raw session/CSRF/password không được log, tracing, URL hoặc browser storage.
 - `DEVRADAR_ALERTS_LOCAL_ENABLED` mặc định `false`; `DEVRADAR_DISCORD_WEBHOOK_URL`
@@ -151,6 +158,9 @@ PostgreSQL test hiện dùng `DEVRADAR_TEST_DATABASE_URL`, tạo database tên n
 - HTML hiển thị bằng framework escaping; không render raw source/model HTML.
 - File upload kiểm tra extension, MIME và signature; bounded size/page/decompression; parser không thực thi macro/script và chạy với least privilege.
 - Authenticated deployment dùng HTTPS, restricted CORS, security headers và session cookie secure/HttpOnly/SameSite theo [ADR-015](decisions/0015-accept-v6-authentication-strategy.md); V6-002 phải cung cấp runtime evidence.
+- API và Next.js BFF có baseline security headers; BFF có timeout 10 giây, request body 6 MiB và response
+  2 MiB. CSP hiện là baseline có `unsafe-inline`/`unsafe-eval` để tương thích Next dev; strict nonce-based
+  CSP và HSTS public rollout thuộc V6-004.
 - Authorization kiểm tra owner/operator ở server trên mọi protected resource.
 - V2 local write API chỉ nhận `sourceId` + custom idempotency header, enqueue DB và không nhận URL/outbound option; default-disabled gate cùng loopback Compose binding giảm accidental exposure nhưng không thay authentication.
 - Error public generic; detail nội bộ được sanitize và correlation bằng request ID.

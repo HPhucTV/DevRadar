@@ -7,7 +7,7 @@
 | Thuộc tính | Giá trị |
 |---|---|
 | Trạng thái | `implementation` |
-| Phase hiện tại | `v6` — Production-like hardening (`in_progress`); V1–V5 đã hoàn tất, V6-001 và V6-002 đã đóng, V6-003 kế tiếp |
+| Phase hiện tại | `v6` — Production-like hardening (`in_progress`); V1–V5 đã hoàn tất, V6-001/V6-002 đã đóng, V6-003 đang hardening |
 | Mô hình sử dụng ban đầu | Portfolio cá nhân, single-operator |
 | Thị trường ưu tiên | Job IT Việt Nam, nội dung Việt/Anh, lương VND |
 | Code chạy được | Có — V1/V2 data pipeline và V3 intelligence; không có agent runtime hiện hành |

@@ -173,7 +173,7 @@ Alert CRUD chưa có UI, chỉ dùng protected FastAPI contract.
 | CV upload → parser | multipart/file exhaustion, malware/polyglot, decompression bomb, PII/log leak | gate trước body read, total stream + type/signature/size/page/decode limits, no macro/external relationship, suppress untrusted parser diagnostics, short retention |
 | Session cookie/CSRF → protected resource | token disclosure, CSRF, enumeration, cross-owner access | HttpOnly opaque session, SHA-256 token/session record, Origin + double-submit CSRF, owner predicate, generic `404`, safe event allow-list; legacy owner header bị reject khi auth bật |
 | ResumeProfile structured facts + JobEmbedding → JobMatch | stale hash/extraction/model identity, vector mismatch, profile/owner leak, unbounded generation | fixed local model identity + extraction identity, inference ngoài transaction, exact current hash/version join, top-100 bound, owner predicate, response không có hash/vector/raw text |
-| API → mutation | unauthorized crawl/data access | local/operator-only trước auth; authenticated role sau V6 |
+| API → mutation/read budget | unauthorized crawl/data access, request exhaustion | authenticated owner/operator policy, CSRF, process-local route limiter, bounded body/response và generic errors |
 | App → database | injection, accidental destructive update | parameterized access, migration review, transaction, least privilege |
 | App → notification | secret leak, duplicate/spam | secret manager, idempotency key, rate limit, delivery audit |
 

@@ -1,0 +1,48 @@
+from __future__ import annotations
+
+import pytest
+
+from devradar.platform.security_config import (
+    SecurityConfigurationError,
+    validate_security_configuration,
+)
+
+
+def test_localhost_service_defaults_are_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("DEVRADAR_DEPLOYMENT_CLASS", raising=False)
+    monkeypatch.delenv("DEVRADAR_SECRET_SOURCE", raising=False)
+
+    assert validate_security_configuration() == "LOCALHOST_SERVICE"
+
+
+def test_protected_deployment_requires_session_auth(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DEVRADAR_DEPLOYMENT_CLASS", "PROTECTED")
+    monkeypatch.setenv("DEVRADAR_SECRET_SOURCE", "managed")
+    monkeypatch.setenv("DEVRADAR_AUTH_ENABLED", "false")
+
+    with pytest.raises(SecurityConfigurationError, match="deployment_auth_required"):
+        validate_security_configuration()
+
+
+def test_public_deployment_rejects_insecure_or_local_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DEVRADAR_DEPLOYMENT_CLASS", "PUBLIC")
+    monkeypatch.setenv("DEVRADAR_SECRET_SOURCE", "managed")
+    monkeypatch.setenv("DEVRADAR_AUTH_ENABLED", "true")
+    monkeypatch.setenv("DEVRADAR_OPERATOR_PASSWORD_HASH", "pbkdf2_sha256$placeholder")
+    monkeypatch.setenv("DEVRADAR_AUTH_COOKIE_SECURE", "false")
+
+    with pytest.raises(SecurityConfigurationError, match="secure_cookie_required"):
+        validate_security_configuration()
+
+    monkeypatch.setenv("DEVRADAR_AUTH_COOKIE_SECURE", "true")
+    monkeypatch.setenv("DEVRADAR_ALLOWED_ORIGINS", "*")
+    with pytest.raises(SecurityConfigurationError, match="wildcard_origin_forbidden"):
+        validate_security_configuration()
+
+    monkeypatch.setenv("DEVRADAR_ALLOWED_ORIGINS", "https://devradar.example")
+    with pytest.raises(SecurityConfigurationError, match="local_database_secret_forbidden"):
+        validate_security_configuration(
+            "postgresql+psycopg://devradar:devradar_local_only@database:5432/devradar"
+        )

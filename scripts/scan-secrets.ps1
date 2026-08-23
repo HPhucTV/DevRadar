@@ -1,0 +1,26 @@
+$ErrorActionPreference = "Stop"
+
+$trackedEnv = @(git ls-files ".env*" | Where-Object { $_ -notin @(".env.example", "web/.env.example") })
+if ($trackedEnv.Count -gt 0) {
+    throw "Tracked environment override detected: $($trackedEnv -join ', ')"
+}
+
+$trackedTaskBoard = @(git ls-files "TASK_BOARD.md")
+if ($trackedTaskBoard.Count -gt 0) {
+    throw "TASK_BOARD.md must remain local-only."
+}
+
+$patterns = @(
+    'sk-[A-Za-z0-9]{20,}',
+    'gh[pousr]_[A-Za-z0-9]{20,}',
+    'AKIA[0-9A-Z]{16}',
+    '-----BEGIN (RSA|EC|OPENSSH|DSA) PRIVATE KEY-----'
+)
+foreach ($pattern in $patterns) {
+    $matches = @(git grep -n -I -E $pattern -- ':!docs/superpowers/plans/**' ':!docs/superpowers/specs/**' 2>$null)
+    if ($matches.Count -gt 0) {
+        throw "Potential secret pattern detected ($pattern): $($matches -join '; ')"
+    }
+}
+
+Write-Output "secret_scan=pass"
