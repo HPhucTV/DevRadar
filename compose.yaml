@@ -58,6 +58,39 @@ services:
       retries: 12
       start_period: 5s
 
+  web:
+    image: ${DEVRADAR_WEB_IMAGE:-devradar-web:local}
+    build:
+      context: ./web
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      DEVRADAR_API_BASE_URL: "http://api:8000"
+    ports:
+      - "127.0.0.1:${DEVRADAR_WEB_HOST_PORT:-3000}:3000"
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/.next/cache:uid=1000,gid=1000,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:3000/login').then((response) => {
+            if (!response.ok) process.exit(1)
+          }).catch(() => process.exit(1))
+      interval: 5s
+      timeout: 4s
+      retries: 12
+      start_period: 5s
+
   crawler:
     <<: *app-base
     image: ${DEVRADAR_CRAWLER_IMAGE:-devradar-crawler:local}
