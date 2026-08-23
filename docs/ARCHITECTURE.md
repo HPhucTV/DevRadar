@@ -153,10 +153,11 @@ flowchart LR
 
 Crawler/one-shot worker CLI và API dùng cùng code nhưng là entrypoint/process khác nhau. Điều này giữ network work ngoài HTTP request mà không tách service sớm.
 
-V6 deploy topology vẫn là modular monolith + PostgreSQL: CI build artifact, migration runner chạy trước
-API, rồi health smoke qua ingress. HTTPS termination và managed secret store thuộc deployment provider;
-repository không thêm reverse proxy hoặc distributed worker. Application rollback đổi image về một tag/digest
-đã tồn tại và không tự downgrade database; migration compatibility giữ theo expand/contract.
+V6 deploy topology vẫn là modular monolith + PostgreSQL: CI build hai application artifacts FastAPI và
+Next.js standalone, migration runner chạy trước API/web, rồi health/BFF smoke qua ingress. Web gọi API qua
+Compose DNS; host ports chỉ bind loopback. HTTPS termination và managed secret store thuộc deployment
+provider; repository không thêm reverse proxy hoặc distributed worker. Application rollback đổi cả API/web
+về tag/digest đã tồn tại và không tự downgrade database; migration compatibility giữ theo expand/contract.
 
 `web/` là presentation boundary của V5. App Router dùng Server Components mặc định
 và gọi FastAPI trực tiếp khi view cần data; CV matching có same-origin Route

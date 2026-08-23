@@ -7,17 +7,17 @@
 
 - `.github/workflows/ci.yml` tách Python quality/default tests, PostgreSQL integration, web quality,
   Compose migration/API smoke và Trivy critical/high advisory gate.
-- CI build riêng API image không browser và crawler image có Playwright; hai image được scan bằng cùng
-  Trivy digest pinned, full report trước gate fixable findings.
+- CI build riêng API image không browser, crawler image có Playwright và Next.js standalone web image;
+  ba image được scan bằng cùng Trivy digest pinned, full report trước gate fixable findings.
 - `.github/dependabot.yml` theo dõi pip, npm, Docker base image và GitHub Actions.
-- Compose nhận image qua `DEVRADAR_APP_IMAGE`, giữ mặc định local `devradar-app:local`.
-- `scripts/smoke.ps1` bounded health smoke, hỗ trợ bắt buộc HTTPS.
+- Compose nhận API/web image qua `DEVRADAR_APP_IMAGE` và `DEVRADAR_WEB_IMAGE`, giữ default local.
+- `scripts/smoke.ps1` và `scripts/web-smoke.ps1` kiểm API health cùng web/BFF path, hỗ trợ bắt buộc HTTPS.
 - `scripts/migrate.ps1` chỉ expose `check` và `upgrade`; không có downgrade tự động.
-- `scripts/deploy.ps1` chạy config → build/inspect → database health → migration → API health → smoke,
+- `scripts/deploy.ps1` chạy config → dual build/inspect → database health → migration → API/web health → smokes,
   đồng thời fail-closed cho protected/public env thiếu HTTPS/auth/managed secret/CORS/operator hash/
   non-default database password.
-- `scripts/rollback.ps1` chuyển application image đã tồn tại và chạy lại smoke; schema không tự downgrade.
-- ADR-016 khóa decision boundary.
+- `scripts/rollback.ps1` chuyển cả hai application images đã tồn tại và chạy lại smokes; schema không tự downgrade.
+- ADR-016 khóa CI/migration boundary; ADR-020 mở rộng release surface sang Next.js standalone.
 
 ## Verification
 
@@ -57,6 +57,9 @@ GET lại sau khi cập nhật. Policy yêu cầu branch up-to-date cùng đủ 
 mọi review conversation phải resolved; force-push và branch deletion bị chặn. PR approval không bắt buộc
 và `enforce_admins=false` để single owner còn emergency bypass. Đây là repository-control evidence,
 không thay thế HTTPS deployment hoặc production secret evidence.
+
+[V6-012 local evidence](V6-012-production-web-compose.md) xác nhận standalone web image, hardened Compose,
+privacy BFF smoke và dual-image deploy/rollback. Remote exact-SHA CI evidence cho topology mới vẫn chờ.
 
 ## Boundary còn mở
 

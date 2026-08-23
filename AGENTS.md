@@ -32,7 +32,7 @@ Không âm thầm chọn một phía khi hai nguồn cùng cấp mâu thuẫn. G
 - Explanation, review, report và diagnosis là read-only trừ khi người dùng cho phép thay đổi; không biến audit thành implementation ngoài scope.
 - Chọn giải pháp nhỏ nhất đáp ứng yêu cầu hiện tại và giữ đủ correctness, security, validation, error handling, observability cùng test.
 - V1 dùng modular monolith với Python, FastAPI, PostgreSQL và Docker Compose.
-- V2 dùng direct PostgreSQL-backed orchestration theo ADR-006; không thêm Prefect nếu chưa có ADR mới với measured need. V3 evaluation baseline đã khóa; ADR-008 chỉ chấp nhận DeepSeek cho synthetic generation boundary, còn ADR-010 chấp nhận fixed-revision local multilingual MiniLM + exact pgvector cho private V3. Không thêm external embedding provider, HNSW, model call production hoặc provider SDK khác nếu chưa có evaluation/privacy/latency gate và ADR mới. ADR-012 tiếp tục defer LangGraph; ADR-013 đã loại V4 agent runtime vì không có measurable usefulness gain. Không tái thêm agent runtime nếu chưa có frozen labeled dataset, improvement gate, privacy boundary và ADR mới. Next.js chỉ từ V5.
+- V2 dùng direct PostgreSQL-backed orchestration theo ADR-006; không thêm Prefect nếu chưa có ADR mới với measured need. V3 evaluation baseline đã khóa; ADR-008 chỉ chấp nhận DeepSeek cho synthetic generation boundary, còn ADR-010 chấp nhận fixed-revision local multilingual MiniLM + exact pgvector cho private V3. Không thêm external embedding provider, HNSW, model call production hoặc provider SDK khác nếu chưa có evaluation/privacy/latency gate và ADR mới. ADR-012 tiếp tục defer LangGraph; ADR-013 đã loại V4 agent runtime vì không có measurable usefulness gain. Không tái thêm agent runtime nếu chưa có frozen labeled dataset, improvement gate, privacy boundary và ADR mới. Next.js chỉ từ V5; ADR-020 yêu cầu standalone web artifact tham gia V6 Compose deploy/rollback và container scan.
 - Redis, distributed worker, microservice, Kafka, Kubernetes và vector database riêng chỉ được thêm khi có yêu cầu hiện tại hoặc bằng chứng đo lường. “Có thể cần sau này” không phải bằng chứng.
 - Không tạo interface một implementation, wrapper truyền thẳng, generic repository, feature flag giả định hoặc abstraction chỉ phục vụ khả năng tương lai.
 - Không triển khai feature của phase sau chỉ để “chuẩn bị sẵn”. Nếu một task thực sự cần vượt phase, cập nhật roadmap và ADR trước hoặc trong cùng thay đổi.
@@ -158,11 +158,12 @@ Remove-Item Env:\DEVRADAR_TEST_DATABASE_URL
 
 ```powershell
 docker compose --env-file .env.example --profile crawler config --quiet
-docker compose --env-file .env.example build api
+docker compose --env-file .env.example build api web
 docker compose --env-file .env.example up database --wait
 docker compose --env-file .env.example run --rm api python -m alembic upgrade head
-docker compose --env-file .env.example up api --wait
+docker compose --env-file .env.example up api web --wait
 Invoke-RestMethod http://127.0.0.1:8000/api/v1/health
+.\scripts\web-smoke.ps1 -BaseUrl http://127.0.0.1:3000
 docker compose --env-file .env.example down
 ```
 

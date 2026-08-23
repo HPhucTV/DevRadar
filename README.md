@@ -98,6 +98,7 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [V6-009 crawl status polling](docs/evidence/V6-009-crawl-status-polling.md): bounded run-detail polling, worker completion visibility và browser/PostgreSQL evidence.
 - [V6-010 privacy policy center](docs/evidence/V6-010-privacy-policy-center.md): public privacy route, retention/AI/source policy contract và API/web/browser evidence.
 - [V6-011 GitHub incident alerting](docs/evidence/V6-011-github-incident-alerting.md): least-privilege unsuccessful-CI route, owner-assigned safe issue và remote dispatch/cleanup drill.
+- [V6-012 production web Compose](docs/evidence/V6-012-production-web-compose.md): standalone web image, hardened Compose, BFF smoke và dual-image deploy/rollback evidence.
 - [Operations](docs/OPERATIONS.md): test, security, observability, retention, CI/CD và deployment gates.
 - [Source discovery](docs/sources/SHORTLIST.md): evidence và approval outcome; VNG, NAVER Vietnam/Greenhouse và MoMo đã được duyệt cho bounded Vietnam scope, RemoteJobs.org được duyệt riêng cho V3 remote cohort có attribution, GeoComply/Lever vẫn `permission_required`.
 - [Pre-V1 local evidence](docs/evidence/PRE-007-local-prerequisites.md): Docker/PostgreSQL capability và constraint đã xác minh.
@@ -192,14 +193,14 @@ Lệnh đọc password bằng prompt và chỉ in PBKDF2 hash có chủ đích. 
 token vào argument, log, URL, `localStorage` hay Git. Khi chạy HTTPS ngoài loopback, đặt
 `DEVRADAR_AUTH_COOKIE_SECURE=true`; mọi mutation phải gửi CSRF cookie/header và Origin thuộc allow-list.
 `X-DevRadar-Owner` bị từ chối khi auth bật. V6-003 đã có rate limit, security headers và deployment
-configuration guard; Trivy pinned container gate đã pass với `0` fixable HIGH/CRITICAL finding ở API và crawler. V6-004 có command surface cho local/protected
-deploy/rollback, còn public deployment cần ingress và secret provider thật.
+configuration guard; Trivy pinned container gate đã pass với `0` fixable HIGH/CRITICAL finding ở API và crawler; V6-012 local web image cũng đạt `0` fixable. V6-004 có command surface cho local/protected
+API + web deploy/rollback, còn public deployment cần ingress và secret provider thật.
 
 V6-004 local deploy/rollback smoke:
 
 ```powershell
-.\scripts\deploy.ps1 -EnvironmentFile .env.example -ProjectName devradar -Image devradar-app:local -BaseUrl http://127.0.0.1:8000 -SkipBuild
-.\scripts\rollback.ps1 -EnvironmentFile .env.example -ProjectName devradar -Image devradar-app:local -BaseUrl http://127.0.0.1:8000
+.\scripts\deploy.ps1 -EnvironmentFile .env.example -ProjectName devradar -Image devradar-app:local -WebImage devradar-web:local -BaseUrl http://127.0.0.1:8000 -WebBaseUrl http://127.0.0.1:3000 -SkipBuild
+.\scripts\rollback.ps1 -EnvironmentFile .env.example -ProjectName devradar -Image devradar-app:local -WebImage devradar-web:local -BaseUrl http://127.0.0.1:8000 -WebBaseUrl http://127.0.0.1:3000
 ```
 
 Các script không tự động chạy `alembic downgrade`; migration rollback phải dùng forward-compatible
@@ -280,15 +281,18 @@ Remove-Item Env:\DEVRADAR_TEST_DATABASE_URL
 ### Docker Compose local
 
 ```powershell
-docker compose --env-file .env.example build api
+docker compose --env-file .env.example build api web
 docker compose --env-file .env.example up database --wait
 docker compose --env-file .env.example run --rm api python -m alembic upgrade head
-docker compose --env-file .env.example up api --wait
+docker compose --env-file .env.example up api web --wait
 Invoke-RestMethod http://127.0.0.1:8000/api/v1/health
+.\scripts\web-smoke.ps1 -BaseUrl http://127.0.0.1:3000
 docker compose --env-file .env.example down
 ```
 
-API bind tại `127.0.0.1:8000`; PostgreSQL bind tại `127.0.0.1:55432`. `docker compose down` giữ named volume. Chỉ xóa volume khi operator chủ động chấp nhận mất dữ liệu local.
+API bind tại `127.0.0.1:8000`, web tại `127.0.0.1:3000`; PostgreSQL bind tại `127.0.0.1:55432`. `docker compose down` giữ named volume. Chỉ xóa volume khi operator chủ động chấp nhận mất dữ liệu local.
+Nếu `3000` đang được dùng, đặt process environment `DEVRADAR_WEB_HOST_PORT` sang port loopback khác và
+dùng cùng port cho `-WebBaseUrl`; V6-012 đã kiểm chứng với `33000` mà không dừng process hiện hữu.
 
 Khi local operator đã bật write gate và enqueue một run qua API, xử lý tối đa một pending request ngoài HTTP lifecycle bằng:
 

@@ -299,23 +299,24 @@ Command cụ thể trong README/AGENTS phải từng chạy thành công và đ�
 ### V6-004 CI, deploy và rollback
 
 `.github/workflows/ci.yml` là enforcement contract cho Python default/integration gates, web check,
-Compose migration/API smoke và container advisory scan. Local command surface tương ứng là:
+Compose migration/API/web smoke và container advisory scan. Local command surface tương ứng là:
 
 ```powershell
 .\scripts\migrate.ps1 -EnvironmentFile .env.example -Action check
-.\scripts\deploy.ps1 -EnvironmentFile .env.example -ProjectName devradar -Image devradar-app:local -BaseUrl http://127.0.0.1:8000 -SkipBuild
-.\scripts\rollback.ps1 -EnvironmentFile .env.example -ProjectName devradar -Image devradar-app:local -BaseUrl http://127.0.0.1:8000
+.\scripts\deploy.ps1 -EnvironmentFile .env.example -ProjectName devradar -Image devradar-app:local -WebImage devradar-web:local -BaseUrl http://127.0.0.1:8000 -WebBaseUrl http://127.0.0.1:3000 -SkipBuild
+.\scripts\rollback.ps1 -EnvironmentFile .env.example -ProjectName devradar -Image devradar-app:local -WebImage devradar-web:local -BaseUrl http://127.0.0.1:8000 -WebBaseUrl http://127.0.0.1:3000
 ```
 
-Deploy order là Compose config → image build/inspect → database healthy → `alembic upgrade head` →
-API healthy → `/api/v1/health` smoke. `DEVRADAR_APP_IMAGE` cho phép rollback application artifact mà
-không đổi source. Rollback không chạy `alembic downgrade`; schema phải dùng expand/contract hoặc một
+Deploy order là Compose config → API/web image build/inspect → database healthy → `alembic upgrade head` →
+API/web healthy → API + web/BFF smoke. `DEVRADAR_APP_IMAGE` và `DEVRADAR_WEB_IMAGE` cho phép rollback
+hai application artifacts mà không đổi source. Rollback không chạy `alembic downgrade`; schema phải dùng expand/contract hoặc một
 forward-compatible migration đã review. `-RequireHttps` bắt buộc với protected/public smoke và script
-fail-closed nếu thiếu authentication, Secure cookie, managed secret, HTTPS CORS, operator password hash
-hoặc database password không còn giá trị local mặc định. Chi tiết decision nằm tại [ADR-016](decisions/0016-accept-reproducible-ci-deploy-rollback.md).
+fail-closed nếu thiếu HTTPS cho một trong hai URL, authentication, Secure cookie, managed secret,
+HTTPS CORS, operator password hash hoặc database password không còn giá trị local mặc định. Chi tiết
+decision nằm tại [ADR-016](decisions/0016-accept-reproducible-ci-deploy-rollback.md) và [ADR-020](decisions/0020-accept-nextjs-standalone-web-compose-artifact.md).
 
 Container advisory gate dùng Trivy image chính thức với digest pinned theo [ADR-019](decisions/0019-accept-pinned-trivy-container-gate.md),
-scan riêng API và crawler image. Full HIGH/CRITICAL report phải được thu thập trước khi gate
+scan riêng API, crawler và web image. Full HIGH/CRITICAL report phải được thu thập trước khi gate
 `--ignore-unfixed`; nếu scanner/image/socket không chạy thì fail, không suy diễn an toàn từ image build.
 
 GitHub `main` yêu cầu strict status checks theo đúng bảy job name trong workflow, linear history và
