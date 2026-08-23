@@ -46,3 +46,13 @@ def test_public_deployment_rejects_insecure_or_local_defaults(
         validate_security_configuration(
             "postgresql+psycopg://devradar:devradar_local_only@database:5432/devradar"
         )
+
+
+def test_public_deployment_rejects_local_custom_sources(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DEVRADAR_DEPLOYMENT_CLASS", "PUBLIC")
+    monkeypatch.setenv("DEVRADAR_CUSTOM_SOURCES_LOCAL_ENABLED", "true")
+
+    with pytest.raises(SecurityConfigurationError, match="custom_sources_public_forbidden"):
+        validate_security_configuration()

@@ -26,7 +26,8 @@ from devradar.ingestion.contracts import (
     RunContext,
 )
 from devradar.ingestion.normalization import normalize_location, normalize_text
-from devradar.ingestion.safe_http import FetchError, FetchErrorCode, FetchPolicy, SafeHttpFetcher
+from devradar.ingestion.safe_http import FetchError, FetchErrorCode, SafeHttpFetcher
+from devradar.ingestion.source_registry import FetchPolicy
 
 HttpFetch = Callable[[str, FetchPolicy], FetchResult]
 
@@ -139,6 +140,9 @@ class CustomSourceAdapter(JobSourceAdapter):
                 "Custom source fetch requires a listing from the current discovery.",
             )
         return result
+
+    def preview_candidates(self) -> tuple[CustomCandidate, ...]:
+        return tuple(self._last_candidates.values())
 
     def parse(self, snapshot: RawSnapshot) -> ParsedJob | ParseFailure:
         if snapshot.source_key != self._source_key:

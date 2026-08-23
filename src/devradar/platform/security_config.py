@@ -10,6 +10,7 @@ from devradar.auth.service import allowed_origins, auth_enabled, cookie_secure, 
 DeploymentClass = Literal["LOCALHOST_SERVICE", "PROTECTED", "PUBLIC"]
 DEPLOYMENT_CLASS_ENV = "DEVRADAR_DEPLOYMENT_CLASS"
 SECRET_SOURCE_ENV = "DEVRADAR_SECRET_SOURCE"
+CUSTOM_SOURCES_LOCAL_ENABLED_ENV = "DEVRADAR_CUSTOM_SOURCES_LOCAL_ENABLED"
 LOCAL_DATABASE_MARKER = "devradar_local_only"
 
 
@@ -26,8 +27,20 @@ def _deployment_class() -> DeploymentClass:
     return value  # type: ignore[return-value]
 
 
+def custom_sources_local_enabled() -> bool:
+    """Return true only when the local/protected custom-source gate is enabled."""
+
+    enabled = os.environ.get(CUSTOM_SOURCES_LOCAL_ENABLED_ENV, "false").strip().casefold() == "true"
+    return enabled and _deployment_class() in {"LOCALHOST_SERVICE", "PROTECTED"}
+
+
 def validate_security_configuration(database_url: str | None = None) -> DeploymentClass:
     deployment = _deployment_class()
+    if (
+        os.environ.get(CUSTOM_SOURCES_LOCAL_ENABLED_ENV, "false").strip().casefold() == "true"
+        and deployment == "PUBLIC"
+    ):
+        raise SecurityConfigurationError("custom_sources_public_forbidden")
     if deployment == "LOCALHOST_SERVICE":
         return deployment
     if not auth_enabled():

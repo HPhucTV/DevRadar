@@ -15,7 +15,7 @@ from devradar.ingestion.models import SourceApprovalStatus
 
 def test_owner_authorized_local_is_distinct_from_approved() -> None:
     assert SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL.value == "owner_authorized_local"
-    assert SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL is not SourceApprovalStatus.APPROVED
+    assert str(SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL) != str(SourceApprovalStatus.APPROVED)
 
 
 def test_profile_rejects_disabled_permission_acknowledgement() -> None:
