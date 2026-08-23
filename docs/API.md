@@ -315,6 +315,23 @@ chỉ trả counts `consideredJobs`, `createdDeliveries`, `sentDeliveries`,
 `skippedDeliveries`, `failedDeliveries`; không trả webhook, owner hash, raw JD/CV
 hay provider body. Thiếu/sai connector trả `503` safe.
 
+### 6.7 Operator ingestion console
+
+Dashboard `/crawler-health` dùng same-origin BFF resources:
+
+- `GET /api/devradar/sources` → `GET /api/v1/sources`;
+- `GET /api/devradar/crawl-runs` → `GET /api/v1/crawl-runs`;
+- `GET /api/devradar/crawl-runs/{runId}` → `GET /api/v1/crawl-runs/{runId}`;
+- `POST /api/devradar/crawl-runs` → `POST /api/v1/crawl-runs`.
+
+Browser chỉ gửi `{ "sourceId": "uuid" }` cho `POST` và `Idempotency-Key`. BFF từ chối body có
+URL, adapter, allow-list hoặc field thừa với `422 ingestion_request_invalid`; nếu thiếu key thì
+server sinh key UUID. Backend tiếp tục kiểm tra session/operator, CSRF/Origin khi auth bật, source
+approval và active-run/idempotency conflict. Endpoint trả `202` với pending `CrawlRun`; network crawl
+không chạy trong HTTP request. UI chỉ hiện nút `Run now` cho source có `approvalStatus=approved` và
+không render base URL, allowed hosts, rate policy hoặc raw error. Sau khi enqueue, UI đọc detail của
+đúng `runId` mỗi 2 giây trong tối đa 30 giây; dừng ở trạng thái terminal hoặc báo rõ cần refresh thủ công.
+
 ## 8. Authentication, authorization và exposure
 
 - V1–V4 mặc định bind local/private network; mutation chỉ dành cho operator được cấu hình ngoài request.
@@ -341,6 +358,17 @@ Auth mechanism được khóa tại [ADR-015](decisions/0015-accept-v6-authentic
   hợp lệ. Compatibility header chỉ còn khi auth tắt trên local/protected deployment.
 - Login sai, session thiếu/hết hạn/revoked trả generic `401 auth_required` hoặc
   `401 auth_invalid_credentials`; logout revoke session và xóa cả hai cookie.
+
+Rate limit bật mặc định bằng `DEVRADAR_RATE_LIMIT_ENABLED=true`, dùng fixed-window process-local:
+general API `120/60s`, login `10/900s`, alert dispatch `5/60s`. Giới hạn có thể giảm/tăng theo
+deployment nhưng không được tắt trên `PROTECTED`/`PUBLIC`. Khi vượt ngưỡng, API trả `429 rate_limited`,
+`Retry-After`, `X-RateLimit-Limit` và `X-RateLimit-Remaining`; key không ghi raw cookie/token hoặc IP
+vào log. Đây là lớp bảo vệ hiện tại, không phải bằng chứng rằng một process đủ cho distributed scale.
+
+API response luôn thêm `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`,
+`Permissions-Policy`, baseline `Content-Security-Policy` và `Cache-Control: no-store`. HSTS chỉ xuất hiện
+khi `DEVRADAR_AUTH_COOKIE_SECURE=true`. CORS dùng explicit `DEVRADAR_ALLOWED_ORIGINS`, credential được
+phép nhưng wildcard `*` bị cấm.
 
 ## 9. Compatibility và versioning
 

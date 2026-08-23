@@ -10,12 +10,12 @@ const expected = [
   ["jobs", "/jobs", "scaffolded", true],
   ["job-detail", "/jobs/[jobId]", "scaffolded", false],
   ["analytics", "/analytics", "scaffolded", true],
-  ["crawler-health", "/crawler-health", "scaffolded", true],
+  ["crawler-health", "/crawler-health", "implemented", true],
   ["cv-match", "/cv-match", "implemented", true],
   ["alerts", "/alerts", "implemented", true],
 ];
 
-test("route manifest owns the current V5 surface", async () => {
+test("route manifest owns the current dashboard surface", async () => {
   const routes = JSON.parse(await readFile(manifestUrl, "utf8"));
   assert.deepEqual(
     routes.map(({ id, path, availability, showInNav }) => [
@@ -39,6 +39,56 @@ test("route manifest owns the current V5 surface", async () => {
     "DELETE /api/v1/resume-profiles/{profileId}",
   ]);
   assert.equal(routes.filter(({ showInNav }) => showInNav).length, 6);
+});
+
+test("crawler health route exposes the operator ingestion contract", async () => {
+  const routes = JSON.parse(await readFile(new URL("src/contracts/routes.json", webRoot), "utf8"));
+  const route = routes.find(({ id }) => id === "crawler-health");
+  assert.deepEqual(route.apiResources, [
+    "GET /api/devradar/sources",
+    "GET /api/devradar/crawl-runs",
+    "GET /api/devradar/crawl-runs/{runId}",
+    "POST /api/devradar/crawl-runs",
+  ]);
+  const page = await readFile(new URL("src/app/(dashboard)/crawler-health/page.tsx", webRoot), "utf8");
+  const component = await readFile(new URL("src/components/ingestion-console.tsx", webRoot), "utf8");
+  assert.match(page, /IngestionConsole/);
+  assert.doesNotMatch(page, /RoutePlaceholder/);
+  assert.match(component, /approvalStatus/);
+  assert.match(component, /Idempotency-Key|idempotency/i);
+  assert.doesNotMatch(component, /allowedHosts|rateLimitPolicy|baseUrl/);
+});
+
+test("crawler console polls a bounded pending run until a terminal status", async () => {
+  const component = await readFile(new URL("src/components/ingestion-console.tsx", webRoot), "utf8");
+  assert.match(component, /useEffect/);
+  assert.match(component, /POLL_INTERVAL_MS\s*=\s*2_000/);
+  assert.match(component, /POLL_WINDOW_MS\s*=\s*30_000/);
+  assert.match(component, /succeeded.*partial.*failed.*cancelled/s);
+  assert.match(component, /still pending.*refresh/i);
+});
+
+test("crawler polling uses the run detail resource instead of a truncated history page", async () => {
+  const detailRoute = await readFile(new URL("src/app/api/devradar/crawl-runs/[runId]/route.ts", webRoot), "utf8");
+  const client = await readFile(new URL("src/lib/ingestion.ts", webRoot), "utf8");
+  const component = await readFile(new URL("src/components/ingestion-console.tsx", webRoot), "utf8");
+  assert.match(detailRoute, /proxyBackend/);
+  assert.match(detailRoute, /crawl-runs\/\$\{encodeURIComponent\(runId\)\}/);
+  assert.match(client, /getIngestionRun/);
+  assert.match(component, /getIngestionRun\((?:activeRunId|runId)\)/);
+  assert.doesNotMatch(component, /nextRuns\.find\(\(run\) => run\.id === activeRunId\)/);
+});
+
+test("crawler BFF routes preserve the session boundary and reject arbitrary crawl input", async () => {
+  const sources = await readFile(new URL("src/app/api/devradar/sources/route.ts", webRoot), "utf8");
+  const runs = await readFile(new URL("src/app/api/devradar/crawl-runs/route.ts", webRoot), "utf8");
+  assert.match(sources, /proxyBackend/);
+  assert.match(runs, /proxyBackend/);
+  assert.match(runs, /Idempotency-Key/);
+  assert.match(runs, /content-type.*application\/json/i);
+  assert.match(runs, /sourceId/);
+  assert.match(runs, /ingestion_request_invalid/);
+  assert.doesNotMatch(runs, /adapterKey|allowedHosts/i);
 });
 
 test("cv match route exposes only protected local matching resources", async () => {
@@ -112,4 +162,16 @@ test("auth routes and login page are present", async () => {
   assert.match(proxy, /set-cookie/);
   assert.match(proxy, /headers\.append\(["']set-cookie["']/);
   assert.doesNotMatch(proxy, /x-devradar-owner/i);
+});
+
+test("BFF has bounded rate, timeout and security-header policy", async () => {
+  const proxy = await readFile(new URL("src/lib/backend-proxy.ts", webRoot), "utf8");
+  const nextConfig = await readFile(new URL("next.config.mjs", webRoot), "utf8");
+
+  assert.match(proxy, /AbortSignal\.timeout/);
+  assert.match(proxy, /bff-rate-limit/);
+  assert.match(proxy, /MAX_PROXY_BODY_BYTES/);
+  assert.match(nextConfig, /X-Content-Type-Options/);
+  assert.match(nextConfig, /Content-Security-Policy/);
+  assert.match(nextConfig, /Referrer-Policy/);
 });

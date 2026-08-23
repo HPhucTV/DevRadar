@@ -342,6 +342,55 @@ header compatibility chỉ còn khi auth tắt trên local/protected deployment.
 ghi kết quả migration, API/web tests và các boundary chưa thuộc task như rate limit, security headers,
 managed secrets và public deploy.
 
+### V6-003 progress (`Done`)
+
+Rate limit process-local, CORS/header policy, BFF body/response budget, deployment-class guard và secret/npm
+scan đã có implementation/evidence tại [V6-003 evidence](evidence/V6-003-hardening.md). Trivy pinned digest
+đã scan riêng API/crawler image; cả hai có `0` fixable HIGH/CRITICAL finding và gate `--ignore-unfixed`
+pass. Unfixed advisory vẫn là residual risk được theo dõi, không phải false-green.
+
+### V6-004 progress (`In Progress`)
+
+CI workflow, Dependabot, Compose image override, migration command surface, deploy/rollback scripts và
+health smoke đã có tại [V6-004 evidence](evidence/V6-004-ci-deploy.md). Local fresh-database deploy và
+application-image rollback đã pass. Public HTTPS ingress, configured GitHub Actions run, managed secret
+store và timestamped remote rollback drill vẫn chưa có evidence; không nâng status tới khi các boundary
+này được kiểm thử thật.
+
+### V6-005 progress (`In Progress`)
+
+Custom PostgreSQL backup, isolated restore drill, bounded health monitor và runbooks đã có tại
+[V6-005 evidence](evidence/V6-005-backup-monitoring.md). Local archive/restore/monitor đã pass; scheduled
+encrypted off-host backup, RPO/RTO, key rotation, alert routing và provider evidence còn mở.
+
+### V6-006 evidence (`Done`)
+
+[Queue benchmark](evidence/V6-006-queue-pressure.md) đo 100 PostgreSQL pending claims ở 1/4/8 workers;
+4 workers đạt 214.946 claim/s, p95 20.360 ms và 8 workers không tạo thêm throughput. [ADR-018](decisions/0018-do-not-add-redis-worker-pool-after-v6-benchmark.md)
+quyết định không thêm Redis/worker pool; topology chỉ được đánh giá lại theo measured triggers.
+
+### V6-007 progress (`In Progress`)
+
+[Public release review](evidence/V6-007-public-release-review.md) đã kiểm các boundary local/protected,
+nhưng chưa có HTTPS ingress/hostname thật, managed secret provider và rotation, GitHub Actions run trên
+remote, off-host encrypted backup với RPO/RTO, hoặc public privacy/alert evidence. Không đóng V6 và không
+push cho tới khi các provider/operator evidence này tồn tại.
+
+### V6-008 progress (`Done`)
+
+Operator ingestion console tái sử dụng contract Source/CrawlRun hiện hành để tạo vertical slice
+`source health → request approved run → pending history` qua authenticated same-origin BFF. Browser chỉ
+được gửi `sourceId` và idempotency key; arbitrary URL/config bị chặn. [Evidence](evidence/V6-008-operator-ingestion-console.md)
+ghi web contract/build, PostgreSQL auth acceptance và browser smoke.
+
+### V6-009 progress (`Done`)
+
+Operator console đã bổ sung polling bounded cho đúng `CrawlRun` detail sau khi enqueue. BFF thêm
+`GET /api/devradar/crawl-runs/{runId}` để không phụ thuộc trang history bị truncate; polling dừng ở
+terminal status, timeout 30 giây hoặc lỗi backend an toàn. [Evidence](evidence/V6-009-crawl-status-polling.md)
+ghi regression khi list page làm mất pending run, web quality gates, PostgreSQL worker claim và browser
+smoke với worker ngoài HTTP. V6-004/V6-005/V6-007 vẫn mở vì thiếu provider/public evidence.
+
 ## 9. Quy tắc cập nhật roadmap
 
 - Chỉ đổi status khi kiểm tra exit criteria và link evidence cụ thể.
