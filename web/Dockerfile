@@ -24,6 +24,12 @@ ENV NODE_ENV=production \
 
 WORKDIR /app
 
+# Runtime only executes the traced standalone server. Package managers belong
+# to the build stages and would add an unused executable advisory surface.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /opt/yarn-v1.22.22 \
+    && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+        /usr/local/bin/yarn /usr/local/bin/yarnpkg
+
 COPY --from=builder --chown=node:node /app/.next/standalone ./
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 

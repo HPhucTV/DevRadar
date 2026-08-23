@@ -49,6 +49,8 @@ def test_web_image_is_standalone_pinned_and_non_root() -> None:
     assert "npm run build" in dockerfile
     assert "/app/.next/standalone" in dockerfile
     assert "/app/.next/static" in dockerfile
+    assert "rm -rf /usr/local/lib/node_modules/npm" in dockerfile
+    assert "/usr/local/bin/npm" in dockerfile
     assert "USER node" in dockerfile
     assert 'CMD ["node", "server.js"]' in dockerfile
     assert "node_modules" in dockerignore
