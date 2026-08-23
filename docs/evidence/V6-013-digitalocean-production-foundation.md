@@ -1,8 +1,8 @@
 # V6-013 — DigitalOcean production foundation
 
 **Ngày ghi nhận:** 2026-08-23  
-**Trạng thái:** `In Progress` — local artifact/workflow contract đã pass; remote exact-SHA CI và live
-DigitalOcean deploy chưa có evidence.
+**Trạng thái:** `Done` cho V6-013 — local artifact/workflow contract và remote exact-SHA CI đã pass;
+live DigitalOcean deploy vẫn chưa có evidence và không được claim.
 
 ## Đã triển khai
 
@@ -67,12 +67,36 @@ supersede đúng phần artifact của ADR-021.
   `no-new-privileges:true`; chỉ `/data` và `/config` writable, `Caddyfile` bind read-only.
 - Teardown dùng `down` không `--volumes`; named volumes được giữ.
 
+## Remote exact-SHA evidence
+
+[DevRadar CI run #32623904568](https://github.com/HPhucTV/DevRadar/actions/runs/32623904568) trên exact SHA
+`47f2b6b8c4b1222ce5b7bc74ae9e10f26691429c` hoàn tất `success` ngày 2026-08-23. Cả bảy required jobs đều
+terminal `success`:
+
+- Python quality/default tests;
+- PostgreSQL integration tests;
+- web tests/lint/typecheck/build;
+- Compose migration/API/ingress smoke;
+- remote application rollback;
+- remote PostgreSQL backup/restore drill;
+- full và fixable Trivy critical/high gate cho API/crawler/web/ingress.
+
+Artifact metadata của run, tất cả chưa expired và retention tới 2026-09-06:
+
+| Artifact | Size | Digest |
+|---|---:|---|
+| `compose-smoke-32623904568` | 3,137 bytes | `sha256:4ff365f5b59a9b48b023e988d654d696d2ba975a249f3afa886c6de83767ee36` |
+| `remote-rollback-32623904568` | 2,569 bytes | `sha256:f20e59cc659ed002c5663cde89776cb98ee8c60b0b013274f2abbb21a0cee555` |
+| `remote-backup-32623904568` | 1,758 bytes | `sha256:a3345fac3d395a5af9d5d84f8170729aeeba5b90a1a31cb9652d61f7169584a4` |
+| `postgresql-tests-32623904568` | 2,171 bytes | `sha256:a0e6a1d803d7539b449a8c4fb7695d468baf186a6524312835dd7382861b4374` |
+
+The production `workflow_dispatch` was not invoked, so the run did not push to GHCR, mutate a DigitalOcean
+firewall, or deploy a host. No incident issue was created on the successful CI path.
+
 ## Boundary còn mở
 
-- Chưa push implementation SHA, nên chưa có exact-SHA remote seven-job CI/artifact evidence cho V6-013.
 - Chưa có DigitalOcean account/Droplet/firewall/domain/GitHub production environment; workflow chưa mutate
   provider hoặc deploy public host.
 - Chưa có public DNS, certificate, external HTTPS/auth/privacy smoke hoặc managed-secret rotation evidence.
 - Off-host restic/Spaces, measured RPO/RTO và DigitalOcean Uptime thuộc V6-014/V6-015.
 - Vì vậy V6-004/V6-005/V6-007 vẫn `In Progress`; local smoke không được dùng để claim public release.
-

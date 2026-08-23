@@ -361,15 +361,17 @@ Public HTTPS ingress và managed secret store vẫn chưa có evidence; không n
 này được kiểm thử thật. [V6-012](evidence/V6-012-production-web-compose.md) đã hoàn tất Next.js standalone
 artifact, local/remote Compose deploy/rollback và three-image Trivy gate trên exact SHA `31c662c`.
 
-### V6-013 progress (`In Progress`)
+### V6-013 closeout (`Done`)
 
 [DigitalOcean production foundation evidence](evidence/V6-013-digitalocean-production-foundation.md) đã
 hoàn tất local contract cho single-host ingress/release boundary: patched Caddy scratch image, immutable
 database/API/crawler/web/ingress digests, exact-SHA manual workflow, bounded firewall mutation và real
 Compose route smoke. Official Caddy/Traefik images bị loại vì còn lần lượt `78/19/10` fixable
-HIGH/CRITICAL findings; ADR-022 ghi quyết định thay thế phần Caddy artifact của ADR-021. Chưa push nên chưa
-có remote exact-SHA CI; chưa có DigitalOcean host/domain/managed secret/public HTTPS evidence. Chỉ chuyển
-`Done` sau khi remote implementation SHA và artifact workflow pass.
+HIGH/CRITICAL findings; ADR-022 ghi quyết định thay thế phần Caddy artifact của ADR-021. Exact SHA
+`47f2b6b8c4b1222ce5b7bc74ae9e10f26691429c` đã có [remote run #32623904568](https://github.com/HPhucTV/DevRadar/actions/runs/32623904568)
+với đủ bảy required jobs success và artifact digests tại [evidence](evidence/V6-013-digitalocean-production-foundation.md).
+V6-013 đạt exit criteria. DigitalOcean host/domain/managed secret/public HTTPS evidence vẫn là boundary của
+V6-015, nên V6-004/V6-005/V6-007 chưa đóng.
 
 ### V6-005 progress (`In Progress`)
 
