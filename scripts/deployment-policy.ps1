@@ -13,6 +13,7 @@ function Assert-DeploymentPolicy {
     param(
         [string]$EnvironmentFile,
         [uri]$BaseUrl,
+        [uri]$WebBaseUrl,
         [switch]$RequireHttps
     )
 
@@ -28,8 +29,12 @@ function Assert-DeploymentPolicy {
         return
     }
 
-    if ($BaseUrl.Scheme -ne "https" -or $RequireHttps.IsPresent -eq $false) {
-        throw "Protected/public deployment requires an HTTPS smoke URL and -RequireHttps."
+    if (
+        $BaseUrl.Scheme -ne "https" -or
+        $WebBaseUrl.Scheme -ne "https" -or
+        $RequireHttps.IsPresent -eq $false
+    ) {
+        throw "Protected/public deployment requires HTTPS API/web smoke URLs and -RequireHttps."
     }
     if ((Get-DeploymentEnvironmentValue $EnvironmentFile "DEVRADAR_AUTH_ENABLED") -ne "true") {
         throw "Protected/public deployment requires DEVRADAR_AUTH_ENABLED=true."
