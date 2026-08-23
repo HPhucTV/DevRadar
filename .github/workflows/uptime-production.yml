@@ -1,0 +1,34 @@
+name: DevRadar production uptime verification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: devradar-production-uptime
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify DigitalOcean Uptime check
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    env:
+      DEVRADAR_DOMAIN: ${{ vars.DEVRADAR_DOMAIN }}
+      DEVRADAR_UPTIME_CHECK_ID: ${{ vars.DEVRADAR_UPTIME_CHECK_ID }}
+      DEVRADAR_UPTIME_ALERT_ID: ${{ vars.DEVRADAR_UPTIME_ALERT_ID }}
+      DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Verify provider-side HTTPS check and optional alert
+        shell: pwsh
+        # DIGITALOCEAN_TOKEN must be a custom-scope token with uptime:read (and no write scope for Verify).
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:DEVRADAR_DOMAIN)) { throw "DEVRADAR_DOMAIN is required." }
+          if ([string]::IsNullOrWhiteSpace($env:DEVRADAR_UPTIME_CHECK_ID)) { throw "DEVRADAR_UPTIME_CHECK_ID is required." }
+          if ([string]::IsNullOrWhiteSpace($env:DIGITALOCEAN_TOKEN)) { throw "DIGITALOCEAN_TOKEN is required." }
+          $target = "https://$($env:DEVRADAR_DOMAIN)/api/v1/health"
+          ./scripts/digitalocean-uptime.ps1 -Action Verify -CheckId $env:DEVRADAR_UPTIME_CHECK_ID -Target $target -AlertId $env:DEVRADAR_UPTIME_ALERT_ID

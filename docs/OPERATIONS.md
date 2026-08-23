@@ -345,6 +345,13 @@ conversation resolution. Force-push và branch deletion bị chặn. Không yêu
 hiện là single-operator; `enforce_admins=false` giữ emergency owner bypass, nên mọi lần bypass phải có
 commit/evidence và một run CI terminal tương ứng thay vì được xem là gate pass mặc định.
 
+[ADR-023](decisions/0023-accept-encrypted-spaces-backup-and-uptime-boundary.md) bổ sung custom restic
+`0.19.1` scratch artifact vào cùng container advisory gate. Production chỉ nhận HTTPS S3 repository và
+GHCR image digest; local tag/repository chỉ được mở bằng explicit test switch. Password đi qua file mount,
+Spaces key đi qua env file tạm và remote workflow logout GHCR/xóa credential/archive ở cleanup. Schedule
+giữ `7 daily + 4 weekly`; đây là policy khởi đầu, chưa phải retention/RPO evidence cho tới khi chạy trên
+Spaces thật. DigitalOcean Uptime workflow mặc định chỉ GET check/alert bằng token `uptime:read`.
+
 ### V6-005 backup, restore và monitoring
 
 Backup dùng custom PostgreSQL archive và stream trực tiếp từ database container; archive nằm ngoài Git,
@@ -360,6 +367,11 @@ rồi drop; monitor phát JSON bounded event và fail khi health không `ok` ho�
 ADR-017 giữ standard-library logger và command monitor; Prometheus/OpenTelemetry/monitoring SaaS chỉ được
 thêm sau measured cardinality, retention, alert-routing hoặc latency need. Public closeout vẫn cần encrypted
 off-host backup, schedule, retention, key rotation, RPO/RTO, restore timestamp và alert routing thật.
+
+V6-014 đã thêm custom restic build/scan, local encrypted backup/check/retention/restore smoke, scheduled
+production workflow và read-only Uptime verifier. Local smoke restore giữ source path dưới
+`<target>/input/archive.dump`. Chưa có Spaces/Uptime credential nên chưa có provider backup/list/restore,
+prune, rotation, RPO/RTO hoặc GET check/alert evidence; các gate đó vẫn mở.
 
 ### Public V6
 

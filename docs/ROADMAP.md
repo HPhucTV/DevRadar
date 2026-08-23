@@ -370,8 +370,18 @@ Compose route smoke. Official Caddy/Traefik images bị loại vì còn lần l�
 HIGH/CRITICAL findings; ADR-022 ghi quyết định thay thế phần Caddy artifact của ADR-021. Exact SHA
 `47f2b6b8c4b1222ce5b7bc74ae9e10f26691429c` đã có [remote run #32623904568](https://github.com/HPhucTV/DevRadar/actions/runs/32623904568)
 với đủ bảy required jobs success và artifact digests tại [evidence](evidence/V6-013-digitalocean-production-foundation.md).
-V6-013 đạt exit criteria. DigitalOcean host/domain/managed secret/public HTTPS evidence vẫn là boundary của
-V6-015, nên V6-004/V6-005/V6-007 chưa đóng.
+V6-013 đạt exit criteria. DigitalOcean host/domain/managed secret/public HTTPS evidence đã được chuyển sang danh sách deferred (hoãn cho tới khi có account/domain thật), nên V6-004/V6-005/V6-007 giữ boundary local/protected/CI.
+
+### V6-014 progress (`In Progress`)
+
+[V6-014 evidence](evidence/V6-014-backup-uptime.md) đã khóa custom restic `0.19.1` scratch artifact,
+production HTTPS S3 + immutable image validation, `RESTIC_PASSWORD_FILE`, GHCR digest publication, remote
+non-root execution, `7 daily + 4 weekly` retention và read-only DigitalOcean Uptime verification. Local
+encrypted repository đã pass `init → backup → check → retain → restore` với content match; CI contract build
+và Trivy full/fixable scan cho restic đã được thêm, actionlint pass. Chưa có Spaces bucket/key, host/domain,
+Uptime check/alert hoặc GitHub production secrets nên chưa có provider backup/list/restore, rotation, measured
+RPO/RTO hay Uptime GET evidence; V6-014 vẫn `In Progress` và không nâng V6-005/V6-007.
+
 
 ### V6-005 progress (`In Progress`)
 
