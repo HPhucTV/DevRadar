@@ -35,6 +35,15 @@ docker inspect: user=65532:65532, entrypoint=/usr/bin/restic
 `actionlint v1.7.12` chạy qua `go run` trên cả ba workflow sau thay đổi cuối và pass. Đây là static workflow
 evidence; nó không thay thế remote provider run.
 
+### Remote exact-SHA CI
+
+[DevRadar CI run #32627328531](https://github.com/HPhucTV/DevRadar/actions/runs/32627328531) trên exact SHA
+`51d953c742c35e8989fb4490b8ee73541cb9a87a` hoàn tất `success` ngày 2026-08-23. Cả bảy required jobs đều
+terminal `success`: Python quality, PostgreSQL integration, web quality, Compose smoke, remote rollback,
+remote backup/restore và container critical/high advisory gate. Container gate đã build/scan custom restic cùng
+API/crawler/web/ingress; full và fixable HIGH/CRITICAL loops đều pass. Artifacts remote backup/rollback/Compose/
+PostgreSQL được lưu với retention 14 ngày; không có database dump trong artifact backup.
+
 ### Local encrypted restic smoke
 
 Path: `C:\temp\devradar-v6014-restic-smoke-6` (ngoài repository, không commit).

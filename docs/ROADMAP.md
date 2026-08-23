@@ -380,7 +380,9 @@ non-root execution, `7 daily + 4 weekly` retention và read-only DigitalOcean Up
 encrypted repository đã pass `init → backup → check → retain → restore` với content match; CI contract build
 và Trivy full/fixable scan cho restic đã được thêm, actionlint pass. Chưa có Spaces bucket/key, host/domain,
 Uptime check/alert hoặc GitHub production secrets nên chưa có provider backup/list/restore, rotation, measured
-RPO/RTO hay Uptime GET evidence; V6-014 vẫn `In Progress` và không nâng V6-005/V6-007.
+RPO/RTO hay Uptime GET evidence. Exact SHA `51d953c742c35e8989fb4490b8ee73541cb9a87a` đã có
+[CI run #32627328531](https://github.com/HPhucTV/DevRadar/actions/runs/32627328531) success đủ 7/7 required
+jobs; V6-014 vẫn `In Progress` và không nâng V6-005/V6-007.
 
 
 ### V6-005 progress (`In Progress`)

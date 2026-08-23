@@ -100,7 +100,7 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [V6-011 GitHub incident alerting](docs/evidence/V6-011-github-incident-alerting.md): least-privilege unsuccessful-CI route, owner-assigned safe issue và remote dispatch/cleanup drill.
 - [V6-012 production web Compose](docs/evidence/V6-012-production-web-compose.md): standalone web image, hardened Compose, BFF smoke và dual-image deploy/rollback evidence.
 - [V6-013 DigitalOcean production foundation](docs/evidence/V6-013-digitalocean-production-foundation.md): patched Caddy scratch ingress, immutable release contract, firewall cleanup, local Compose smoke và exact-SHA seven-job CI; chưa claim live provider.
-- [V6-014 backup/Uptime evidence](docs/evidence/V6-014-backup-uptime.md): custom restic build/scan, local encrypted init/backup/check/retention/restore smoke và provider boundary chưa có credential.
+- [V6-014 backup/Uptime evidence](docs/evidence/V6-014-backup-uptime.md): custom restic build/scan, local encrypted init/backup/check/retention/restore smoke, exact-SHA seven-job CI và provider boundary chưa có credential.
 - [Operations](docs/OPERATIONS.md): test, security, observability, retention, CI/CD và deployment gates.
 - [Source discovery](docs/sources/SHORTLIST.md): evidence và approval outcome; VNG, NAVER Vietnam/Greenhouse và MoMo đã được duyệt cho bounded Vietnam scope, RemoteJobs.org được duyệt riêng cho V3 remote cohort có attribution, GeoComply/Lever vẫn `permission_required`.
 - [Pre-V1 local evidence](docs/evidence/PRE-007-local-prerequisites.md): Docker/PostgreSQL capability và constraint đã xác minh.
