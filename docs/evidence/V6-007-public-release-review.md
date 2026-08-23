@@ -23,6 +23,15 @@
   evidence; local archive không chứng minh durability production.
 - Chưa có alert routing/incident contact thật hoặc privacy/terms notice đã publish cho public traffic.
 
+## External-state audit ngày 2026-08-23
+
+- `.env.local` chỉ có tên biến `DEVRADAR_DEEPSEEK_API_KEY`; không ghi hoặc expose giá trị secret.
+- Không có provider CLI hoặc credential environment cho VPS/cloud/managed database/object storage/HTTPS.
+- GitHub metadata public kiểm tra được `environments.total_count=0` và `deployments=[]`; branch-protection
+  endpoint yêu cầu authenticated GitHub API nên chưa có evidence về protected `main`.
+- Vì không có hostname/ingress thật, chưa thể chạy `scripts/deploy.ps1 -RequireHttps` hoặc rollback drill
+  từ bên ngoài loopback mà không bịa target.
+
 ## Release decision
 
 Giữ V6-007 ở `In Progress`. Source đã được push để kích hoạt remote CI, nhưng chưa tuyên bố public release
