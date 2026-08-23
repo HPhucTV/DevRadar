@@ -3,7 +3,7 @@ import { CvMatchPanel } from "@/components/cv-match-panel";
 export default function CvMatchPage() {
   return (
     <>
-      <section className="page-intro">
+      <section className="page-intro cv-intro">
         <p className="eyebrow">Local and protected</p>
         <h1>See where your resume fits.</h1>
         <p>

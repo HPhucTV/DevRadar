@@ -24,6 +24,21 @@ test("shared shell and route surfaces use redesign primitives", async () => {
   assert.match(jobs, /job-card/);
 });
 
+test("protected CV surface uses semantic redesign classes", async () => {
+  const cv = await source("src/components/cv-match-panel.tsx");
+  assert.match(cv, /cv-upload-card/);
+  assert.match(cv, /score-tile/);
+});
+
+test("operator surfaces use semantic redesign classes", async () => {
+  const alerts = await source("src/components/alert-rules-panel.tsx");
+  const crawler = await source("src/components/ingestion-console.tsx");
+  assert.match(alerts, /rule-builder/);
+  assert.match(alerts, /rule-card/);
+  assert.match(crawler, /health-grid/);
+  assert.match(crawler, /run-timeline/);
+});
+
 test("redesign preserves CV, crawler and privacy boundaries", async () => {
   const cv = await source("src/components/cv-match-panel.tsx");
   const crawler = await source("src/components/ingestion-console.tsx");
