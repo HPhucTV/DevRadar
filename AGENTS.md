@@ -115,9 +115,25 @@ V6 supply-chain/secret gates (PowerShell, chạy từ root):
 .\scripts\scan-supply-chain.ps1
 ```
 
-`scan-supply-chain.ps1` yêu cầu `npm audit`, `pip check` và Docker Scout critical/high; nếu Docker
-Scout chưa được đăng nhập hoặc không có advisory service thì giữ task ở trạng thái chưa hoàn tất,
-không bỏ qua scan bằng cách đổi exit code.
+`scan-supply-chain.ps1` yêu cầu `npm audit`, `pip check` và Trivy pinned-digest scan cho cả API/crawler
+image; full HIGH/CRITICAL report phải chạy trước gate fixable findings. Nếu scanner/image/socket không
+chạy hoặc còn finding có bản sửa thì giữ task ở trạng thái chưa hoàn tất, không bỏ qua scan bằng cách đổi
+exit code.
+
+V6-004 deploy/rollback commands dùng image override `DEVRADAR_APP_IMAGE` và không tự downgrade schema:
+
+```powershell
+.\scripts\smoke.ps1 -BaseUrl http://127.0.0.1:8000
+.\scripts\migrate.ps1 -EnvironmentFile .env.example -Action check
+.\scripts\deploy.ps1 -EnvironmentFile .env.example -ProjectName devradar -Image devradar-app:local -BaseUrl http://127.0.0.1:8000 -SkipBuild
+.\scripts\rollback.ps1 -EnvironmentFile .env.example -ProjectName devradar -Image devradar-app:local -BaseUrl http://127.0.0.1:8000
+.\scripts\backup.ps1 -EnvironmentFile .env.example -ProjectName devradar -OutputPath backups\devradar-local.dump
+.\scripts\restore.ps1 -EnvironmentFile .env.example -ProjectName devradar -BackupPath backups\devradar-local.dump
+.\scripts\monitor.ps1 -BaseUrl http://127.0.0.1:8000
+```
+
+Protected/public deploy bắt buộc HTTPS, auth, Secure cookie, managed secret source, explicit HTTPS
+CORS và non-default credentials; không đưa secret thật vào repository hoặc log.
 
 Khi task thực sự chạy MoMo browser adapter local, cài browser binary đúng version lock bằng command đã kiểm chứng:
 
@@ -125,7 +141,9 @@ Khi task thực sự chạy MoMo browser adapter local, cài browser binary đú
 .venv\Scripts\python -m playwright install chromium
 ```
 
-Default test không cần browser binary và không chạm network. Docker image đã cài headless Chromium đúng version Playwright; browser chỉ được launch qua service `crawler` với sandbox profile, không qua service `api`.
+Default test không cần browser binary và không chạm network. API image không cài browser; crawler image
+đã cài headless Chromium đúng version Playwright và browser chỉ được launch qua service `crawler` với
+sandbox profile, không qua service `api`.
 
 Default test không tự chạm PostgreSQL. Khi task yêu cầu PostgreSQL integration thật:
 

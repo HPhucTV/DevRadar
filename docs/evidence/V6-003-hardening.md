@@ -1,7 +1,7 @@
 # V6-003 — API, web và supply-chain hardening
 
 **Ngày ghi nhận:** 2026-08-23
-**Trạng thái:** `Blocked` — còn blocker container advisory scan.
+**Trạng thái:** `Done` — API/web hardening và container advisory gate đã có bằng chứng local.
 
 ## Đã triển khai
 
@@ -16,29 +16,40 @@
 - Deployment-class guard: `LOCALHOST_SERVICE` là local default; `PROTECTED`/`PUBLIC` fail closed khi
   auth/cookie/Origin/managed-secret/DB secret policy không đạt.
 - `scripts/scan-secrets.ps1` kiểm tracked env/TASK_BOARD và high-confidence key/private-key patterns.
-- `scripts/scan-supply-chain.ps1` chạy `npm audit --audit-level=high`, `pip check` và Docker Scout.
+- `scripts/scan-supply-chain.ps1` chạy `npm audit --audit-level=high`, `pip check` và Trivy pinned
+  digest cho cả API image không browser và crawler image có Playwright.
 
 ## Verification đã chạy
 
 ```text
 tests/test_rate_limit.py + tests/test_system_api.py + tests/test_security_config.py: 11 passed
-default pytest sau thay đổi: 248 passed, 61 skipped
-PostgreSQL pytest sau thay đổi: 309 passed
-web npm test: 7 passed
-web lint/typecheck/build: exit 0
+default pytest: 248 passed, 61 skipped
+PostgreSQL marker suite: 59 passed
+web `npm run check`: test 7 passed, lint/typecheck/build exit 0
+ruff check: All checks passed; ruff format --check: 251 files formatted
+mypy: Success, no issues in 111 source files
 scan-secrets.ps1: secret_scan=pass
 npm audit --audit-level=high: found 0 vulnerabilities
 pip check: No broken requirements found
+API image build (`devradar-app:api-slim`): exit 0
+crawler image build (`devradar-crawler:local`, browser enabled): exit 0
+Compose profile config and crawler `devradar --help`: pass; named PostgreSQL volume preserved
 ```
 
-Docker image `devradar-app:local` đã build lại thành công. `docker scout cves --only-severity
-critical,high --exit-code local://devradar-app:local` chưa chạy được vì Docker Scout yêu cầu Docker ID/login
-trên máy hiện tại. Đây là blocker external-authority, không được ghi thành pass và không được mark V6-003
-`Done` cho tới khi scan hoàn tất.
+Trivy image `aquasec/trivy@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969`
+đã chạy full HIGH/CRITICAL report và gate `--ignore-unfixed`:
+
+| Image | Total HIGH/CRITICAL | Có `FixedVersion` | Unfixed |
+|---|---:|---:|---:|
+| `devradar-app:api-slim` | 19 | 0 | 19 |
+| `devradar-crawler:local` | 34 | 0 | 34 |
+
+Các advisory chưa có upstream fix được ghi nhận là residual risk; không bị che bởi gate. Không còn
+finding có bản sửa trong hai image.
 
 ## Boundary còn mở
 
-- Cần `docker login`/Docker Desktop account hoặc advisory scanner được tổ chức cấp quyền để hoàn thành
-  container gate.
+- Unfixed upstream advisories cần theo dõi ở các lần scan sau; nếu xuất hiện `FixedVersion`, gate phải
+  fail để xử lý trước deploy.
 - Secret manager/rotation drill thật, strict nonce CSP và public HTTPS/deploy thuộc V6-004; Redis/worker
   benchmark thuộc V6-006.

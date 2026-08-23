@@ -1,7 +1,7 @@
 name: devradar
 
 x-app-base: &app-base
-  image: devradar-app:local
+  image: ${DEVRADAR_APP_IMAGE:-devradar-app:local}
   depends_on:
     database:
       condition: service_healthy
@@ -41,6 +41,8 @@ services:
     <<: *app-base
     build:
       context: .
+      args:
+        DEVRADAR_INSTALL_BROWSER: "false"
     ports:
       - "127.0.0.1:${DEVRADAR_API_HOST_PORT:-8000}:8000"
     healthcheck:
@@ -58,6 +60,11 @@ services:
 
   crawler:
     <<: *app-base
+    image: ${DEVRADAR_CRAWLER_IMAGE:-devradar-crawler:local}
+    build:
+      context: .
+      args:
+        DEVRADAR_INSTALL_BROWSER: "true"
     profiles:
       - crawler
     init: true

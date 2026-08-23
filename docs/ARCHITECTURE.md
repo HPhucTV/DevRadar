@@ -149,9 +149,14 @@ flowchart LR
 | V3 | V2 + extraction/taxonomy; local FastEmbed multilingual MiniLM artifact, pgvector `vector(384)`, exact semantic search và bounded analytics | Complete; ADR-010 Accepted cho local/private |
 | V4 | Không thêm runtime vào V3; đánh giá rồi loại planner/validator/analyst reasoning path; LangGraph deferred | Complete; ADR-013 Accepted |
 | V5 | V3 runtime baseline + Next.js App Router/BFF + local-gated ResumeProfile/JobMatch + bounded Discord alert connector | Complete; V5-001–V5-007 evidence |
-| V6 | Public ingress, PostgreSQL-backed auth/session, managed secrets, backup/monitoring; Redis/worker pool nếu metric yêu cầu | In progress; V6-001 và V6-002 complete |
+| V6 | Public ingress, PostgreSQL-backed auth/session, managed secrets, CI/deploy/rollback command surface, backup/monitoring; Redis/worker pool nếu metric yêu cầu | In progress; V6-001/V6-002/V6-003 complete, V6-004 in progress |
 
 Crawler/one-shot worker CLI và API dùng cùng code nhưng là entrypoint/process khác nhau. Điều này giữ network work ngoài HTTP request mà không tách service sớm.
+
+V6 deploy topology vẫn là modular monolith + PostgreSQL: CI build artifact, migration runner chạy trước
+API, rồi health smoke qua ingress. HTTPS termination và managed secret store thuộc deployment provider;
+repository không thêm reverse proxy hoặc distributed worker. Application rollback đổi image về một tag/digest
+đã tồn tại và không tự downgrade database; migration compatibility giữ theo expand/contract.
 
 `web/` là presentation boundary của V5. App Router dùng Server Components mặc định
 và gọi FastAPI trực tiếp khi view cần data; CV matching có same-origin Route

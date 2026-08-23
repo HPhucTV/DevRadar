@@ -17,10 +17,14 @@ $patterns = @(
     '-----BEGIN (RSA|EC|OPENSSH|DSA) PRIVATE KEY-----'
 )
 foreach ($pattern in $patterns) {
-    $matches = @(git grep -n -I -E $pattern -- ':!docs/superpowers/plans/**' ':!docs/superpowers/specs/**' 2>$null)
+    $matches = @(git grep -n -I -E -e $pattern -- ':!docs/superpowers/plans/**' ':!docs/superpowers/specs/**' 2>$null)
+    if ($LASTEXITCODE -notin @(0, 1)) {
+        throw "Secret scan could not evaluate pattern safely (git grep exit $LASTEXITCODE)."
+    }
     if ($matches.Count -gt 0) {
         throw "Potential secret pattern detected ($pattern): $($matches -join '; ')"
     }
 }
 
+$global:LASTEXITCODE = 0
 Write-Output "secret_scan=pass"

@@ -1,4 +1,6 @@
-FROM python:3.13.15-slim-bookworm
+FROM python:3.13-slim-trixie@sha256:ffb752e139c0a19692a43af8d8523b274222dd68eebad5d583b45c2201c6e30a
+
+ARG DEVRADAR_INSTALL_BROWSER=false
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -17,12 +19,19 @@ COPY requirements.lock ./requirements.lock
 # Source: https://playwright.dev/python/docs/browsers#install-system-dependencies
 RUN python -m pip install --require-hashes --requirement requirements.lock \
     && python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='qdrant/paraphrase-multilingual-MiniLM-L12-v2-onnx-Q', revision='faf4aa4225822f3bc6376869cb1164e8e3feedd0', local_dir='/opt/devradar/models/multilingual-minilm', allow_patterns=['config.json','special_tokens_map.json','tokenizer.json','tokenizer_config.json','model_optimized.onnx'])" \
-    && python -m playwright install --with-deps --only-shell chromium \
+    && if [ "$DEVRADAR_INSTALL_BROWSER" = "true" ]; then \
+        python -m playwright install --with-deps --only-shell chromium; \
+    fi \
+    && apt-get update \
+    && apt-get -y dist-upgrade \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system devradar \
     && useradd --system --gid devradar --create-home --home-dir /home/devradar \
         --shell /usr/sbin/nologin devradar \
-    && chmod -R a+rX /ms-playwright
+    && if [ "$DEVRADAR_INSTALL_BROWSER" = "true" ]; then \
+        chmod -R a+rX /ms-playwright; \
+    fi \
+    && rm -rf /usr/local/lib/python3.13/site-packages/pip* /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.13
 
 # Official Linux ONNX Runtime builds enable telemetry by default. Keep local
 # embedding inference network-silent and avoid persistent identifiers.

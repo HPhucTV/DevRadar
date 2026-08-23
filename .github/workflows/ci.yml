@@ -1,0 +1,145 @@
+name: DevRadar CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.13"
+  NODE_VERSION: "22"
+  TRIVY_IMAGE: "aquasec/trivy@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969"
+
+jobs:
+  python-quality:
+    name: Python quality and default tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-dev.lock
+      - name: Install hash-locked development dependencies
+        run: python -m pip install --require-hashes --requirement requirements-dev.lock
+      - name: Ruff lint
+        run: python -m ruff check .
+      - name: Ruff format check
+        run: python -m ruff format --check .
+      - name: Mypy
+        run: python -m mypy
+      - name: Pip consistency
+        run: python -m pip check
+      - name: Default tests
+        run: python -m pytest
+      - name: Secret scan
+        shell: pwsh
+        run: ./scripts/scan-secrets.ps1
+
+  postgres-integration:
+    name: PostgreSQL integration tests
+    runs-on: ubuntu-latest
+    services:
+      database:
+        image: pgvector/pgvector:0.8.6-pg18-bookworm
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: devradar_ci
+          POSTGRES_PASSWORD: devradar_ci_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U devradar_ci -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-dev.lock
+      - name: Install hash-locked development dependencies
+        run: python -m pip install --require-hashes --requirement requirements-dev.lock
+      - name: PostgreSQL integration tests
+        env:
+          DEVRADAR_TEST_DATABASE_URL: postgresql+psycopg://devradar_ci:devradar_ci_only@127.0.0.1:5432/postgres
+        run: python -m pytest -m postgresql
+
+  web-quality:
+    name: Web tests, lint, typecheck and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install lockfile dependencies
+        run: npm ci
+      - name: Web check
+        run: npm run check
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+
+  compose-smoke:
+    name: Compose migration and API smoke
+    runs-on: ubuntu-latest
+    needs: [python-quality, postgres-integration, web-quality]
+    env:
+      DEVRADAR_APP_IMAGE: devradar-app:ci
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build API image
+        run: docker build --pull --tag devradar-app:ci .
+      - name: Validate Compose profiles
+        run: docker compose --env-file .env.example --profile crawler config --quiet
+      - name: Start database and migrate
+        run: |
+          docker compose --env-file .env.example up --detach database --wait
+          docker compose --env-file .env.example run --rm api python -m alembic upgrade head
+      - name: Start API and run smoke
+        run: |
+          docker compose --env-file .env.example up --detach api --wait
+          pwsh ./scripts/smoke.ps1 -BaseUrl http://127.0.0.1:8000
+      - name: Teardown without deleting named volume
+        if: always()
+        run: docker compose --env-file .env.example down
+
+  container-advisory:
+    name: Container critical/high advisory gate
+    runs-on: ubuntu-latest
+    needs: compose-smoke
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image in local store
+        run: |
+          docker build --pull --tag devradar-app:ci --build-arg DEVRADAR_INSTALL_BROWSER=false .
+          docker build --pull --tag devradar-crawler:ci --build-arg DEVRADAR_INSTALL_BROWSER=true .
+      - name: Trivy full reports (fixed and unfixed findings)
+        run: |
+          for image in devradar-app:ci devradar-crawler:ci; do
+            docker run --rm \
+              --volume /var/run/docker.sock:/var/run/docker.sock \
+              "$TRIVY_IMAGE" image --quiet --format table --severity HIGH,CRITICAL \
+              --ignore-unfixed=false --exit-code 0 "$image"
+          done
+      - name: Trivy fixable critical/high gate
+        run: |
+          for image in devradar-app:ci devradar-crawler:ci; do
+            docker run --rm \
+              --volume /var/run/docker.sock:/var/run/docker.sock \
+              "$TRIVY_IMAGE" image --quiet --format table --severity HIGH,CRITICAL \
+              --ignore-unfixed --exit-code 1 "$image"
+          done

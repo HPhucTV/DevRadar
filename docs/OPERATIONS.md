@@ -290,6 +290,44 @@ Command cụ thể trong README/AGENTS phải từng chạy thành công và đ�
 - monitoring, budget limit và cleanup job hoạt động;
 - demo claims khớp evidence hiện tại.
 
+### V6-004 CI, deploy và rollback
+
+`.github/workflows/ci.yml` là enforcement contract cho Python default/integration gates, web check,
+Compose migration/API smoke và container advisory scan. Local command surface tương ứng là:
+
+```powershell
+.\scripts\migrate.ps1 -EnvironmentFile .env.example -Action check
+.\scripts\deploy.ps1 -EnvironmentFile .env.example -ProjectName devradar -Image devradar-app:local -BaseUrl http://127.0.0.1:8000 -SkipBuild
+.\scripts\rollback.ps1 -EnvironmentFile .env.example -ProjectName devradar -Image devradar-app:local -BaseUrl http://127.0.0.1:8000
+```
+
+Deploy order là Compose config → image build/inspect → database healthy → `alembic upgrade head` →
+API healthy → `/api/v1/health` smoke. `DEVRADAR_APP_IMAGE` cho phép rollback application artifact mà
+không đổi source. Rollback không chạy `alembic downgrade`; schema phải dùng expand/contract hoặc một
+forward-compatible migration đã review. `-RequireHttps` bắt buộc với protected/public smoke và script
+fail-closed nếu thiếu authentication, Secure cookie, managed secret, HTTPS CORS, operator password hash
+hoặc database password không còn giá trị local mặc định. Chi tiết decision nằm tại [ADR-016](decisions/0016-accept-reproducible-ci-deploy-rollback.md).
+
+Container advisory gate dùng Trivy image chính thức với digest pinned theo [ADR-019](decisions/0019-accept-pinned-trivy-container-gate.md),
+scan riêng API và crawler image. Full HIGH/CRITICAL report phải được thu thập trước khi gate
+`--ignore-unfixed`; nếu scanner/image/socket không chạy thì fail, không suy diễn an toàn từ image build.
+
+### V6-005 backup, restore và monitoring
+
+Backup dùng custom PostgreSQL archive và stream trực tiếp từ database container; archive nằm ngoài Git,
+không in raw owner data hoặc credential. Restore mặc định vào database tạm, kiểm tra `alembic_version`
+rồi drop; monitor phát JSON bounded event và fail khi health không `ok` hoặc latency vượt threshold.
+
+```powershell
+.\scripts\backup.ps1 -EnvironmentFile .env.local -ProjectName devradar -OutputPath backups\devradar-<timestamp>.dump
+.\scripts\restore.ps1 -EnvironmentFile .env.local -ProjectName devradar -BackupPath backups\devradar-<timestamp>.dump
+.\scripts\monitor.ps1 -BaseUrl https://devradar.example -RequireHttps -MaxLatencyMs 2000
+```
+
+ADR-017 giữ standard-library logger và command monitor; Prometheus/OpenTelemetry/monitoring SaaS chỉ được
+thêm sau measured cardinality, retention, alert-routing hoặc latency need. Public closeout vẫn cần encrypted
+off-host backup, schedule, retention, key rotation, RPO/RTO, restore timestamp và alert routing thật.
+
 ### Public V6
 
 - login/logout/me, missing/expired/revoked session, wrong credentials/role, cross-owner và legacy owner
