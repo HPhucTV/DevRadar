@@ -28,13 +28,19 @@ from devradar.platform.database import DATABASE_URL_ENV
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 JOB_MATCH_BASE_REVISION = "d5e8f1a4c602"
+JOB_MATCH_EXTRACTION_REVISION = "e7f1c6a8b903"
 
 
 def _alembic_config() -> Config:
     return Config(str(PROJECT_ROOT / "alembic.ini"))
 
 
-def _graph(session: Session, now: datetime) -> tuple[Job, ResumeProfile]:
+def _graph(
+    session: Session,
+    now: datetime,
+    *,
+    historical_crawl_run_schema: bool = False,
+) -> tuple[Job, ResumeProfile]:
     source = Source(
         name="V5 fixture",
         base_url="https://careers.example.test/careers",
@@ -47,22 +53,46 @@ def _graph(session: Session, now: datetime) -> tuple[Job, ResumeProfile]:
     )
     session.add(source)
     session.flush()
-    run = CrawlRun(
-        source_id=source.id,
-        trigger_type=CrawlTriggerType.MANUAL,
-        status=CrawlRunStatus.SUCCEEDED,
-        coverage_status=CoverageStatus.COMPLETE,
-        started_at=now,
-        finished_at=now + timedelta(seconds=1),
-        pages_found=1,
-        items_found=1,
-        adapter_version="fixture-v1",
-        config_version="source-v1",
-    )
-    session.add(run)
-    session.flush()
+    if historical_crawl_run_schema:
+        run_id = uuid4()
+        session.execute(
+            text(
+                "INSERT INTO crawl_runs ("
+                "id, source_id, trigger_type, status, coverage_status, started_at, finished_at, "
+                "pages_found, items_found, adapter_version, config_version"
+                ") VALUES ("
+                ":id, :source_id, :trigger_type, :status, :coverage_status, :started_at, "
+                ":finished_at, 1, 1, 'fixture-v1', 'source-v1'"
+                ")"
+            ),
+            {
+                "id": run_id,
+                "source_id": source.id,
+                "trigger_type": CrawlTriggerType.MANUAL.value,
+                "status": CrawlRunStatus.SUCCEEDED.value,
+                "coverage_status": CoverageStatus.COMPLETE.value,
+                "started_at": now,
+                "finished_at": now + timedelta(seconds=1),
+            },
+        )
+    else:
+        run = CrawlRun(
+            source_id=source.id,
+            trigger_type=CrawlTriggerType.MANUAL,
+            status=CrawlRunStatus.SUCCEEDED,
+            coverage_status=CoverageStatus.COMPLETE,
+            started_at=now,
+            finished_at=now + timedelta(seconds=1),
+            pages_found=1,
+            items_found=1,
+            adapter_version="fixture-v1",
+            config_version="source-v1",
+        )
+        session.add(run)
+        session.flush()
+        run_id = run.id
     snapshot = RawJobSnapshot(
-        crawl_run_id=run.id,
+        crawl_run_id=run_id,
         source_id=source.id,
         source_url="https://careers.example.test/jobs/1",
         external_id="job-1",
@@ -241,7 +271,7 @@ def test_extraction_identity_migration_keeps_historical_rows_stale(
     engine = create_engine(fresh_postgresql_url)
     now = datetime.now(UTC)
     with Session(engine) as session:
-        job, profile = _graph(session, now)
+        job, profile = _graph(session, now, historical_crawl_run_schema=True)
         session.execute(
             text(
                 """
@@ -279,7 +309,7 @@ def test_extraction_identity_migration_keeps_historical_rows_stale(
             },
         )
         session.commit()
-    command.upgrade(config, "head")
+    command.upgrade(config, JOB_MATCH_EXTRACTION_REVISION)
     with Session(engine) as session:
         row = session.scalar(select(JobMatch))
         assert row is not None

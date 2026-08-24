@@ -36,6 +36,8 @@ DOMAIN_TABLES = {
     "job_matches",
     "alert_rules",
     "alert_deliveries",
+    "source_recipes",
+    "source_recipe_previews",
 }
 
 
@@ -99,7 +101,11 @@ def test_migration_and_domain_invariants_on_postgresql(
 
     expected_checks = {
         "sources": {"ck_sources_approved_has_policy_reviews", "ck_sources_approval_status"},
-        "crawl_runs": {"ck_crawl_runs_status_time_boundary", "ck_crawl_runs_coverage_status"},
+        "crawl_runs": {
+            "ck_crawl_runs_status_time_boundary",
+            "ck_crawl_runs_coverage_status",
+            "ck_crawl_runs_counters_non_negative",
+        },
         "raw_job_snapshots": {
             "ck_raw_job_snapshots_content_hash",
             "ck_raw_job_snapshots_parse_status",
@@ -147,6 +153,20 @@ def test_migration_and_domain_invariants_on_postgresql(
             "ck_alert_deliveries_attempts",
             "ck_alert_deliveries_provider_reference",
             "ck_alert_deliveries_error_code",
+        },
+        "source_recipes": {
+            "ck_source_recipes_status",
+            "ck_source_recipes_terms_notice",
+            "ck_source_recipes_schedule",
+            "ck_source_recipes_budgets",
+            "ck_source_recipes_seniority_filter",
+            "ck_source_recipes_https_listing_url",
+        },
+        "source_recipe_previews": {
+            "ck_source_recipe_previews_status",
+            "ck_source_recipe_previews_payloads",
+            "ck_source_recipe_previews_screenshot_size",
+            "ck_source_recipe_previews_expiry",
         },
     }
     for table_name, constraint_names in expected_checks.items():

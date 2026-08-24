@@ -39,13 +39,20 @@ Không âm thầm chọn một phía khi hai nguồn cùng cấp mâu thuẫn. G
 
 ## 4. Ingestion và dữ liệu
 
-- Chỉ crawl `Source` đã qua gate trong `docs/INGESTION.md` và có trạng thái `approved`.
+- Runtime hiện hành chỉ crawl `SourceRecipe` owner-local đã preview thành công và `Source` tương ứng
+  có trạng thái `owner_authorized_local`; trạng thái này không đồng nghĩa global `approved`.
 - Không bypass CAPTCHA, authentication, anti-bot, paywall, access control hoặc giới hạn được công bố.
-- API công khai không nhận URL crawl tùy ý. Mọi request outbound phải được sinh từ cấu hình allow-list và được kiểm tra chống SSRF/redirect ngoài phạm vi.
-- Custom source profile là ngoại lệ owner-local/protected: URL chỉ được lưu qua profile đã xác thực, không được truyền URL override theo từng run và không được dùng để tạo arbitrary fetch proxy. `DEVRADAR_CUSTOM_SOURCES_LOCAL_ENABLED` mặc định `false` và không được bật trên public deployment.
-- Custom profile phải qua preview thành công trước `enabled`; `owner_authorized_local` không đồng nghĩa với global `approved`. Permission acknowledgement chỉ là cam kết của operator, không phải legal certification.
-- HTTP access denial, CAPTCHA/challenge, paywall hoặc anti-bot phải chuyển profile sang `blocked` với `permission_required`, không retry và không cung cấp action để vượt kiểm soát truy cập.
-- Ưu tiên HTTP/structured data; chỉ dùng browser khi source đã duyệt thực sự cần JavaScript rendering.
+- Listing URL chỉ được lưu trong owner-local `SourceRecipe`, không được truyền URL override theo từng
+  run và không được dùng để tạo arbitrary fetch proxy. `DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED` mặc
+  định `false` và bị cấm trong protected/public deployment.
+- `restricted_terms` hoặc `not_reviewed` là notice có version/evidence; owner có thể xác nhận đúng
+  version để tiếp tục bounded local preview/crawl. Acknowledgement không phải permission hoặc legal
+  certification và không được che nội dung cảnh báo.
+- Recipe phải qua preview 3–5 job hợp lệ trước `enabled`. HTTP access denial, CAPTCHA/challenge,
+  authentication, paywall, anti-bot, SSRF hoặc redirect escape phải chuyển recipe sang `blocked`,
+  không retry tự động và không cung cấp action để vượt kiểm soát truy cập.
+- Ưu tiên HTTP/structured data; chỉ dùng isolated browser fallback khi route policy đã pass và trang
+  thực sự cần JavaScript rendering.
 - Mọi `Job` phải truy ngược được tới `RawJobSnapshot`, `Source`, URL và `CrawlRun`.
 - Ingestion phải idempotent. Rerun cùng input không được tạo thêm job hoặc change event giả.
 - Crawl fail/partial không được chuyển job sang `missing` hoặc `removed`.

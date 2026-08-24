@@ -188,7 +188,8 @@ class CrawlRun(Base):
             name="ck_crawl_runs_coverage_status",
         ),
         CheckConstraint(
-            "pages_found >= 0 AND items_found >= 0 AND items_new >= 0 "
+            "pages_found >= 0 AND items_found >= 0 AND items_filtered_out >= 0 "
+            "AND items_new >= 0 "
             "AND items_updated >= 0 AND items_missing >= 0 AND items_removed >= 0 "
             "AND items_reactivated >= 0 AND items_failed >= 0",
             name="ck_crawl_runs_counters_non_negative",
@@ -320,6 +321,7 @@ class CrawlRun(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     pages_found: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     items_found: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    items_filtered_out: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     items_new: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     items_updated: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     items_missing: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))

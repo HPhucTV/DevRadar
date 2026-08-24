@@ -20,7 +20,7 @@ Proposed → Accepted → Superseded | Deprecated
 | [ADR-001](0001-modular-monolith-and-phase-gated-stack.md) | Accepted | Modular monolith và kích hoạt stack theo phase |
 | [ADR-002](0002-data-pipeline-before-ai.md) | Accepted | Data pipeline trước AI/agentic workflow |
 | [ADR-003](0003-postgresql-system-of-record.md) | Accepted | PostgreSQL là system of record |
-| [ADR-004](0004-approved-source-allow-list.md) | Accepted | Chỉ crawl source đã duyệt qua allow-list |
+| [ADR-004](0004-approved-source-allow-list.md) | Superseded in current runtime | Allow-list lịch sử; runtime owner-local được ADR-026 thay thế |
 | [ADR-005](0005-sqlalchemy-alembic-and-psycopg.md) | Accepted | SQLAlchemy, Alembic và Psycopg cho persistence V1 |
 | [ADR-006](0006-defer-prefect-use-direct-v2-orchestration.md) | Accepted | Hoãn Prefect; V2 dùng PostgreSQL-backed direct orchestration |
 | [ADR-007](0007-proposed-openai-first-v3-provider-and-pgvector.md) | Superseded | Lịch sử đề xuất OpenAI-first; bị ADR-008 thay thế |
@@ -40,8 +40,9 @@ Proposed → Accepted → Superseded | Deprecated
 | [ADR-021](0021-accept-digitalocean-single-host-production-boundary.md) | Superseded in part | DigitalOcean SGP1 single-host boundary; Caddy artifact được ADR-022 thay thế |
 | [ADR-022](0022-accept-patched-caddy-scratch-ingress.md) | Accepted | Patched Caddy 2.11.4 scratch ingress và immutable production database image |
 | [ADR-023](0023-accept-encrypted-spaces-backup-and-uptime-boundary.md) | Accepted | Custom restic digest, encrypted Spaces backup/retention và read-only DigitalOcean Uptime verification |
-| [ADR-024](0024-accept-local-custom-source-profiles-without-bypass.md) | Accepted | Custom source profile local/protected không bypass access control |
+| [ADR-024](0024-accept-local-custom-source-profiles-without-bypass.md) | Superseded | Custom source profile được ADR-026 thay thế |
 | [ADR-025](0025-accept-explicit-local-no-login-mode.md) | Accepted | Explicit localhost no-login single-operator mode; protected/public vẫn dùng session auth |
+| [ADR-026](0026-accept-owner-overridden-source-recipes.md) | Accepted | No-code SourceRecipe owner-local; terms notice có thể xác nhận, technical barriers fail-closed |
 
 ## Candidate technology chưa được chấp nhận
 

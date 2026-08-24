@@ -11,6 +11,7 @@ from devradar.ingestion import models as _ingestion_models
 from devradar.intelligence import models as _intelligence_models
 from devradar.matching import models as _matching_models
 from devradar.platform.database import Base, get_database_url
+from devradar.source_recipes import models as _source_recipe_models
 
 _MODEL_MODULES = (
     _auth_models,
@@ -20,6 +21,7 @@ _MODEL_MODULES = (
     _ingestion_models,
     _intelligence_models,
     _matching_models,
+    _source_recipe_models,
 )
 
 # this is the Alembic Config object, which provides
