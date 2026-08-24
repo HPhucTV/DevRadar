@@ -21,6 +21,8 @@ from devradar.ingestion.adapters.momo import MomoCareersAdapter
 from devradar.ingestion.adapters.remotejobs import RemoteJobsApiAdapter
 from devradar.ingestion.adapters.vng import VngCareersAdapter
 from devradar.ingestion.contracts import (
+    DiscoverySummary,
+    DiscoverySummaryProvider,
     JobSourceAdapter,
     ParsedJob,
     ParseFailure,
@@ -73,6 +75,7 @@ class RunReport:
     finished_at: datetime
     pages_found: int
     items_found: int
+    items_filtered_out: int
     items_new: int
     items_updated: int
     items_missing: int
@@ -324,11 +327,17 @@ def _handle_item_exception(
     return error_code, should_stop, _retry_after_seconds(error)
 
 
-def _set_items_found(session: Session, run_id: UUID, items_found: int) -> None:
+def _set_discovery_summary(
+    session: Session,
+    run_id: UUID,
+    summary: DiscoverySummary,
+) -> None:
     crawl_run = session.get(CrawlRun, run_id, with_for_update=True)
     if crawl_run is None:
         raise IngestionRunError("run_not_found", "Crawl run disappeared during ingestion.")
-    crawl_run.items_found = items_found
+    crawl_run.items_found = summary.items_discovered
+    crawl_run.items_filtered_out = summary.items_filtered_out
+    crawl_run.pages_found = summary.pages_found
     session.commit()
 
 
@@ -351,6 +360,7 @@ def _report(run: CrawlRun, source_key: str, *, reused: bool = False) -> RunRepor
         finished_at=run.finished_at,
         pages_found=run.pages_found,
         items_found=run.items_found,
+        items_filtered_out=run.items_filtered_out,
         items_new=run.items_new,
         items_updated=run.items_updated,
         items_missing=run.items_missing,
@@ -693,8 +703,36 @@ def _run_source(
             retry_after_seconds=_retry_after_seconds(error),
         )
 
-    _set_items_found(session, run_id, len(listings))
+    summary = (
+        adapter.discovery_summary
+        if isinstance(adapter, DiscoverySummaryProvider)
+        else DiscoverySummary(
+            items_discovered=len(listings),
+            items_filtered_out=0,
+            pages_found=0,
+            coverage_complete=True,
+        )
+    )
+    if summary.items_discovered < len(listings):
+        return _finalize_run(
+            session,
+            run_id=run_id,
+            source_key=config.source_key,
+            processed_items=0,
+            coverage_complete=False,
+            error_code="discovery_summary_invalid",
+        )
+    _set_discovery_summary(session, run_id, summary)
     if not listings:
+        if summary.items_discovered and summary.items_filtered_out == summary.items_discovered:
+            return _finalize_run(
+                session,
+                run_id=run_id,
+                source_key=config.source_key,
+                processed_items=0,
+                coverage_complete=summary.coverage_complete,
+                error_code=None,
+            )
         return _finalize_run(
             session,
             run_id=run_id,
@@ -705,7 +743,7 @@ def _run_source(
         )
 
     selected = listings if max_items is None else listings[:max_items]
-    coverage_complete = len(selected) == len(listings)
+    coverage_complete = summary.coverage_complete and len(selected) == len(listings)
     processed_items = 0
     first_error_code: str | None = None
     first_retry_after_seconds: int | None = None

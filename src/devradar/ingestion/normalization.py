@@ -294,15 +294,18 @@ def normalize_salary(raw: str | None) -> NormalizedValue[NormalizedSalary]:
 
 _LEVEL_PATTERNS: tuple[tuple[JobLevel, re.Pattern[str]], ...] = (
     (JobLevel.INTERN, re.compile(r"\bintern(?:ship)?\b|thực tập", re.IGNORECASE)),
-    (JobLevel.FRESHER, re.compile(r"\bfresher\b", re.IGNORECASE)),
+    (JobLevel.FRESHER, re.compile(r"\bfresher\b|mới tốt nghiệp", re.IGNORECASE)),
     (JobLevel.JUNIOR, re.compile(r"\b(?:junior|jr\.?)\b", re.IGNORECASE)),
     (JobLevel.MID, re.compile(r"\b(?:mid(?:dle)?|intermediate)\b", re.IGNORECASE)),
     (JobLevel.SENIOR, re.compile(r"\b(?:senior|sr\.?)\b", re.IGNORECASE)),
     (
         JobLevel.LEAD,
-        re.compile(r"\b(?:(?:technical|tech|team)\s+lead|lead)\b", re.IGNORECASE),
+        re.compile(
+            r"\b(?:(?:technical|tech|team)\s+lead|lead)\b|trưởng nhóm",
+            re.IGNORECASE,
+        ),
     ),
-    (JobLevel.MANAGER, re.compile(r"\bmanager\b", re.IGNORECASE)),
+    (JobLevel.MANAGER, re.compile(r"\bmanager\b|quản lý", re.IGNORECASE)),
 )
 
 

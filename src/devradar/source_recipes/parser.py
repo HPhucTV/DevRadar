@@ -504,3 +504,65 @@ def build_preview_result(
 
 def candidate_to_dict(candidate: PreviewCandidate) -> dict[str, Any]:
     return asdict(candidate)
+
+
+def extract_pagination_targets(
+    payload: bytes | str,
+    *,
+    content_type: str,
+    base_url: str,
+    mapping: Mapping[str, object],
+) -> tuple[str, ...]:
+    """Return bounded deterministic next/load-more targets from one HTML page."""
+
+    mime_type = content_type.split(";", 1)[0].strip().casefold()
+    if mime_type not in {"text/html", "application/xhtml+xml"}:
+        return ()
+    raw = payload.encode("utf-8") if isinstance(payload, str) else payload
+    if len(raw) > _MAX_DOCUMENT_BYTES:
+        raise SourceRecipeError("preview_document_too_large")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise SourceRecipeError("preview_document_invalid_encoding") from error
+    tree = _TreeParser()
+    try:
+        tree.feed(text)
+        tree.close()
+    except SourceRecipeError:
+        raise
+    except Exception as error:
+        raise SourceRecipeError("preview_html_invalid") from error
+    control_signature = mapping.get("control")
+    targets: list[str] = []
+    for node in _all_nodes(tree.root):
+        rel_tokens = node.attrs.get("rel", "").casefold().split()
+        classes = _classes(node)
+        semantic_control = (
+            "next" in rel_tokens
+            or bool(classes.intersection({"next", "pagination-next", "load-more"}))
+            or node.attrs.get("aria-label", "").casefold() in {"next", "load more"}
+        )
+        if not semantic_control and not _signature_match(node, control_signature):
+            continue
+        target = next(
+            (
+                node.attrs[name]
+                for name in ("href", "data-url", "data-next-url")
+                if node.attrs.get(name)
+            ),
+            None,
+        )
+        if target is None:
+            is_disabled = (
+                "disabled" in node.attrs or node.attrs.get("aria-disabled", "").casefold() == "true"
+            )
+            if is_disabled:
+                continue
+            raise SourceRecipeError("unsupported_interaction")
+        normalized = _canonical_job_url(target, base_url=base_url)
+        if normalized is not None and normalized not in targets:
+            targets.append(normalized)
+        if len(targets) == 5:
+            break
+    return tuple(targets)

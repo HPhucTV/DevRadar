@@ -9,7 +9,7 @@ from datetime import datetime
 from decimal import Decimal
 from hashlib import sha256
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from urllib.parse import urlsplit
 from uuid import UUID
 
@@ -215,3 +215,23 @@ class JobSourceAdapter(Protocol):
     def fetch(self, listing_ref: ListingRef, fetch_policy: FetchPolicy) -> FetchResult: ...
 
     def parse(self, snapshot: RawSnapshot) -> ParsedJob | ParseFailure: ...
+
+
+@dataclass(frozen=True, slots=True)
+class DiscoverySummary:
+    items_discovered: int
+    items_filtered_out: int
+    pages_found: int
+    coverage_complete: bool
+
+    def __post_init__(self) -> None:
+        if min(self.items_discovered, self.items_filtered_out, self.pages_found) < 0:
+            raise ValueError("discovery counters must be non-negative")
+        if self.items_filtered_out > self.items_discovered:
+            raise ValueError("filtered count must not exceed discovered count")
+
+
+@runtime_checkable
+class DiscoverySummaryProvider(Protocol):
+    @property
+    def discovery_summary(self) -> DiscoverySummary: ...

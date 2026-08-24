@@ -572,7 +572,7 @@ def _enable_recipe(session: Session, recipe: SourceRecipe, *, now: datetime) -> 
     if source is None:
         source = Source(
             name=f"{recipe.name} [{recipe.id.hex[:8]}]",
-            base_url=recipe.listing_url,
+            base_url=recipe.origin,
             adapter_key=_RECIPE_ADAPTER_KEY,
             approval_status=SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL,
             health_status=SourceHealthStatus.UNKNOWN,
