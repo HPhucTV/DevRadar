@@ -36,6 +36,18 @@ test("readable type scale, controls and navigation are bounded", async () => {
   assert.doesNotMatch(css, /\.primary-nav\{[^}]*overflow-x:auto/);
 });
 
+test("route grids reflow before content creates document overflow", async () => {
+  const css = await source("src/app/globals.css");
+
+  assert.match(css, /@media\(max-width:960px\)/);
+  assert.match(css, /\.dashboard-grid,\.detail-grid,\.analytics-grid,\.cv-layout,\.custom-source-layout\{grid-template-columns:1fr\}/);
+  assert.match(css, /\.analytics-grid>\*,\.dashboard-grid>\*,\.detail-grid>\*,\.cv-layout>\*,\.custom-source-layout>\*\{min-width:0\}/);
+  assert.match(css, /\.skill-row,\.trend-row\{flex-wrap:wrap\}/);
+  assert.match(css, /\.description-text,\.policy-list\{max-width:75ch\}/);
+  assert.match(css, /@media\(max-width:420px\)/);
+  assert.match(css, /\.kpi-grid,\.metric-grid,\.health-grid\{grid-template-columns:1fr\}/);
+});
+
 test("shared shell and route surfaces use redesign primitives", async () => {
   const shell = await source("src/components/app-shell.tsx");
   const overview = await source("src/app/(dashboard)/page.tsx");
