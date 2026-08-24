@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -16,6 +15,10 @@ from sqlalchemy.orm import Session
 from devradar.ingestion.contracts import FetchResult
 from devradar.ingestion.safe_http import FetchError, FetchErrorCode, SafeHttpFetcher
 from devradar.ingestion.source_registry import FetchPolicy
+from devradar.source_recipes.browser_preview import (
+    BrowserPreviewArtifact,
+    RenderedBrowserPreview,
+)
 from devradar.source_recipes.models import (
     PreviewStatus,
     RecipeStatus,
@@ -29,13 +32,14 @@ from devradar.source_recipes.parser import (
     parse_recipe_document,
 )
 from devradar.source_recipes.policy import build_recipe_fetch_policy, normalize_listing_url
-from devradar.source_recipes.service import validate_recipe_transition
+from devradar.source_recipes.service import recipe_config_hash, validate_recipe_transition
 
 _PREVIEW_TTL = timedelta(hours=24)
 _DEFAULT_RATE_LIMIT_COOLDOWN_SECONDS = 60
 _MAX_RATE_LIMIT_COOLDOWN_SECONDS = 3600
 
 PreviewFetch = Callable[[str, FetchPolicy], FetchResult]
+BrowserRender = Callable[[str, FetchPolicy], RenderedBrowserPreview]
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,22 +62,6 @@ def _require_aware_utc(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         raise SourceRecipeError("preview_time_invalid")
     return value.astimezone(UTC)
-
-
-def _recipe_config_hash(recipe: SourceRecipe) -> str:
-    payload = {
-        "allowed_hosts": recipe.allowed_hosts,
-        "allowed_path_prefixes": recipe.allowed_path_prefixes,
-        "byte_budget": recipe.byte_budget,
-        "config_version": recipe.config_version,
-        "field_mapping": recipe.field_mapping,
-        "listing_url": recipe.listing_url,
-        "parser_version": recipe.parser_version,
-        "requests_per_minute": recipe.requests_per_minute,
-        "seniority_filter": recipe.seniority_filter,
-    }
-    encoded = json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
-    return sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def _fetch_policy(recipe: SourceRecipe) -> FetchPolicy:
@@ -127,7 +115,7 @@ def request_preview(
     preview = SourceRecipePreview(
         recipe_id=recipe.id,
         status=PreviewStatus.PENDING,
-        config_hash=_recipe_config_hash(recipe),
+        config_hash=recipe_config_hash(recipe),
         candidate_jobs=[],
         warnings=[],
         element_map={},
@@ -189,11 +177,12 @@ def _finish_preview(
     *,
     now: datetime,
     candidate_jobs: list[dict[str, Any]],
-    warnings: list[dict[str, str]],
+    warnings: list[dict[str, Any]],
     content_hash: str | None,
     error_code: str | None,
     blocked: bool,
     cooldown_seconds: int | None = None,
+    browser_artifact: BrowserPreviewArtifact | None = None,
 ) -> SourceRecipePreview:
     finished_at = _require_aware_utc(now)
     preview = session.get(SourceRecipePreview, claim.preview_id, with_for_update=True)
@@ -209,6 +198,10 @@ def _finish_preview(
     preview.candidate_jobs = candidate_jobs[:5]
     preview.warnings = warnings[:50]
     preview.error_code = error_code
+    if browser_artifact is not None:
+        preview.element_map = browser_artifact.to_private_element_map()
+        preview.screenshot = browser_artifact.screenshot
+        preview.screenshot_media_type = browser_artifact.screenshot_media_type
     recipe.updated_at = finished_at
     if error_code is None:
         preview.status = PreviewStatus.SUCCEEDED
@@ -235,6 +228,7 @@ def process_preview_claim(
     claim: PreviewClaim,
     *,
     fetch: PreviewFetch | None = None,
+    browser_render: BrowserRender | None = None,
     now: datetime,
 ) -> SourceRecipePreview:
     """Fetch and parse a claimed preview without keeping a database transaction open."""
@@ -277,6 +271,42 @@ def process_preview_claim(
             blocked=blocked,
         )
 
+    browser_artifact: BrowserPreviewArtifact | None = None
+    content_hash = result.raw_content_hash
+    if preview_result.error_code == "preview_insufficient_jobs" and browser_render is not None:
+        try:
+            rendered = browser_render(claim.listing_url, claim.fetch_policy)
+            browser_artifact = rendered.artifact
+            rendered_candidates = parse_recipe_document(
+                rendered.rendered_html,
+                content_type="text/html",
+                base_url=rendered.final_url,
+                mapping=claim.field_mapping,
+            )
+            preview_result = build_preview_result(rendered_candidates, limit=5)
+            content_hash = sha256(rendered.rendered_html.encode("utf-8")).hexdigest()
+        except SourceRecipeError as error:
+            blocked = error.code in {
+                "access_denied",
+                "challenge_detected",
+                "payment_required",
+                "route_policy_blocked",
+            }
+            cooldown = (
+                _DEFAULT_RATE_LIMIT_COOLDOWN_SECONDS if error.code == "rate_limited" else None
+            )
+            return _finish_preview(
+                session,
+                claim,
+                now=now,
+                candidate_jobs=[],
+                warnings=[],
+                content_hash=None,
+                error_code=error.code,
+                blocked=blocked,
+                cooldown_seconds=cooldown,
+            )
+
     jobs = [candidate_to_dict(candidate) for candidate in preview_result.jobs]
     warnings = [{"code": warning} for warning in preview_result.warnings]
     return _finish_preview(
@@ -285,7 +315,8 @@ def process_preview_claim(
         now=now,
         candidate_jobs=jobs,
         warnings=warnings,
-        content_hash=result.raw_content_hash,
+        content_hash=content_hash,
         error_code=preview_result.error_code,
         blocked=False,
+        browser_artifact=browser_artifact,
     )
