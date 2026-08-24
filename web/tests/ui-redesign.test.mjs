@@ -46,6 +46,10 @@ test("route grids reflow before content creates document overflow", async () => 
   assert.match(css, /\.description-text,\.policy-list\{max-width:75ch\}/);
   assert.match(css, /@media\(max-width:420px\)/);
   assert.match(css, /\.kpi-grid,\.metric-grid,\.health-grid\{grid-template-columns:1fr\}/);
+  assert.ok(
+    css.lastIndexOf("@media(max-width:960px)") > css.indexOf(".custom-source-layout{"),
+    "the custom-source base rule must precede its responsive override",
+  );
 });
 
 test("shared shell and route surfaces use redesign primitives", async () => {
