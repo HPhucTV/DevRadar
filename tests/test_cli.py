@@ -74,6 +74,27 @@ def test_custom_source_worker_can_poll_once_without_network(
     assert captured.err == ""
 
 
+def test_source_recipe_worker_can_poll_once_without_network(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cli, "get_database_url", lambda: "sqlite://")
+    monkeypatch.setenv("DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED", "true")
+    monkeypatch.setenv("DEVRADAR_DEPLOYMENT_CLASS", "LOCALHOST_SERVICE")
+    monkeypatch.setattr(cli, "work_one_source_recipe", lambda session, *, deadline: None)
+
+    exit_code = main(["source-recipe-worker", "--once"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert json.loads(captured.out) == {
+        "lastStatus": None,
+        "previewsProcessed": 0,
+        "runsProcessed": 0,
+    }
+    assert captured.err == ""
+
+
 def test_download_embedding_model_uses_fixed_boundary_without_database(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

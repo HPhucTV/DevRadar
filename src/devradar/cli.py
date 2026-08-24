@@ -20,7 +20,11 @@ from sqlalchemy.orm import Session
 
 from devradar.auth.service import hash_password
 from devradar.automation.orchestrator import orchestrate_source
-from devradar.automation.worker import work_one_custom_source, work_one_pending_run
+from devradar.automation.worker import (
+    work_one_custom_source,
+    work_one_pending_run,
+    work_one_source_recipe,
+)
 from devradar.ingestion.models import CrawlRunStatus
 from devradar.ingestion.runner import IngestionRunError, resolve_approved_source
 from devradar.ingestion.source_registry import V3_SOURCE_REGISTRY
@@ -110,6 +114,27 @@ def _parser() -> argparse.ArgumentParser:
         "--once",
         action="store_true",
         help="poll once and exit when no run is available",
+    )
+    recipe_worker = subparsers.add_parser(
+        "source-recipe-worker",
+        help="poll previews and enabled localhost source recipes",
+    )
+    recipe_worker.add_argument(
+        "--deadline-minutes",
+        type=_deadline_minutes,
+        default=60,
+        help="hard worker deadline from now (1..360, default 60)",
+    )
+    recipe_worker.add_argument(
+        "--poll-seconds",
+        type=_poll_seconds,
+        default=_poll_seconds(os.environ.get("DEVRADAR_SOURCE_RECIPE_POLL_SECONDS", "10")),
+        help="sleep between empty polls (1..300, default 10)",
+    )
+    recipe_worker.add_argument(
+        "--once",
+        action="store_true",
+        help="poll once and exit after at most one worker cycle",
     )
     subparsers.add_parser(
         "download-embedding-model",
@@ -249,6 +274,37 @@ def main(argv: Sequence[str] | None = None) -> int:
                     )
                 )
                 return 0 if last_status in {None, CrawlRunStatus.SUCCEEDED} else 1
+            elif args.command == "source-recipe-worker":
+                previews_processed = 0
+                runs_processed = 0
+                recipe_last_status: CrawlRunStatus | None = None
+                while datetime.now(UTC) < deadline:
+                    work_result = work_one_source_recipe(session, deadline=deadline)
+                    if work_result is None:
+                        if args.once:
+                            break
+                        time.sleep(args.poll_seconds)
+                        continue
+                    if work_result.preview_processed:
+                        previews_processed += 1
+                    if work_result.orchestration is not None:
+                        runs_processed += len(work_result.orchestration.reports)
+                        recipe_last_status = work_result.orchestration.final_report.status
+                    if args.once:
+                        break
+                print(
+                    json.dumps(
+                        {
+                            "lastStatus": (
+                                recipe_last_status.value if recipe_last_status else None
+                            ),
+                            "previewsProcessed": previews_processed,
+                            "runsProcessed": runs_processed,
+                        },
+                        sort_keys=True,
+                    )
+                )
+                return 0 if recipe_last_status in {None, CrawlRunStatus.SUCCEEDED} else 1
             else:
                 raise AssertionError("argparse accepted an unsupported command")
             report = result.final_report

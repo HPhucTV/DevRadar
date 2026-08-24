@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import base64
-import json
 from datetime import UTC, date, datetime, time
-from hashlib import sha256
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
@@ -26,6 +24,7 @@ from devradar.api.common import (
 )
 from devradar.api.errors import ApiContractError
 from devradar.auth.dependencies import AuthContext, require_authenticated_user, require_csrf
+from devradar.automation.run_requests import RunRequestError, request_source_recipe_run
 from devradar.ingestion.models import (
     CoverageStatus,
     CrawlRun,
@@ -49,6 +48,10 @@ from devradar.source_recipes.models import (
     TermsNotice,
 )
 from devradar.source_recipes.preview import request_preview
+from devradar.source_recipes.scheduler import (
+    next_source_recipe_run_at,
+    source_recipe_schedule_slot,
+)
 from devradar.source_recipes.service import apply_recipe_mapping
 
 router = APIRouter(tags=["source-recipes"])
@@ -559,6 +562,7 @@ def _apply_config_patch(
     recipe.schedule_weekday = draft.schedule_weekday
     recipe.timezone = draft.timezone
     recipe.status = RecipeStatus.DRAFT
+    recipe.next_run_at = None
     recipe.latest_successful_preview_id = None
     recipe.latest_successful_preview_hash = None
 
@@ -589,6 +593,14 @@ def _enable_recipe(session: Session, recipe: SourceRecipe, *, now: datetime) -> 
     else:
         source.approval_status = SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL
     recipe.status = RecipeStatus.ENABLED
+    recipe.next_run_at = (
+        None
+        if recipe.schedule_kind is RecipeScheduleKind.MANUAL
+        else next_source_recipe_run_at(
+            recipe,
+            source_recipe_schedule_slot(recipe, now),
+        )
+    )
     recipe.updated_at = now
 
 
@@ -641,6 +653,7 @@ def patch_source_recipe(
             if source is not None:
                 source.approval_status = SourceApprovalStatus.PAUSED
             recipe.status = RecipeStatus.PAUSED
+            recipe.next_run_at = None
         recipe.updated_at = now
         session.commit()
     except SourceRecipeError as error:
@@ -766,62 +779,6 @@ def map_source_recipe_preview(
     return SourceRecipePreviewResponse(data=_preview_data(preview))
 
 
-def _run_identity(owner_id: UUID, source_id: UUID, idempotency_key: str) -> tuple[str, str, str]:
-    requester = f"recipe:{owner_id}"
-    trigger_key = f"api:{sha256(idempotency_key.encode()).hexdigest()}"
-    request_hash = sha256(
-        json.dumps({"sourceId": str(source_id)}, sort_keys=True, separators=(",", ":")).encode()
-    ).hexdigest()
-    return requester, trigger_key, request_hash
-
-
-def _request_recipe_run(
-    session: Session,
-    *,
-    recipe: SourceRecipe,
-    owner_id: UUID,
-    idempotency_key: str,
-) -> CrawlRun:
-    if recipe.status is not RecipeStatus.ENABLED or recipe.source_id is None:
-        raise SourceRecipeError("recipe_not_enabled")
-    requester, trigger_key, request_hash = _run_identity(
-        owner_id, recipe.source_id, idempotency_key
-    )
-    existing = session.scalar(
-        select(CrawlRun).where(
-            CrawlRun.requested_by == requester,
-            CrawlRun.trigger_key == trigger_key,
-        )
-    )
-    if existing is not None:
-        if existing.request_hash != request_hash:
-            raise SourceRecipeError("idempotency_conflict")
-        return existing
-    active = session.scalar(
-        select(CrawlRun).where(
-            CrawlRun.source_id == recipe.source_id,
-            CrawlRun.status.in_((CrawlRunStatus.PENDING, CrawlRunStatus.RUNNING)),
-        )
-    )
-    if active is not None:
-        raise SourceRecipeError("source_run_active")
-    crawl_run = CrawlRun(
-        source_id=recipe.source_id,
-        trigger_type=CrawlTriggerType.MANUAL,
-        trigger_key=trigger_key,
-        requested_at=datetime.now(UTC),
-        requested_by=requester,
-        request_hash=request_hash,
-        status=CrawlRunStatus.PENDING,
-        coverage_status=CoverageStatus.UNKNOWN,
-        adapter_version="pending",
-        config_version=recipe.mapping_version or recipe.config_version,
-    )
-    session.add(crawl_run)
-    session.commit()
-    return crawl_run
-
-
 @router.get(
     "/source-recipes/{recipeId}/crawl-runs",
     response_model=SourceRecipeCrawlListResponse,
@@ -882,13 +839,14 @@ def create_source_recipe_run(
     del request
     recipe = _owned_recipe(session, owner_id=context.user.id, recipe_id=recipe_id)
     try:
-        crawl_run = _request_recipe_run(
+        requested = request_source_recipe_run(
             session,
-            recipe=recipe,
-            owner_id=context.user.id,
+            recipe_id=recipe.id,
+            owner_user_id=context.user.id,
             idempotency_key=idempotency_key,
         )
-    except SourceRecipeError as error:
+        crawl_run = requested.crawl_run
+    except RunRequestError as error:
         session.rollback()
-        raise _domain_error(error) from None
+        raise _domain_error(SourceRecipeError(error.code)) from None
     return SourceRecipeCrawlResponse(data=_crawl_data(crawl_run))

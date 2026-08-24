@@ -237,3 +237,68 @@ def orchestrate_custom_source(
         next_trigger_key = _retry_trigger_key(report, attempt_number)
         next_scheduled_for = None
         retry_of_run_id = report.run_id
+
+
+def orchestrate_source_recipe(
+    session: Session,
+    *,
+    config: SourceConfig,
+    adapter: JobSourceAdapter,
+    persisted_source_id: UUID,
+    deadline: datetime,
+    trigger_type: CrawlTriggerType = CrawlTriggerType.MANUAL,
+    trigger_key: str | None = None,
+    scheduled_for: datetime | None = None,
+    max_items: int | None = None,
+    retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY,
+    clock: Clock = lambda: datetime.now(UTC),
+    sleeper: Sleeper = time.sleep,
+    jitter_source: JitterSource = random.random,
+    claimed_run_id: UUID | None = None,
+) -> OrchestrationResult:
+    """Run one recipe trigger; rate limits become cooldowns instead of immediate retries."""
+
+    reports: list[RunReport] = []
+    next_trigger_type = trigger_type
+    next_trigger_key = trigger_key
+    next_scheduled_for = scheduled_for
+    retry_of_run_id = None
+    attempt_number = 1
+
+    while True:
+        report = run_custom_source(
+            session,
+            config=config,
+            adapter=adapter,
+            persisted_source_id=persisted_source_id,
+            deadline=deadline,
+            max_items=max_items,
+            trigger_type=next_trigger_type,
+            trigger_key=next_trigger_key,
+            scheduled_for=next_scheduled_for,
+            retry_of_run_id=retry_of_run_id,
+            attempt_number=attempt_number,
+            claimed_run_id=claimed_run_id if not reports else None,
+        )
+        reports.append(report)
+        if (
+            report.status is CrawlRunStatus.SUCCEEDED
+            or report.error_code == "rate_limited"
+            or report.attempt_number >= retry_policy.max_attempts
+            or not is_transient_error(report.error_code)
+        ):
+            return OrchestrationResult(tuple(reports))
+        delay = retry_delay_seconds(
+            retry_policy,
+            failed_attempt_number=report.attempt_number,
+            retry_after_seconds=report.retry_after_seconds,
+            jitter_value=jitter_source(),
+        )
+        if clock() + timedelta(seconds=delay) >= deadline:
+            return OrchestrationResult(tuple(reports))
+        sleeper(delay)
+        attempt_number = report.attempt_number + 1
+        next_trigger_type = CrawlTriggerType.RETRY
+        next_trigger_key = _retry_trigger_key(report, attempt_number)
+        next_scheduled_for = None
+        retry_of_run_id = report.run_id

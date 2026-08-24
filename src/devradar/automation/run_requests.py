@@ -24,6 +24,9 @@ from devradar.ingestion.models import (
     SourceApprovalStatus,
 )
 from devradar.ingestion.source_registry import V1_SOURCE_CONFIGS, SourceConfig
+from devradar.source_recipes.catalog import resolve_terms_notice
+from devradar.source_recipes.models import SourceRecipe
+from devradar.source_recipes.scheduler import source_recipe_is_runnable
 
 LOCAL_OPERATOR_PRINCIPAL = "local-operator"
 _IDEMPOTENCY_KEY_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$")
@@ -254,6 +257,114 @@ def request_custom_crawl_run(
         coverage_status=CoverageStatus.UNKNOWN,
         adapter_version="pending",
         config_version=custom_profile_config_version(profile),
+    )
+    session.add(crawl_run)
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        existing = session.scalar(
+            select(CrawlRun).where(
+                CrawlRun.requested_by == requester,
+                CrawlRun.trigger_key == trigger_key,
+            )
+        )
+        if existing is not None:
+            result = _resolve_existing(existing, request_hash=request_hash)
+            session.rollback()
+            return result
+        raise
+    return RequestedRun(crawl_run, reused=False)
+
+
+def request_source_recipe_run(
+    session: Session,
+    *,
+    recipe_id: UUID,
+    owner_user_id: UUID,
+    idempotency_key: str,
+    requested_at: datetime | None = None,
+) -> RequestedRun:
+    """Enqueue one owner-bound recipe run without accepting crawl configuration overrides."""
+
+    if session.in_transaction():
+        session.rollback()
+    if not _IDEMPOTENCY_KEY_PATTERN.fullmatch(idempotency_key):
+        raise RunRequestError(
+            "invalid_idempotency_key",
+            "Idempotency key must be 8..128 safe ASCII characters.",
+        )
+    now = requested_at or datetime.now(UTC)
+    if now.tzinfo is None or now.utcoffset() is None:
+        raise RunRequestError("invalid_request_time", "Requested time must include a UTC offset.")
+    utc_now = now.astimezone(UTC)
+    recipe = session.scalar(
+        select(SourceRecipe).where(
+            SourceRecipe.id == recipe_id,
+            SourceRecipe.owner_user_id == owner_user_id,
+        )
+    )
+    if recipe is None:
+        session.rollback()
+        raise RunRequestError("recipe_not_found", "Source recipe was not found.")
+    current_notice = resolve_terms_notice(recipe.listing_url)
+    if current_notice.version != recipe.terms_notice_version:
+        session.rollback()
+        raise RunRequestError(
+            "terms_notice_acknowledgement_stale",
+            "Source terms notice must be reviewed again.",
+        )
+    if current_notice.acknowledgement_required and recipe.terms_acknowledged_at is None:
+        session.rollback()
+        raise RunRequestError(
+            "terms_notice_acknowledgement_required",
+            "Source terms notice must be acknowledged.",
+        )
+    if recipe.cooldown_until is not None and recipe.cooldown_until.astimezone(UTC) > utc_now:
+        session.rollback()
+        raise RunRequestError("recipe_cooldown_active", "Source recipe is cooling down.")
+    if not source_recipe_is_runnable(recipe, now=utc_now) or recipe.source_id is None:
+        session.rollback()
+        raise RunRequestError("recipe_not_enabled", "Source recipe is not enabled.")
+
+    requester = f"recipe:{owner_user_id}"
+    trigger_key = (
+        "recipe-api:"
+        + sha256(f"{owner_user_id}:{recipe.id}:{idempotency_key}".encode()).hexdigest()
+    )
+    request_hash = _request_hash(recipe.source_id)
+    existing = session.scalar(
+        select(CrawlRun).where(
+            CrawlRun.requested_by == requester,
+            CrawlRun.trigger_key == trigger_key,
+        )
+    )
+    if existing is not None:
+        result = _resolve_existing(existing, request_hash=request_hash)
+        session.rollback()
+        return result
+    active = session.scalar(
+        select(CrawlRun).where(
+            CrawlRun.source_id == recipe.source_id,
+            CrawlRun.status.in_((CrawlRunStatus.PENDING, CrawlRunStatus.RUNNING)),
+        )
+    )
+    if active is not None:
+        session.rollback()
+        raise RunRequestError(
+            "source_run_active", "Source already has a pending or running crawl run."
+        )
+    crawl_run = CrawlRun(
+        source_id=recipe.source_id,
+        trigger_type=CrawlTriggerType.MANUAL,
+        trigger_key=trigger_key,
+        requested_at=utc_now,
+        requested_by=requester,
+        request_hash=request_hash,
+        status=CrawlRunStatus.PENDING,
+        coverage_status=CoverageStatus.UNKNOWN,
+        adapter_version="pending",
+        config_version=recipe.mapping_version or recipe.config_version,
     )
     session.add(crawl_run)
     try:

@@ -289,7 +289,7 @@ class RecipeAdapter(JobSourceAdapter):
             items_discovered=len(discovered),
             items_filtered_out=filtered.filtered_out,
             pages_found=pages_found,
-            coverage_complete=coverage_complete,
+            coverage_complete=coverage_complete and bool(discovered),
         )
         return tuple(listings)
 

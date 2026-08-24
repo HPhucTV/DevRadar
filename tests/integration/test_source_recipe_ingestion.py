@@ -185,6 +185,13 @@ def test_recipe_ingestion_is_idempotent_and_partial_runs_cannot_remove_jobs(
             assert job_one.status is JobStatus.ACTIVE
             assert job_one.consecutive_missing_count == 0
 
+            empty = run(())
+            assert empty.coverage_status.value == "incomplete"
+            job_one = session.scalar(select(Job).where(Job.external_id == "1"))
+            assert job_one is not None
+            assert job_one.status is JobStatus.ACTIVE
+            assert job_one.consecutive_missing_count == 0
+
             run(("2",))
             removed = run(("2",))
             assert removed.items_removed == 1

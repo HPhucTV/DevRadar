@@ -282,3 +282,30 @@ def test_unstable_load_more_is_never_treated_as_complete_pagination() -> None:
             base_url="https://example.test/jobs",
             mapping={},
         )
+
+
+def test_empty_listing_is_not_completeness_evidence() -> None:
+    recipe = _recipe()
+    source = _source(recipe)
+    config = recipe_source_config(recipe, source)
+    adapter = RecipeAdapter(
+        recipe=recipe,
+        config=config,
+        http_fetch=lambda url, policy: _document(
+            "<html><body><main>No recognizable job cards</main></body></html>",
+            url=url,
+        ),
+    )
+
+    listings = adapter.discover(
+        RunContext(
+            run_id=uuid4(),
+            source=config,
+            deadline=datetime.now(UTC) + timedelta(minutes=5),
+            correlation_id="fixture",
+        )
+    )
+
+    assert listings == ()
+    assert adapter.discovery_summary.items_discovered == 0
+    assert adapter.discovery_summary.coverage_complete is False

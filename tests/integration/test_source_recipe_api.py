@@ -26,6 +26,7 @@ from devradar.platform.database import DATABASE_URL_ENV, _database_engine
 from devradar.source_recipes.browser_preview import build_browser_artifact
 from devradar.source_recipes.models import (
     PreviewStatus,
+    RecipeScheduleKind,
     RecipeStatus,
     SourceRecipe,
     SourceRecipePreview,
@@ -331,6 +332,7 @@ def test_mapping_payload_is_sanitized_and_enable_gates_crawl_requests(
         preview.error_code = None
         preview.candidate_jobs = [{"title": str(index)} for index in range(3)]
         recipe.status = RecipeStatus.PREVIEW_READY
+        recipe.schedule_kind = RecipeScheduleKind.EVERY_6_HOURS
         recipe.latest_successful_preview_id = preview.id
         recipe.latest_successful_preview_hash = "b" * 64
         session.commit()
@@ -342,6 +344,9 @@ def test_mapping_payload_is_sanitized_and_enable_gates_crawl_requests(
     )
     assert enabled.status_code == 200
     assert enabled.json()["data"]["sourceId"] is not None
+    next_run_at = datetime.fromisoformat(enabled.json()["data"]["nextRunAt"])
+    assert next_run_at > datetime.now(UTC)
+    assert next_run_at <= datetime.now(UTC) + timedelta(hours=6)
 
     rejected_run = client.post(
         f"/api/v1/source-recipes/{recipe_id}/crawl-runs",
