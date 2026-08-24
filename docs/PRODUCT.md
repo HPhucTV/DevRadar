@@ -43,7 +43,7 @@ Recruiter, HR analytics, multi-tenant team và commercial data product không th
 
 | Capability | Kết quả người dùng | Phase đầu tiên |
 |---|---|---|
-| Thu thập job từ nguồn đã duyệt | Có dataset thật, cập nhật được | V1 |
+| Tạo nguồn crawl từ listing URL | Không phải viết adapter; preview và kiểm tra trước khi chạy | V6-020 |
 | Job explorer qua REST API | Tìm và lọc job chuẩn hóa | V1 |
 | Lịch sử crawl và thay đổi | Biết job mới, đổi hoặc biến mất | V2 |
 | Crawler health | Biết source nào đang lỗi hoặc stale | V2 |
@@ -75,7 +75,14 @@ Các mục `Candidate` không phải deliverable hoặc acceptance criterion cho
 
 ### UC-01 — Ingest job
 
-- Hệ thống thu thập từ `Source` đã được phê duyệt.
+- Operator local dán một HTTPS listing URL, chọn seniority và lưu thành `SourceRecipe`; request crawl
+  không nhận URL/config override theo từng run.
+- Hệ thống hiển thị versioned `terms_notice`. Owner acknowledgement đúng version cho phép tiếp tục
+  bounded local workflow nhưng không phải permission hoặc legal certification.
+- Preview dùng structured data/HTTP trước, isolated Playwright fallback sau; cần 3–5 candidate hợp lệ
+  hoặc visual mapping trước khi recipe được `enabled`.
+- CAPTCHA, authentication, paywall, anti-bot, access denial, SSRF hoặc redirect escape luôn dừng ở
+  `blocked`; owner acknowledgement không override technical barrier.
 - Mỗi lần fetch tạo `RawJobSnapshot` có URL, thời gian, status và content hash.
 - Dữ liệu hợp lệ được chuẩn hóa thành `Job` mà không làm mất raw value hoặc provenance.
 - Rerun cùng input không tạo thêm `Job`, snapshot logic hoặc change event giả.
@@ -144,13 +151,13 @@ Các mục `Candidate` không phải deliverable hoặc acceptance criterion cho
 
 ### Mốc V1 đáng tin cậy
 
-- ba source thật đã vượt source approval gate;
-- toàn bộ inventory quan sát được từ tối thiểu ba approved source đã được ingest bằng current adapter version; latest runs complete và có inventory snapshot;
+- source/run fixture đã chứng minh fetch boundary, provenance và PostgreSQL migration;
+- mọi inventory claim chỉ dùng run complete, có cohort/source label và evidence tương ứng;
 - canonical Job có identity 1:1 theo source/external ID, canonical URL và current raw snapshot;
 - rerun cùng snapshot không tạo duplicate hoặc change giả;
 - job lưu được title, company, source URL, `first_seen_at`, `last_seen_at`, raw snapshot reference và content hash;
 - REST API đọc được job/source/run và filter cơ bản;
-- có evidence cho một source success, một source fail và một parser regression fixture.
+- có evidence cho một recipe success, một recipe fail/challenge và một parser regression fixture.
 
 ### Mốc analytics V3
 
@@ -160,7 +167,7 @@ Các mục `Candidate` không phải deliverable hoặc acceptance criterion cho
 
 ### Mốc portfolio hoàn chỉnh
 
-- tối thiểu 1.000 canonical job records từ ba source trở lên;
+- dataset demo công bố đúng cohort, sample size và thời điểm; không dùng con số lịch sử như realtime;
 - scheduled crawling, change history và crawler health có bằng chứng vận hành;
 - AI extraction có labeled evaluation set và báo cáo metric, không chỉ demo đẹp;
 - trend và CV matching giải thích được dữ liệu đầu vào cùng công thức;
@@ -183,5 +190,8 @@ Các con số về accuracy/latency/cost cho V3–V6 không được bịa trư�
 
 - Nội dung job có thể là tiếng Việt, tiếng Anh hoặc trộn hai ngôn ngữ.
 - V1 giữ salary gốc và normalized amount/period/currency khi có thể; không tự quy đổi.
-- Portfolio ban đầu là single-operator. Chức năng ghi dữ liệu nhạy cảm không được public trước V6.
-- Ba source V1 tại Việt Nam đã được operator duyệt cho bounded local non-commercial scope: VNG Careers, NAVER Vietnam/Greenhouse và MoMo Careers. RemoteJobs.org được duyệt riêng cho cohort `global_remote_it_secondary` trong V3 theo [ADR-011](decisions/0011-accept-secondary-remote-api-cohort.md), có attribution và không dùng cho claim thị trường Việt Nam. Mỗi adapter vẫn bị giới hạn bởi approval record/allow-list riêng; quyết định này không cấp quyền public full-JD, commercial reuse hoặc AI training. GeoComply/Lever giữ `permission_required` vì employer terms cấm automated retrieval.
+- Portfolio ban đầu là single-operator. Source Recipe chỉ chạy trong `LOCALHOST_SERVICE`; chức năng ghi
+  dữ liệu nhạy cảm không được public nếu chưa qua auth/privacy gate.
+- Catalog mười nguồn chỉ là shortcut URL và evidence cho `terms_notice`, không phải adapter, permission
+  hay cam kết nguồn sẽ crawl thành công. URL ngoài catalog dùng notice `not_reviewed`; restricted notice
+  có thể được owner acknowledgement nhưng technical access barrier vẫn fail-closed.

@@ -428,9 +428,12 @@ Privacy/source policy center đã có `GET /api/v1/privacy`, same-origin BFF `/a
 deletion, deterministic-first/không external CV-JD LLM và `geocomply-lever=permission_required`. [Evidence](evidence/V6-010-privacy-policy-center.md)
 ghi API/web/Compose/browser smoke; không claim public deployment hoặc managed provider.
 
-### V6-016 closeout (`Done`)
+### V6-016 historical closeout (`Superseded`)
 
 Custom source profiles đã hoàn tất theo [ADR-024](decisions/0024-accept-local-custom-source-profiles-without-bypass.md): owner-local/protected URL, preview gate, deterministic multi-record/card mapping, PostgreSQL schedule và bounded one-document HTTP worker. `owner_authorized_local` không nâng source thành global `approved`, không đi vào global catalog/analytics/matching/alerts; challenge/permission failure bị `blocked` và không retry. [Thiết kế](superpowers/specs/2026-08-23-custom-source-profile-design.md), [implementation plan](superpowers/plans/2026-08-23-custom-source-profile-implementation-plan.md) và [evidence](evidence/V6-016-custom-source-profiles.md) ghi PostgreSQL integration, full gates, live authenticated create → preview → enable → queue → worker → history → retire browser flow, fixture cleanup và security/privacy regression fixes. Production example vẫn default-disable; generic pagination/browser fallback, owner-scoped custom-job catalog và public custom-source support chưa thuộc V6-016; task này không đóng V6.
+
+Đây là historical evidence. ADR-026/V6-020 purge runtime/schema/API/UI của custom profile và thay bằng
+một `SourceRecipe` generic localhost-only; đoạn này không mô tả capability active.
 
 ### V6-017 closeout (`Done`)
 
@@ -443,6 +446,19 @@ invalid deployment matrix fail startup. [Thiết kế](superpowers/specs/2026-08
 [evidence](evidence/V6-017-dashboard-i18n-local-no-login.md) ghi `430` PostgreSQL tests, `55` web tests,
 static/build/Compose/API/BFF/browser gates, redirect `/login`, form URL, viewport 320px cùng no-bypass
 boundary. Task này chỉ đóng local UX slice, không đóng V6 hoặc claim public deployment.
+
+### V6-020 progress (`In Progress`)
+
+[V6-020 no-code Source Recipe](evidence/V6-020-no-code-source-recipes.md) thay static/source-specific adapter
+và Custom Source runtime bằng một generic owner-local workflow: listing URL + seniority, versioned
+`terms_notice`, bounded preview 3–5 job, visual mapping bằng opaque element IDs, HTTP-first + isolated
+Playwright fallback, fixed schedule/manual run và PostgreSQL provenance. Technical barrier luôn fail-closed;
+owner acknowledgement không phải legal certification và không cho phép bypass.
+
+One-click Windows launcher build/migrate/start API/web/crawler worker, smoke rồi mở `/sources`; nó không
+auto-enable/auto-crawl hoặc xóa volume. Task giữ `In Progress` cho tới full PostgreSQL/web/Compose/security,
+browser workflow, ten-catalog bounded live matrix và remote CI trên exact merged SHA. V6-004/V6-005/
+V6-007/V6-014 provider/public gates không đổi và V6 không được đóng bởi local capability này.
 
 ## 9. Quy tắc cập nhật roadmap
 

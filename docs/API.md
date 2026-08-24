@@ -101,7 +101,14 @@ V1 dùng page-based pagination vì dataset portfolio còn bounded và UI cần t
 | `GET /api/v1/crawl-runs` | List crawl runs | V1 — implemented | operator/read |
 | `GET /api/v1/crawl-runs/{runId}` | Run detail, metric và safe error | V1 — implemented | operator/read |
 | `GET /api/v1/jobs/{jobId}/changes` | Lịch sử thay đổi | V2 — implemented | local/read |
-| `POST /api/v1/crawl-runs` | Tạo pending run cho source approved | V2 — implemented | local/operator write gate |
+| `GET /api/v1/source-catalog` | Mười listing hint cùng versioned terms notice | V6-020 — implemented | localhost owner/read |
+| `GET /api/v1/source-recipes` | List recipe owner-local | V6-020 — implemented | localhost owner/read |
+| `POST /api/v1/source-recipes` | Persist bounded listing URL/seniority/schedule draft | V6-020 — implemented | localhost owner/write |
+| `GET/PATCH/DELETE /api/v1/source-recipes/{recipeId}` | Đọc, đổi lifecycle/lịch hoặc retire recipe | V6-020 — implemented | localhost owner |
+| `POST /api/v1/source-recipes/{recipeId}/previews` | Queue bounded non-canonical preview | V6-020 — implemented | localhost owner/write |
+| `GET /api/v1/source-recipes/{recipeId}/previews/{previewId}` | Poll preview/candidates/mapping artifact | V6-020 — implemented | localhost owner/read |
+| `POST /api/v1/source-recipes/{recipeId}/previews/{previewId}/mapping` | Lưu opaque visual mapping và re-preview | V6-020 — implemented | localhost owner/write |
+| `GET/POST /api/v1/source-recipes/{recipeId}/crawl-runs` | History hoặc enqueue manual run | V6-020 — implemented | localhost owner; current preview/notice |
 | `GET /api/v1/skills` | Taxonomy và frequency có denominator/coverage | V3 — implemented | local/read |
 | `GET /api/v1/skill-trends` | Bounded cohort/time-window trend | V3 — implemented | local/read |
 | `POST /api/v1/resume-profiles` | Idempotent upload/tạo profile | V5-003 — implemented | owner/write; session khi auth bật |
@@ -123,9 +130,10 @@ Hai endpoint `agent-runs` từng được đề xuất cho V4 nhưng chưa imple
 
 V2 Source summary bổ sung `consecutiveFailures` và safe `healthReasonCode`; Source detail bổ sung `baselineItemsFound` và `quarantinedAt`. Response không trả rate policy, allowed hosts nội bộ, request payload hoặc raw error. `healthStatus=quarantined` luôn có `quarantinedAt`; các status khác trả `null`.
 
-`GET /privacy` là read-only policy contract. Response cố định `privacy-v1`: không giữ CV file gốc mặc định,
+`GET /privacy` là read-only policy contract. Response cố định `privacy-v2`: không giữ CV file gốc mặc định,
 ResumeProfile TTL 24 giờ, owner deletion được hỗ trợ, không gửi CV/JD tới external LLM, deterministic extraction
-đứng trước model fallback, crawler chỉ dùng source allow-list và `geocomply-lever` cần permission bằng văn bản.
+đứng trước model fallback, Source Recipe chỉ chạy localhost, terms warning có exact-version owner
+acknowledgement và access-control bypass luôn `false`.
 Endpoint không trả secret, database configuration, raw CV/JD hoặc URL nội bộ.
 
 ## 6. Resource contracts cốt lõi
@@ -184,6 +192,7 @@ Source response chỉ trả identity, adapter key, approval/health và review/la
   "finishedAt": "2026-08-21T08:03:00Z",
   "counts": {
     "itemsFound": 153,
+    "itemsFilteredOut": 12,
     "itemsNew": 18,
     "itemsUpdated": 7,
     "itemsMissing": 0,
@@ -196,11 +205,11 @@ Source response chỉ trả identity, adapter key, approval/health và review/la
 }
 ```
 
-`POST /crawl-runs` hiện nhận đúng `{"sourceId":"uuid"}`. URL, adapter path, arbitrary header, secret và option chưa support đều bị `422`. Header `Idempotency-Key` là bắt buộc; cùng key và local principal/request trả cùng pending run, khác payload trả `409`. Raw key được hash trước persistence. Endpoint trả `202`, không gọi network trong HTTP request.
-
-Pending run được process `work-one` claim ngoài HTTP lifecycle. Claim giữ nguyên run ID/request provenance; nếu lỗi transient, retry là CrawlRun mới liên kết qua `retryOfRunId`. Nhiều worker process cùng lúc không được xử lý cùng pending row nhờ PostgreSQL row lock và active-run constraint.
-
-Write endpoint chỉ hoạt động khi local deployment đặt `DEVRADAR_OPERATOR_WRITE_ENABLED=true`; default là `false`. Gate này không phải authentication và không được dùng để bảo vệ public mutation. Public exposure phải chờ auth/authorization V6.
+Generic `POST /crawl-runs` đã bị xóa. Manual request chỉ đi qua
+`POST /source-recipes/{recipeId}/crawl-runs`, không nhận URL/config override và yêu cầu recipe `enabled`,
+current successful preview, current terms acknowledgement, không cooldown/block. `Idempotency-Key` là bắt
+buộc; raw key không được persist/log. `source-recipe-worker` claim ngoài HTTP lifecycle bằng PostgreSQL row
+lock; transient retry giữ relation qua `retryOfRunId`.
 
 `GET /crawl-runs` trả counters, retry/schedule relation, safe health signal và `error.code`; `error.message` không phản chiếu `error_summary` trong database. Default order là `startedAt desc nulls last`, sau đó `id asc`. Pending run có `startedAt/finishedAt=null`.
 
@@ -321,22 +330,18 @@ chỉ trả counts `consideredJobs`, `createdDeliveries`, `sentDeliveries`,
 `skippedDeliveries`, `failedDeliveries`; không trả webhook, owner hash, raw JD/CV
 hay provider body. Thiếu/sai connector trả `503` safe.
 
-### 6.7 Operator ingestion console
+### 6.7 Crawler health và Source Recipe console
 
 Dashboard `/crawler-health` dùng same-origin BFF resources:
 
 - `GET /api/devradar/sources` → `GET /api/v1/sources`;
 - `GET /api/devradar/crawl-runs` → `GET /api/v1/crawl-runs`;
-- `GET /api/devradar/crawl-runs/{runId}` → `GET /api/v1/crawl-runs/{runId}`;
-- `POST /api/devradar/crawl-runs` → `POST /api/v1/crawl-runs`.
+- `GET /api/devradar/crawl-runs/{runId}` → `GET /api/v1/crawl-runs/{runId}`.
 
-Browser chỉ gửi `{ "sourceId": "uuid" }` cho `POST` và `Idempotency-Key`. BFF từ chối body có
-URL, adapter, allow-list hoặc field thừa với `422 ingestion_request_invalid`; nếu thiếu key thì
-server sinh key UUID. Backend tiếp tục kiểm tra session/operator, CSRF/Origin khi auth bật, source
-approval và active-run/idempotency conflict. Endpoint trả `202` với pending `CrawlRun`; network crawl
-không chạy trong HTTP request. UI chỉ hiện nút `Run now` cho source có `approvalStatus=approved` và
-không render base URL, allowed hosts, rate policy hoặc raw error. Sau khi enqueue, UI đọc detail của
-đúng `runId` mỗi 2 giây trong tối đa 30 giây; dừng ở trạng thái terminal hoặc báo rõ cần refresh thủ công.
+`/crawler-health` hiện read-only. Mutation nằm tại `/sources` qua same-origin BFF resource
+`/api/devradar/source-catalog` và `/api/devradar/source-recipes/...`. BFF allow-list field, UUID và
+idempotency key; không nhận credential, proxy, raw selector/HTML, arbitrary header/script hoặc per-run URL.
+Network preview/crawl không chạy trong HTTP request; UI poll preview bounded và load run history theo recipe.
 
 ## 8. Authentication, authorization và exposure
 
@@ -396,34 +401,27 @@ phép nhưng wildcard `*` bị cấm.
 - Không response nào lộ raw HTML, CV text, embedding, stack trace hoặc secret.
 - Semantic search giữ model/hash compatibility, status/source/skill filter và safe `503` khi local model unavailable.
 - Skill/trend response giữ cohort denominator, analyzed coverage, bounded window và stable ordering.
-- Source chưa approved và arbitrary URL không thể tạo crawl run.
-- Idempotency key retry không tạo hai run.
+- URL không được truyền theo từng run; chỉ immutable normalized URL trong owner-local recipe được fetch.
+- Preview/mapping/acknowledgement gate, cross-owner access và idempotency retry không tạo hai run.
 - ResumeProfile/Match của owner khác trả `404/403` theo policy; auth mode suy ra owner từ session, không
   từ header hoặc profile ID.
 - AlertRule/dispatch của owner khác trả `404`; delete rule đã xóa lặp lại trả `204`.
 - Upload sai magic bytes, vượt request/file/decode/archive limit hoặc malformed bị reject/cleanup. V5-003 chưa có hard CPU timeout/process sandbox nên endpoint vẫn local/protected.
 - Field addition giữ backward compatibility; breaking fixture phải fail contract test.
 
-## Custom source profiles (local/protected)
+## 11. Source Recipe resource (localhost only)
 
-Các endpoint dưới đây nằm dưới `/api/v1/custom-sources`, yêu cầu feature flag
-`DEVRADAR_CUSTOM_SOURCES_LOCAL_ENABLED=true` cùng session authenticated hoặc explicit localhost
-no-login. Session mutation/preview cần CSRF; local no-login mutation vẫn kiểm Origin allow-list. Mọi
-truy vấn đều owner-scoped; profile của owner khác trả `404` generic.
+Tất cả endpoint recipe yêu cầu `DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED=true` và deployment
+`LOCALHOST_SERVICE`; protected/public startup với flag này fail closed. Session mutation cần CSRF; explicit
+local no-login vẫn kiểm Origin. Mọi query owner-scoped và cross-owner trả `404` generic.
 
-| Method | Resource | Phase/điều kiện |
-|---|---|---|
-| `GET /custom-sources?page=1&pageSize=50` | list profile | V6 local/protected |
-| `POST /custom-sources` | tạo profile draft | V6 local/protected, HTTPS + permission acknowledgement |
-| `GET /custom-sources/{profileId}` | đọc profile | V6 local/protected, owner |
-| `PATCH /custom-sources/{profileId}` | sửa mapping/lịch hoặc `status=enabled\|paused` | preview thành công trước `enabled` |
-| `DELETE /custom-sources/{profileId}` | retire mềm | giữ dữ liệu lịch sử |
-| `POST /custom-sources/{profileId}/preview` | bounded preview | không ghi canonical ingestion |
-| `GET /custom-sources/{profileId}/crawl-runs` | lịch sử crawl | owner, pagination |
-| `POST /custom-sources/{profileId}/crawl-runs` | enqueue manual run | owner, `Idempotency-Key`, profile enabled/degraded |
+Create dùng `name`, immutable `listingUrl`, `seniority`, fixed schedule/timezone/local time/weekday và
+bounded budgets. Response trả `termsNotice`, version/evidence/review date, acknowledgement state, lifecycle,
+block/cooldown/next-run và safe mapping summary. Request không có credential, cookie, proxy, auth header,
+raw selector/HTML, script, CAPTCHA solver hoặc URL override.
 
-Create/patch dùng `name`, `base_url`, `allowed_hosts`, `allowed_path_prefixes`, `parser_mode`, `field_mapping`, `schedule_kind`, đúng một trong `interval_minutes`/`daily_at`, `timezone`, `item_budget`, `byte_budget` và `requests_per_minute`. Generic adapter fetch đúng một configured document mỗi run; API không quảng cáo pagination/page budget khi chưa có deterministic next-page contract. `base_url` chỉ HTTPS hostname, không IP literal, user-info/custom port/query/fragment; path và path prefix phải dùng printable ASCII, không chứa raw/encoded dot segment, encoded slash/backslash hoặc nested percent. `field_mapping` chỉ selector/JSON path subset đã được parser hỗ trợ, JSON path được đánh giá relative theo từng job record và `parser_mode` phải khớp MIME type. Request không có field cho cookie, credential, proxy, auth header, challenge handling hoặc URL override.
-
-Profile response dùng `data` envelope và không trả raw HTML, credential, cookie hay response body. Preview trả `profile`, query-stripped `final_url`/`redirect_chain`, `coverage_status=unknown`, mọi candidate hợp lệ cùng provenance/confidence/warnings và safe `failures`; preview không tạo `Job`, `JobChange`, `CrawlRun`, `missing` hoặc `removed`. `blocked` với `block_reason=permission_required` là terminal cho lần crawl đó và không có API action để vượt access control. Các lỗi chính: `403 custom_sources_disabled`, `404 profile_not_found`, `409 preview_required|profile_not_schedulable|source_run_active`, `422 custom_source_invalid|custom_source_request_invalid|permission_acknowledgement_required`, `503 backend_unavailable`.
-
-Các global/public read surface `GET /sources`, `GET /jobs`, job detail/change history, semantic search và skill analytics chỉ đọc `Source.approval_status=approved`. Approved-source crawl history, CV match generation và alert dispatch cũng loại `owner_authorized_local`. V6-016 chỉ mở profile/run history qua owner-scoped `/custom-sources`; owner-scoped custom-job catalog/analytics chưa có contract nên dữ liệu custom không được lẫn vào public market claims hoặc tenant khác.
+Preview response có status, tối đa năm candidate với typed provenance/confidence/warnings, optional bounded
+screenshot và opaque element map; không tạo canonical data. Mapping request chỉ dùng opaque IDs từ current
+unexpired artifact. `blocked` có safe reason như `authentication_required`, `payment_required`,
+`access_denied`, `challenge_detected`, `route_policy_blocked`, `unsupported_interaction` hoặc
+`layout_unavailable`; không có action để vượt barrier.

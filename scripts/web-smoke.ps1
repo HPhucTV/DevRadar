@@ -13,9 +13,15 @@ if ($RequireHttps.IsPresent -and $BaseUrl.Scheme -ne "https") {
 }
 
 $loginUri = [uri]::new($BaseUrl, "/login")
-$login = Invoke-WebRequest -Uri $loginUri -Method Get -TimeoutSec $TimeoutSeconds
+$login = Invoke-WebRequest -UseBasicParsing -Uri $loginUri -Method Get -TimeoutSec $TimeoutSeconds
 if ($login.StatusCode -ne 200 -or $login.Content -notmatch "DevRadar") {
     throw "DevRadar web login smoke failed."
+}
+
+$sourcesUri = [uri]::new($BaseUrl, "/sources")
+$sources = Invoke-WebRequest -UseBasicParsing -Uri $sourcesUri -Method Get -TimeoutSec $TimeoutSeconds
+if ($sources.StatusCode -ne 200 -or $sources.Content -notmatch "DevRadar") {
+    throw "DevRadar sources smoke failed."
 }
 
 $privacyUri = [uri]::new($BaseUrl, "/api/devradar/privacy")

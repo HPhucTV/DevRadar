@@ -13,8 +13,9 @@ flowchart LR
     U["Portfolio user"] --> API["DevRadar API"]
     U --> WEB["Dashboard - V5"]
     WEB --> API
-    OP["Operator / scheduler"] --> ING["Ingestion"]
-    SRC["Approved public job sources"] --> ING
+    OP["Local operator / fixed scheduler"] --> REC["SourceRecipe"]
+    SRC["Owner-selected listing URL"] --> REC
+    REC --> ING["Generic ingestion"]
     ING --> DB[("PostgreSQL")]
     API --> DB
     LLM["Approved external LLM boundary - synthetic V3"] <--> INT["Intelligence modules"]
@@ -40,7 +41,8 @@ External actors và trust level:
 
 | Module logic | Trách nhiệm | Bắt đầu | Không sở hữu |
 |---|---|---|---|
-| `ingestion` | source config, fetch, snapshot, parse, normalization, run result | V1 | public query, AI planning |
+| `source_recipes` | owner-local URL policy, catalog notice, preview/mapping, fixed schedule và generic adapter | V6-020 | public arbitrary fetch, credentials, bypass |
+| `ingestion` | bounded fetch, snapshot, normalization và run result | V1 | public query, AI planning |
 | `catalog` | canonical job, skill và dedup từ V1; lifecycle/change history từ V2 | V1 | network fetch, presentation |
 | `api` | `/api/v1`, validation, pagination, auth boundary | V1 | crawler parsing, scoring logic |
 | `auth` | User/session persistence, password verification, CSRF và owner/operator context | V6-002 | UI identity, resource-specific policy |
@@ -57,7 +59,7 @@ External actors và trust level:
 
 - Domain rule nằm trong module sở hữu, không nằm trong route, crawler selector hoặc UI.
 - `api`, CLI và scheduler gọi cùng application use case thay vì copy workflow.
-- Source-specific parser chuyển dữ liệu về raw/normalized contract chung; không ghi trực tiếp schema tùy ý vào database.
+- Generic Source Recipe parser chuyển structured JSON/JSON-LD/HTML hoặc saved opaque mapping về raw/normalized contract chung; không chạy user script hoặc ghi schema tùy ý vào database.
 - Module AI đọc canonical/raw reference qua application boundary và trả typed result; nó không tự commit trạng thái job.
 - Future reasoning path phải có frozen labeled evaluation và ADR trước khi nhận model/provider/runtime boundary; current workflow hoàn toàn deterministic.
 - Chỉ tạo interface/wrapper khi có ít nhất một external boundary, nhiều implementation thật hoặc testing seam cần thiết.
@@ -68,18 +70,23 @@ External actors và trust level:
 
 ```mermaid
 flowchart TD
-    A["Approved Source configuration"] --> B["Create CrawlRun"]
-    B --> C["Fetch with limits"]
-    C --> D["Persist RawJobSnapshot metadata/content"]
-    D --> E["Structured parser / source parser"]
-    E --> F["Normalize without losing raw values"]
-    F --> G["Resolve source identity"]
-    G --> H["Upsert canonical Job"]
-    H --> I["V2: create meaningful JobChange"]
-    I --> J["Finalize CrawlRun metrics"]
+    A["SourceRecipe draft + terms_notice"] --> B["Preview 3–5 jobs"]
+    B --> C{"Detection confident?"}
+    C -- No --> D["Visual mapping with opaque element IDs"]
+    C -- Yes --> E["Enable recipe / fixed schedule"]
+    D --> E
+    E --> F["Create or claim CrawlRun"]
+    F --> G["HTTP-first fetch / isolated browser fallback"]
+    G --> H["Persist RawJobSnapshot metadata/content"]
+    H --> I["Normalize without losing raw values"]
+    I --> J["Upsert canonical Job / JobChange"]
+    J --> K["Finalize counts + completeness"]
 ```
 
-V2 persist `JobChange` và chạy absence lifecycle trong catalog transaction. Run chỉ được dùng để đánh dấu job vắng mặt khi run đó là `succeeded` và coverage được xác nhận là complete. Failure trước bước finalize không được làm thay đổi trạng thái hiện hữu. Operator API chỉ enqueue `pending`; one-shot worker khóa hàng bằng `FOR UPDATE SKIP LOCKED`, chuyển sang `running`, commit trước network work rồi gọi cùng orchestration use case. Đây là process/CLI từ cùng codebase, không phải queue service hoặc distributed worker pool.
+Preview không tạo canonical `Job`. V2 persist `JobChange` và chạy absence lifecycle trong catalog
+transaction. Run generic rỗng/layout drift luôn `incomplete`; chỉ `succeeded + complete` mới được đánh dấu
+job vắng mặt. Recipe worker khóa hàng bằng `FOR UPDATE SKIP LOCKED`, commit claim trước network work rồi
+gọi cùng orchestration use case. Đây là process/CLI từ cùng codebase, không phải queue service phân tán.
 
 ### 5.2. AI extraction
 
@@ -144,12 +151,12 @@ flowchart LR
 
 | Phase | Runtime tối thiểu | Trạng thái kiến trúc |
 |---|---|---|
-| V1 | PostgreSQL, FastAPI process, on-demand crawler/CLI từ cùng codebase | Accepted |
+| V1 | PostgreSQL, FastAPI process và ingestion primitives từ cùng codebase | Historical baseline |
 | V2 | V1 + deterministic scheduler/runner từ cùng codebase, PostgreSQL coordination | Accepted theo ADR-006 |
 | V3 | V2 + extraction/taxonomy; local FastEmbed multilingual MiniLM artifact, pgvector `vector(384)`, exact semantic search và bounded analytics | Complete; ADR-010 Accepted cho local/private |
 | V4 | Không thêm runtime vào V3; đánh giá rồi loại planner/validator/analyst reasoning path; LangGraph deferred | Complete; ADR-013 Accepted |
 | V5 | V3 runtime baseline + Next.js App Router/BFF + local-gated ResumeProfile/JobMatch + bounded Discord alert connector | Complete; V5-001–V5-007 evidence |
-| V6 | Public ingress, PostgreSQL-backed auth/session, managed secrets, CI/deploy/rollback command surface, custom restic encrypted backup/restore, DigitalOcean Uptime verification; Redis/worker pool nếu metric yêu cầu | In progress; V6-001/V6-002/V6-003/V6-006/V6-008–V6-013 complete, V6-004/V6-005/V6-007/V6-014 còn provider/public gates |
+| V6 | V5 + localhost Source Recipe worker/Playwright crawler; public ingress, managed secrets và provider backup/uptime vẫn là gate riêng | In progress; V6-020 local capability không đóng V6-004/V6-005/V6-007/V6-014 |
 
 Crawler/one-shot worker CLI và API dùng cùng code nhưng là entrypoint/process khác nhau. Điều này giữ network work ngoài HTTP request mà không tách service sớm.
 
@@ -171,7 +178,8 @@ Alert CRUD chưa có UI, chỉ dùng protected FastAPI contract.
 
 | Boundary | Rủi ro chính | Control bắt buộc |
 |---|---|---|
-| Source URL/browser subrequest → fetcher | SSRF, redirect escape, oversized/slow response | source allow-list trên mọi request, DNS/IP/redirect re-validation, egress control, timeout, byte limit |
+| Listing URL/redirect/browser subrequest → recipe fetcher | SSRF, redirect escape, oversized/slow response | persisted host/path boundary, DNS/IP/redirect re-validation, request/page/byte/time/rate budget |
+| `terms_notice` → owner acknowledgement | hiểu acknowledgement như permission hoặc bypass | exact notice version/evidence, warning luôn hiển thị; acknowledgement không đổi technical policy |
 | HTML/JSON-LD → parser | malformed content, injection, parser bomb | content type/size limit, safe parser, no script execution ở HTTP path, fixtures |
 | Raw content → LLM | prompt injection, PII leak, cost abuse | treat as data, minimal fields, tool deny-by-default, budget, redaction |
 | External model output → extraction validator | schema bypass, hallucinated evidence, secret/raw disclosure | strict extraction schema, deterministic canonicalization/evidence gate, bounded retry và redacted audit |
@@ -203,8 +211,12 @@ ADR mới là bắt buộc khi:
 - tách module thành service/process với network contract riêng;
 - đổi hệ thống lưu trữ authoritative;
 - thay đổi API versioning, auth strategy hoặc privacy/retention mặc định;
-- cho phép crawler nhận URL ngoài source registry.
+- mở Source Recipe ngoài localhost, thêm user script/credential/proxy hoặc thay đổi technical barrier policy.
 
-Custom source profile là ngoại lệ có kiểm soát cho URL do owner nhập trong local/protected deployment. Nó không mở public arbitrary fetch: URL được persist thành `CustomSourceProfile`, gắn với `SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL`, rồi bị giới hạn bởi host/path policy, DNS/IP validation, redirect revalidation và budget. Static approved registry vẫn là đường duy nhất cho public/reproducible crawl.
-
-Luồng mới là `CustomSourceProfile → PostgreSQL scheduler → CrawlRun → CustomSourceAdapter → RawJobSnapshot → Job/JobChange`. Preview là read/parse-only gate trước khi enable; challenge, permission denial hoặc paywall đi tới `blocked` và không retry. Adapter generic V6-016 fetch một configured document qua HTTP và parse nhiều records/cards; pagination cùng browser fallback vẫn deferred. Public/global catalog, analytics, matching và alerts tiếp tục chỉ consume source `approved`; custom profile/run history đi qua owner-scoped API riêng. Redis, distributed worker và browser persistent profile không thuộc topology này.
+ADR-026 chấp nhận một ngoại lệ owner-local duy nhất: URL được persist thành `SourceRecipe`, không truyền
+theo từng run và không tạo arbitrary fetch proxy. Luồng hiện hành là
+`SourceRecipe → SourceRecipePreview → Source(owner_authorized_local) → CrawlRun → generic RecipeAdapter → RawJobSnapshot → Job/JobChange`.
+HTTP/structured extraction chạy trước; Playwright chỉ là isolated fallback đã qua cùng route policy.
+Challenge, login, paywall, access denial hoặc redirect escape đi tới `blocked` và không retry/bypass.
+Redis, distributed worker, persistent browser profile, arbitrary cron và source-specific adapter không
+thuộc topology này.

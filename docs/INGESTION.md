@@ -2,159 +2,94 @@
 
 ## 1. Mục tiêu
 
-Ingestion tạo dataset có thể tin cậy và replay từ các nguồn job công khai đã được phê duyệt. V1 ưu tiên ba source tại Việt Nam có identity ổn định; V3 có thể thêm cohort remote thứ cấp nếu được gắn nhãn theo [ADR-011](decisions/0011-accept-secondary-remote-api-cohort.md). Tên source chỉ được ghi vào registry sau khi vượt gate, không được chọn ngầm trong code.
+Ingestion biến listing URL do owner local chọn thành dataset replayable có provenance mà không yêu cầu viết
+adapter riêng. Runtime hiện hành theo [ADR-026](decisions/0026-accept-owner-overridden-source-recipes.md):
+một generic `SourceRecipe`, deterministic extraction trước, browser fallback có kiểm soát sau và không
+bypass technical access barrier.
 
-## 2. Source approval gate
+## 2. Source Recipe onboarding gate
 
-Một source chỉ chuyển từ `candidate` sang `approved` khi có record trả lời đầy đủ:
+`SourceRecipe` chỉ bật khi deployment là `LOCALHOST_SERVICE` và
+`DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED=true`. Catalog mười nguồn chỉ cung cấp listing hint và evidence cho
+`terms_notice`; catalog không phải approval, permission hoặc source-specific implementation. URL ngoài
+catalog nhận notice `not_reviewed`.
 
-Danh sách discovery hiện tại nằm tại [Shortlist nguồn V1](sources/SHORTLIST.md). Shortlist chỉ ghi evidence và thứ tự review; nó không phải approval record và không cấp quyền chạy crawler.
+### 2.1. Terms notice và owner acknowledgement
 
-### 2.1. Policy và phạm vi
+- `terms_notice` có `not_reviewed`, `no_specific_restriction_found` hoặc `restricted_terms`, cùng version,
+  review date và evidence URL khi có;
+- notice luôn hiển thị. Recipe cần acknowledgement thì chỉ chấp nhận exact current version;
+- owner acknowledgement cho phép tiếp tục bounded local preview/crawl nhưng không phải permission hoặc
+  legal certification;
+- CAPTCHA, authentication, paywall, anti-bot, access denial, robots/access control, SSRF và redirect escape
+  không thể được acknowledgement hoặc cấu hình để bypass; DevRadar không bypass các barrier này.
 
-- trang/feed/API có thể truy cập công khai, không cần đăng nhập hoặc token lấy bằng cách không được phép;
-- robots policy và terms liên quan đã được review, ghi ngày và evidence URL/note;
-- không cần bypass CAPTCHA, anti-bot, paywall hoặc access control;
-- mục đích, tần suất và dữ liệu lưu phù hợp với quyền truy cập đã xác minh;
-- có contact/takedown note để có thể pause source nhanh.
+### 2.2. Technical gate
 
-Review này là engineering gate, không phải tuyên bố tư vấn pháp lý. Khi điều khoản không rõ, giữ source ở `candidate` hoặc `paused`.
+- URL phải là bounded HTTPS URL, không user-info/custom port/fragment/control character/dot-segment;
+- host/path/query được normalize và persist; tối đa ba host, không nhận URL/config override theo từng run;
+- preview phải trả 3–5 distinct valid jobs hoặc hoàn tất visual mapping trước `enabled`;
+- item/page/request/byte/time/rate budgets và concurrency 1 là invariant;
+- schedule chỉ có `manual`, `every_6_hours`, `daily`, `weekly`; không nhận arbitrary cron.
 
-### 2.2. Kỹ thuật
-
-- có stable `external_id` hoặc canonical URL được kiểm chứng;
-- xác định được list/detail boundary và điều kiện run complete;
-- có giới hạn request rate, concurrency, timeout, redirect và response size;
-- parser có fixture đại diện và fixture malformed/empty;
-- source có dữ liệu thật thuộc phạm vi job IT Việt Nam, hoặc có approval/ADR riêng cho cohort remote thứ cấp không được dùng để claim Vietnam;
-- browser chỉ cần khi HTTP/structured data không đủ;
-- dữ liệu cần thiết không phụ thuộc vào bypass geo/account/private API.
-
-### 2.3. Source registry record
-
-Mỗi source approved phải ghi tối thiểu:
-
-```yaml
-name: example
-base_url: https://careers.example.test
-allowed_hosts:
-  - careers.example.test
-adapter_key: example
-discovery_mode: html-list
-identity_strategy: external_id
-expected_pagination: complete
-rate_limit:
-  requests_per_minute: 10
-  concurrency: 1
-  timeout_seconds: 20
-  max_response_bytes: 5000000
-policy_review:
-  status: approved
-  robots_reviewed_at: YYYY-MM-DD
-  terms_reviewed_at: YYYY-MM-DD
-```
-
-Đây là contract minh họa, không phải config chạy được và domain `.test` không phải source thật.
-
-V1 implementation nằm tại [source registry](../src/devradar/ingestion/source_registry.py). Registry V1 giữ `vng-careers`, `naver-vietnam-greenhouse`, `momo-careers`; V3 registry bổ sung `remotejobs-org` sau khi adapter/fixtures/registry boundary của PRE-V3-006A được kiểm chứng. Config copy đúng boundary trong từng approval record. Caller resolve bằng `source_key`, không truyền adapter key/URL. GeoComply/Lever không nằm trong active registry và giữ `candidate/permission_required`.
-
-## 3. Crawler adapter boundary
-
-Ba operation logic đủ cho V1:
+## 3. Generic crawler boundary
 
 ```text
-discover(run_context) -> stream of ListingRef
-fetch(listing_ref, fetch_policy) -> FetchResult
+SourceRecipe -> preview(document) -> candidates | mapping_required | blocked
+SourceRecipe + saved mapping -> discover() -> ListingRef + DiscoverySummary
+fetch(ListingRef, FetchPolicy) -> FetchResult
 parse(snapshot) -> ParsedJob | ParseFailure
 ```
 
-### Input bắt buộc
+Input luôn được sinh từ recipe đã persist: run ID, config hash/version, deadline, allowed host/path,
+seniority, mapping và budget. `ListingRef` giữ source-scoped identity + canonical URL. Output gồm bounded
+`FetchResult`, typed `ParsedJob`/`ParseFailure` và `DiscoverySummary(items_discovered,
+items_filtered_out, pages_found, coverage_complete)`. Adapter không tự commit Job hoặc quyết định retry.
 
-- `run_context`: run ID, source config/version, deadline và correlation ID;
-- `ListingRef`: source-scoped identity, approved URL và optional list-page metadata;
-- `fetch_policy`: allowed hosts, timeout, byte limit, redirect limit, user-agent và throttle.
+### 3.1. Preview và visual mapping
 
-### Output bắt buộc
+Preview là non-canonical và không tạo `CrawlRun`, snapshot, Job hoặc JobChange. Extraction order là
+structured JSON/JSON-LD → deterministic HTML cards → isolated Playwright capture. Nếu browser detection
+không đủ tin cậy, API chỉ trả screenshot bounded và opaque element IDs; UI không nhận CSS selector, raw
+HTML hay script. Saved mapping được revalidate theo origin, artifact expiry và element map trước khi dùng.
 
-- `FetchResult`: final approved URL dùng cho transport, HTTP metadata, fetch time, content type, bounded payload/reference và raw hash;
-- `ParsedJob`: raw values, normalized candidates, evidence/selector, parser version và warnings;
-- `ParseFailure`: stable error code, stage và safe summary; không chứa toàn bộ HTML hoặc secret.
+### 3.2. Raw snapshot storage
 
-Adapter không tự commit Job hoặc quyết định retry. Application workflow persist snapshot, validate output và điều khiển transaction/retry.
+PostgreSQL giữ bounded `RawJobSnapshot.raw_content`, HTTP metadata, canonical provenance URL và
+`raw_content_hash`. Fetcher reject payload/content type/encoding ngoài policy trước persistence. Persistence
+revalidate final URL/config và strict-decode charset; transaction ownership thuộc workflow caller. Raw
+column được deferred khi query để read path không tải payload ngầm.
 
-Contract code tại [ingestion contracts](../src/devradar/ingestion/contracts.py) dùng immutable typed input/output và stable `ParseFailure`; không trả ORM model, raw exception hoặc dynamic module path qua boundary.
+## 4. Fetch, pagination và browser policy
 
-### 3.1. Raw snapshot storage V1
+- Resolve toàn bộ DNS và fail closed nếu có loopback/link-local/private/reserved address; revalidate/pin
+  mỗi redirect và browser navigation/subrequest.
+- Giới hạn timeout, redirect, bytes, page/item/request/time/rate; content encoding mặc định `identity`.
+- HTTP/structured data luôn chạy trước. Browser dùng fresh context, chặn service worker/download/popup/
+  external protocol/WebSocket/permission và không có cookie, credential hoặc persistent profile.
+- Generic pagination chỉ dùng saved stable next-page/numbered/load-more target trong cùng policy boundary;
+  loop, unstable load-more, deadline hoặc budget stop làm coverage `incomplete`.
+- Detail chỉ fetch canonical URL đã discover. Seniority filter deterministic; item không xác định bị loại
+  khi chọn level cụ thể và được giữ khi chọn `all`.
+- `401/402/403`, login form, CAPTCHA/challenge, paywall, anti-bot marker hoặc route escape đưa recipe tới
+  `blocked`, không retry và không có bypass action.
 
-V1 lưu text payload đã qua fetch limit trực tiếp trong PostgreSQL `RawJobSnapshot.raw_content`, cùng HTTP metadata và `raw_content_hash`. Fetcher reject payload vượt `max_response_bytes`, content type chưa duyệt hoặc content encoding khác `identity` trước persistence; schema `Text` không thay thế byte-limit control. Persistence revalidate final URL, approval/config version và strict-decode charset, tạo snapshot ở `parse_status=pending`, rồi chỉ `flush`; commit/rollback thuộc ingestion workflow caller. `RawJobSnapshot.source_url` là canonical provenance của `ListingRef`, được kiểm tra trên `allowed_hosts ∪ reference_hosts`; với list/API adapter, URL này có thể khác `FetchResult.final_url` là endpoint feed đã trả payload. Việc cho phép reference host không mở rộng path/host được phép fetch. Raw column được deferred khi ORM query để read path không vô tình tải payload. Object storage chỉ được xem xét lại khi có số đo size/retention cho thấy PostgreSQL không còn phù hợp.
+### 4.1. Recipe worker và transaction boundary
 
-Implementation và verification hiện tại: [safe HTTP fetcher](../src/devradar/ingestion/safe_http.py), [snapshot persistence](../src/devradar/ingestion/snapshot_persistence.py) và [V1-004 evidence](evidence/V1-004-safe-fetch-and-snapshot.md).
+`python -m devradar.cli source-recipe-worker` chỉ claim preview/run đã persist trong PostgreSQL. Network/
+browser work chạy ngoài transaction dài; snapshot, canonical upsert và counters dùng transaction ngắn.
+Fixed schedule và manual request có idempotency key; nhiều worker dùng row lock `SKIP LOCKED`.
 
-## 4. Fetch policy
-
-- Chỉ chấp nhận HTTPS URL được tạo từ source config/adapter, không nhận URL tùy ý từ API user; user-info, custom port, fragment, path/query control character và path ngoài prefix bị reject.
-- Resolve toàn bộ địa chỉ host và fail closed nếu rỗng, invalid hoặc có bất kỳ loopback, link-local, private/reserved address nào.
-- Kết nối trực tiếp tới numeric IP đã kiểm tra để tránh DNS resolve lần hai; TLS SNI và certificate validation vẫn dùng approved hostname.
-- Revalidate scheme/host/path và resolve/pin lại mỗi redirect; không follow redirect ra ngoài boundary.
-- Giới hạn socket timeout, redirect count và response bytes; body chỉ đọc tới `max_response_bytes + 1` để phát hiện overflow.
-- Chấp nhận content type đã duyệt và content encoding `identity`; file/binary hoặc compressed response ngoài contract bị reject.
-- Throttle theo source; default V1 là concurrency 1 trừ khi approval record có bằng chứng khác.
-- V1 trả stable error code/retryability và bounded `Retry-After`; V2 workflow mới kích hoạt bounded retry/backoff có jitter.
-- Không retry lỗi policy, invalid URL, unsupported content hoặc parser contract violation như lỗi network.
-- User-Agent phải nhận diện hợp lý project/operator khi source policy yêu cầu; không giả mạo browser để bypass control.
-
-### 4.1. Browser path
-
-Khi approved source bắt buộc JavaScript rendering, browser không được nới lỏng fetch policy:
-
-- validate scheme, host và resolved IP cho top-level navigation, redirect, iframe, subresource và WebSocket; network egress là lớp chặn cuối cho private/reserved destination;
-- dùng fresh ephemeral browser context cho mỗi bounded run/batch, không tái sử dụng persistent profile, cookie, cache hoặc local storage giữa các source;
-- chặn service worker, download, popup, external protocol và file URL; không cấp camera, microphone, geolocation, clipboard, notification hoặc filesystem permission;
-- không mount secret/host directory không cần thiết vào browser runtime và chạy với sandbox/least privilege phù hợp platform;
-- áp tổng budget cho page count, bytes, request count, execution time và browser process memory;
-- đóng context/process và xóa temporary artifacts ở cả success, timeout và crash path.
-
-### 4.2. NAVER Vietnam/Greenhouse HTTP adapter
-
-V1 implementation tại [Greenhouse adapter](../src/devradar/ingestion/adapters/greenhouse.py) dùng đúng một `GET .../jobs?content=true` cho normal discovery. Adapter khóa literal board token `navervietnam`, kiểm tra `meta.total`, duplicate public post ID, Vietnam location và exact `absolute_url` trên reference host trước khi trả listing.
-
-Greenhouse full-list response đã chứa content của từng post. Để không fan-out detail trái approval, `fetch(listing_ref, policy)` chỉ trả lại exact bounded `FetchResult` của discovery hiện tại; không mở request thứ hai. Cache bị xóa trước mỗi discovery attempt, chỉ chấp nhận exact listing đã validate và chạy dưới source concurrency 1. Workflow phải hoàn tất một discovery batch trước khi bắt đầu batch kế tiếp. Parser chọn job theo public post `id`, strip HTML thành plaintext, bỏ `script/style/template/noscript`, giữ raw JSON trong snapshot và không dùng `updated_at` như `posted_at`.
-
-Fixture, negative path và bounded live evidence nằm tại [V1-006 evidence](evidence/V1-006-naver-greenhouse-adapter.md).
-
-### 4.3. VNG Careers HTTP adapter
-
-[VNG adapter](../src/devradar/ingestion/adapters/vng.py) chỉ discover qua public UI query `job_group=<approved-id>&page=<n>`. Registry pin tám cặp job-group ID/name đã duyệt; mỗi response phải tự xác nhận exact filter trong `request.queries` và cùng taxonomy trong `tags`. Broad `job_family` trên job card chỉ là provenance (`Tech`, `Data`, `Product` hoặc `null`), không được dùng để suy đoán scope IT.
-
-Mỗi approved group được paginate cho tới `pages`, với page/size/total/count ổn định và unique `job_id`. Job xuất hiện trong nhiều approved group được source-scoped deduplicate khi URL/title không conflict. Chỉ sau khi toàn bộ groups complete, `fetch` mới nhận exact discovered listing và GET detail canonical trên VNG host. Detail parser dùng `job_id`, strip HTML, giữ description/requirement, redact email/phone khỏi canonical text và không diễn giải flag `post_on_careers_page` thành ngày đăng.
-
-Fixture, live taxonomy regression và bounded page/detail smoke nằm tại [V1-007 evidence](evidence/V1-007-vng-adapter.md).
-
-### 4.4. MoMo Careers browser adapter
-
-[MoMo adapter](../src/devradar/ingestion/adapters/momo.py) chỉ navigate `GET /jobs-opening?groups=DGM.0001` trong fresh Chromium context. Batch đầu lấy từ SSR `__NEXT_DATA__`; khi chưa đủ `TotalItems`, adapter cách ít nhất 5 giây rồi click đúng public button `Xem thêm`, chờ exact response do UI tạo và đối chiếu response identities với DOM growth. Adapter không tự dựng/replay request API nền hoặc sửa `X-Client-*` header.
-
-Browser route default-deny, chỉ cho list document, same-origin `/_next/static/` cần thiết và exact `aws.momo.vn/momovn-api/public/v2/hr/get-list-job-with-filter` query với approved group, sort, batch size và cumulative `lastIdx`. Trước launch, toàn bộ approved browser hosts phải resolve chỉ tới public IP. Context chặn service worker, download, popup và WebSocket; không cấp permission và không dùng persistent profile. V1 Compose đã kiểm chứng browser sandbox trong opt-in `crawler` profile; application-layer DNS/route controls vẫn không thay thế network-level egress enforcement hoặc resource budget của môi trường triển khai.
-
-Completeness yêu cầu stable `TotalItems/PageCount`, mỗi UI batch thêm 1–12 unique `jobId`, `LastIndex` và DOM count tăng đúng cumulative count, final identities khớp response union và `Xem thêm` biến mất đúng khi đạt total. `Count=12` là requested batch size; final response có thể chứa ít hơn 12 `Items`, nên returned item count không được suy ra từ field này. Failed/partial attempt xóa discovery cache và không tạo missing/removal signal.
-
-Detail chỉ fetch bằng `SafeHttpFetcher` cho exact canonical URL đã discover. Parser đối chiếu `jobId`, slug và fixed division group; chỉ giữ posting fields allow-list, strip unsafe HTML, bỏ application flags/related data và redact email/phone khỏi canonical description. Fixture, negative/browser-policy tests và full on-demand local evidence nằm tại [V1-008 evidence](evidence/V1-008-momo-adapter.md).
-
-### 4.5. V1 on-demand ingestion runner
-
-Operator entrypoint `python -m devradar.cli crawl` chỉ nhận exact source key trong V1 registry, deadline 1–360 phút và optional positive `--max-items`; không nhận URL, header, adapter path hoặc credential. Runner revalidate approved config trước discovery và fail closed nếu persisted `Source` drift khỏi registry.
-
-Network/browser work chạy ngoài database transaction. Mỗi raw snapshot được commit trước parse để malformed content vẫn còn cho replay; snapshot parse state, canonical Job, JobChange và run counter sau đó được cập nhật trong transaction ngắn. Expected item failure cho run `partial/failed` với safe error code; unexpected failure dừng phần còn lại. Absence chỉ chạy ở finalization của run `succeeded + complete`.
-
-`--max-items` là bounded smoke: discovery vẫn ghi tổng `items_found`, chỉ xử lý N item đầu và finalize `succeeded` với coverage `incomplete`. Vì vậy run bounded không bao giờ là absence/removal signal. CLI trả exit `0` chỉ cho status `succeeded`, `1` cho partial/failed và `130` khi operator cancel. Implementation/Compose/PostgreSQL evidence nằm tại [V1-012](evidence/V1-012-compose-and-runner.md).
+Generic empty/layout drift, partial item failure, pagination budget hoặc browser deadline luôn tạo coverage
+`incomplete`. Chỉ run `succeeded + complete` mới là absence/removal signal.
 
 ## 5. Extraction order
 
 Thứ tự mặc định:
 
-1. public feed/API hoặc JSON-LD có schema phù hợp;
-2. HTTP HTML parser với stable selector/source rule;
-3. browser rendering bằng Playwright khi source approval chứng minh cần JavaScript;
+1. public JSON/JSON-LD có schema phù hợp;
+2. HTTP HTML card parser hoặc saved opaque mapping;
+3. isolated browser rendering bằng Playwright khi HTTP không đủ;
 4. LLM fallback từ V3 cho field còn thiếu, không dùng để điều khiển navigation.
 
 Không chạy cả browser và LLM theo mặc định. Mỗi fallback phải ghi reason/metric để có thể thấy chi phí và regression.
@@ -278,7 +213,7 @@ Từ V2, `missing`, `removed` và `reactivated` được persist/log bằng boun
 
 ## 12. Fixtures và acceptance scenarios
 
-Mỗi source adapter cần fixture bất biến đã loại PII/token cho:
+Generic recipe parser/adapter cần fixture bất biến đã loại PII/token cho:
 
 - list/detail happy path;
 - pagination complete;
@@ -288,7 +223,7 @@ Mỗi source adapter cần fixture bất biến đã loại PII/token cho:
 - duplicated listing;
 - URL redirect ngoài allow-list;
 - rate limit/timeout;
-- source layout regression.
+- source layout regression, challenge/login/paywall marker và visual mapping expiry/tampering.
 
 Acceptance bắt buộc:
 
@@ -296,29 +231,12 @@ Acceptance bắt buộc:
 2. Partial run không tăng missing counter.
 3. Từ V2, hai complete run vắng mặt tạo đúng `missing` rồi `removed`.
 4. Từ V2, Job xuất hiện lại tạo `reactivated` và giữ history.
-5. Source chưa approved không thể chạy dù adapter tồn tại.
+5. Recipe chưa preview/current acknowledgement không thể enable hoặc crawl.
 6. Browser/LLM không được gọi khi structured parser đã đủ schema.
+7. Unknown-origin recipe dùng `not_reviewed`; restricted catalog source cần exact-version owner acknowledgement.
+8. Challenge/login/paywall/403 fixture đi tới `blocked` và UI không có bypass action.
+9. Generic empty/layout drift, failed hoặc partial run không tạo false removal.
 
-## Owner-local custom source profiles
-
-Custom source profile là capability local/protected dành cho single operator. API nhận một URL khi tạo hoặc sửa profile, lưu URL cùng host/path boundary đã chuẩn hóa, rồi mọi crawl sau đó chỉ dùng cấu hình đã lưu. API không nhận URL override cho từng run và `crawl --source` vẫn chỉ nhận exact key trong static registry.
-
-Profile tạo một `Source` có `approval_status=owner_authorized_local`, không được tính vào inventory `approved` hoặc claim thị trường công khai. Lifecycle là:
-
-```text
-draft -> preview_ready -> enabled -> degraded/blocked
-                         |             |
-                       paused        retired
-```
-
-`paused` chỉ nhận transition từ `enabled`/`degraded` và có thể resume về `enabled` vì profile đã qua preview; `draft`/`blocked` phải preview thành công trước. `retired` là terminal và không thể được phục hồi bằng PATCH status.
-
-Preview chạy parser hybrid theo thứ tự JSON/API, JSON-LD rồi bounded HTML mapping, đồng thời enforce `parser_mode` đã lưu. JSON field mapping được đánh giá relative theo từng job record để multi-record document không lặp value của record đầu. Preview trả final URL/redirect chain đã bỏ query, coverage `unknown`, mọi candidate hợp lệ, warning, confidence và provenance nhưng không ghi `CrawlRun`, snapshot, Job, JobChange hay absence signal. Chỉ sau preview thành công mới cho phép `enabled` và scheduler PostgreSQL tạo một trigger key ổn định.
-
-Worker custom dùng cùng pipeline persistence và change detection hiện hành. Generic adapter V6-016 fetch đúng một configured document mỗi run, parse đủ JSON records/JSON-LD/HTML cards và enforce item/byte/rate budget; generic pagination bị defer cho tới khi có next-page contract xác định. Mỗi request vẫn qua HTTPS-only hostname, host/path allow-list, DNS/IP private-reserved rejection, redirect revalidation và timeout. Saved path/path prefix chỉ dùng printable ASCII; raw/encoded dot segment, encoded slash/backslash và nested percent đều bị từ chối để transport không thể đổi boundary đã lưu. Không lưu credential, cookie hoặc persistent browser profile. Browser fallback chưa được triển khai; nếu bổ sung phải có explicit policy, fresh context và không giải challenge.
-
-HTTP `401/402/403`, CAPTCHA/challenge, paywall, anti-bot marker, redirect/policy escape và unsupported content đưa profile vào `blocked` với reason an toàn, không retry. Chỉ lỗi network/server/rate-limit transient mới dùng retry bounded. Crawl fail, partial hoặc unknown coverage không được chuyển Job thành `missing` hoặc `removed`; chỉ complete run qua absence policy mới được dùng cho lifecycle đó.
-
-Permission acknowledgement chỉ ghi nhận cam kết của operator, không phải legal certification. Operator phải tự kiểm tra quyền truy cập, robots/terms, rate limit và phạm vi tái sử dụng nội dung trước khi bật profile.
-
-`owner_authorized_local` không tham gia global/public source/job/run views, semantic search, skill analytics, CV match generation hoặc alert dispatch. V6-016 chỉ expose profile và crawl history qua owner-scoped API; custom-job catalog/derived views cần owner join riêng trước khi được mở.
+Source-specific adapter/evidence cũ được giữ trong Git history và historical ADR/evidence, không phải runtime
+contract hiện hành. Acceptance V6-020 dùng cùng generic implementation cho URL catalog và URL ngoài catalog;
+không thêm adapter khi một source layout khác.

@@ -18,27 +18,30 @@ DevRadar biến job posting công khai thành dữ liệu có thể tìm kiếm,
 
 ---
 
-## ✦ Verified snapshot
+## ✦ Trạng thái hiện tại
 
-| `3,339` | `3,339 / 3,339` | `1,003` | `0.9583` |
-|---:|---:|---:|---:|
-| Canonical jobs | Current embeddings | Accepted deterministic extractions | Semantic held-out Top-1 |
+DevRadar đang ở trạng thái **implementation in progress** trong V6. Local workflow hiện có thể:
 
-> Snapshot được kiểm chứng tại thời điểm đóng evaluation dataset; đây không phải bộ đếm realtime. Xem [closeout evidence](docs/evidence/V3-006-v3-closeout.md).
+- nhận URL trang tuyển dụng qua một `SourceRecipe` generic, không cần người dùng viết adapter;
+- chọn seniority, xem trước 3–5 job và ánh xạ field trực quan khi auto-detection chưa đủ tin cậy;
+- chạy thủ công hoặc theo lịch cố định, theo dõi history/health và bảo vệ job khỏi false removal;
+- khám phá job, analytics, CV matching và alert qua dashboard Việt/Anh.
+
+Các số liệu dataset cũ được giữ trong evidence lịch sử, không hiển thị như bộ đếm realtime của sản phẩm.
 
 <a id="product-showcase"></a>
 
 ## ◈ Product showcase
 
 <p align="center">
-  <img src="docs/assets/readme/devradar-product-poster.png" alt="DevRadar product poster kết hợp market overview, skill analytics và bounded custom-source workflow" width="100%" />
+  <img src="docs/assets/readme/devradar-product-poster.png" alt="DevRadar Source Recipe workflow từ URL đến preview và lịch crawl local" width="100%" />
 </p>
 
-<p align="center"><sub>UI thật, metric có evidence và data flow có provenance — trong một product overview duy nhất.</sub></p>
+<p align="center"><sub>UI local thật: dán URL, chọn seniority, kiểm tra preview và vận hành crawl có provenance.</sub></p>
 
 ## ◎ Why DevRadar
 
-- **Trustworthy ingestion:** allow-list, SSRF guard, provenance, idempotency, deduplication và false-removal protection.
+- **No-code ingestion:** một `SourceRecipe` generic cho URL owner chọn, với SSRF guard, bounded preview và visual mapping.
 - **Market intelligence:** deterministic extraction, taxonomy, exact pgvector search và trend analytics có denominator.
 - **Operator experience:** dashboard Việt/Anh, crawl history, source health, local CV matching và alert workflow.
 - **Privacy by boundary:** không giữ file CV gốc mặc định, không log raw CV/secret và không dùng LLM production để thay workflow xác định.
@@ -49,7 +52,7 @@ DevRadar biến job posting công khai thành dữ liệu có thể tìm kiếm,
 
 ```mermaid
 flowchart LR
-    S["Approved / owner-authorized sources"] --> I["Safe ingestion"]
+    S["Owner-local SourceRecipe"] --> I["HTTP-first / isolated browser fallback"]
     I --> P[("PostgreSQL + pgvector")]
     P --> X["Deterministic intelligence"]
     X --> A["FastAPI /api/v1"]
@@ -69,20 +72,28 @@ flowchart LR
 | Web | Next.js, React, TypeScript | Dashboard Việt/Anh và same-origin BFF |
 | API | Python, FastAPI, Pydantic | REST JSON dưới `/api/v1` và OpenAPI contract |
 | Data | PostgreSQL, pgvector, SQLAlchemy, Alembic | System of record, migration và exact vector search |
-| Ingestion | HTTP-first, Playwright fallback | Adapter nguồn đã duyệt, raw snapshot và provenance |
+| Ingestion | Generic SourceRecipe, HTTP-first, Playwright fallback | Preview/mapping, raw snapshot và provenance |
 | Runtime | Docker Compose | Local/protected topology và reproducible deployment surface |
 
 <a id="quick-start"></a>
 
 ## ⚡ Quick Start
 
-### Yêu cầu
+### Chạy một lần nhấp trên Windows
 
-- Python `3.13`
-- Docker Engine và Docker Compose
-- PowerShell trên Windows cho các command bên dưới
+Yêu cầu duy nhất cho product runtime là Docker Desktop với Docker Compose đang hoạt động. Clone repository,
+sau đó double-click:
 
-### Chạy API và dashboard
+```text
+start-devradar.cmd
+```
+
+Launcher chỉ tạo `.env` từ `.env.example` khi file chưa tồn tại, build ba image, migrate PostgreSQL, bật
+API/web/crawler worker trong localhost no-login mode, chạy smoke rồi mở dashboard. Nó không tự enable hoặc
+crawl bất kỳ URL nào và không xóa volume. Mở trực tiếp workflow tại
+`http://127.0.0.1:3000/sources`.
+
+### Chạy thủ công cho development
 
 ```powershell
 git clone https://github.com/HPhucTV/DevRadar.git
@@ -91,9 +102,10 @@ cd DevRadar
 python -m venv .venv
 .venv\Scripts\python -m pip install --require-hashes --requirement requirements-dev.lock
 
+docker compose --env-file .env.example --profile crawler build api web crawler
 docker compose --env-file .env.example up database --wait
 docker compose --env-file .env.example run --rm api python -m alembic upgrade head
-docker compose --env-file .env.example up api web --wait
+docker compose --env-file .env.example --profile crawler up api web crawler --wait
 
 Invoke-RestMethod http://127.0.0.1:8000/api/v1/health
 .\scripts\web-smoke.ps1 -BaseUrl http://127.0.0.1:3000
@@ -101,7 +113,7 @@ Invoke-RestMethod http://127.0.0.1:8000/api/v1/health
 
 Mở `http://127.0.0.1:3000`. OpenAPI nằm tại `http://127.0.0.1:8000/docs`.
 
-Các flow opt-in như local authentication, CV matching, DeepSeek synthetic evaluation và custom source được mô tả trong [Operations](docs/OPERATIONS.md), [AI](docs/AI.md) và [Ingestion](docs/INGESTION.md). Không thêm secret thật vào `.env.example` hoặc Git.
+Các flow opt-in như local authentication, CV matching và DeepSeek synthetic evaluation được mô tả trong [Operations](docs/OPERATIONS.md) và [AI](docs/AI.md). Không thêm secret thật vào `.env.example` hoặc Git.
 
 ### Quality gates
 
@@ -126,6 +138,7 @@ DevRadar/
 ├── tests/               # Unit, contract và PostgreSQL integration tests
 ├── docs/                # Product, architecture, ADR, runbook và evidence
 ├── scripts/             # Smoke, deploy, backup, restore và security gates
+├── start-devradar.cmd   # One-click local launcher cho Windows
 ├── compose.yaml         # Local API/web/database/crawler topology
 └── AGENTS.md            # Working agreements cho human và AI agent
 ```
@@ -139,7 +152,7 @@ DevRadar/
 | [Product](docs/PRODUCT.md) | Bài toán, người dùng, phạm vi và non-goals |
 | [Architecture](docs/ARCHITECTURE.md) | Module boundary, data flow và topology |
 | [Domain model](docs/DOMAIN_MODEL.md) | Ubiquitous language, entity và lifecycle |
-| [Ingestion](docs/INGESTION.md) | Source gate, adapter, normalization và change detection |
+| [Ingestion](docs/INGESTION.md) | Source Recipe, preview/mapping, normalization và change detection |
 | [API](docs/API.md) | REST contract dưới `/api/v1` |
 | [AI](docs/AI.md) | Deterministic-first, evaluation, privacy và cost boundary |
 | [Operations](docs/OPERATIONS.md) | Test, security, deployment, backup và monitoring |
@@ -148,9 +161,9 @@ DevRadar/
 
 ## 🛡 Safety boundary
 
-- Public ingestion chỉ dùng `Source` `approved`.
-- Custom source là `owner_authorized_local`, yêu cầu `DEVRADAR_CUSTOM_SOURCES_LOCAL_ENABLED=true`, permission acknowledgement và `preview` thành công trước khi enabled.
-- CAPTCHA, authentication, paywall, anti-bot hoặc access denial chuyển profile sang `permission_required`; hệ thống không cung cấp bypass.
+- Runtime URL ingestion chỉ bật trong localhost bằng `DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED=true`.
+- `terms_notice` luôn hiển thị cùng version/evidence. Owner có thể acknowledgement đúng version để tiếp tục local; thao tác này không phải legal certification.
+- CAPTCHA, authentication, paywall, anti-bot hoặc access denial chuyển recipe sang `blocked`; hệ thống không cung cấp bypass.
 - Mọi `Job` giữ provenance qua `CrawlRun` và `RawJobSnapshot`; `JobChange` chỉ chuyển `missing`/`removed` sau complete-run gates.
 - Raw CV, secrets và PII không được ghi vào log/tracing; external AI không nhận dữ liệu nhạy cảm nếu chưa có explicit privacy configuration.
 

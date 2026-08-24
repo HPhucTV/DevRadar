@@ -145,7 +145,7 @@ V6-004 deploy/rollback commands dùng image override `DEVRADAR_APP_IMAGE` và kh
 Protected/public deploy bắt buộc HTTPS, auth, Secure cookie, managed secret source, explicit HTTPS
 CORS và non-default credentials; không đưa secret thật vào repository hoặc log.
 
-Khi task thực sự chạy MoMo browser adapter local, cài browser binary đúng version lock bằng command đã kiểm chứng:
+Khi task thực sự chạy Source Recipe browser fallback local ngoài Docker, cài browser binary đúng version lock bằng command đã kiểm chứng:
 
 ```powershell
 .venv\Scripts\python -m playwright install chromium
@@ -166,12 +166,22 @@ Remove-Item Env:\DEVRADAR_TEST_DATABASE_URL
 
 ### Docker Compose
 
+One-click local product startup trên Windows:
+
+```powershell
+.\start-devradar.cmd
+```
+
+Launcher giữ `.env` hiện có, chỉ copy `.env.example` khi chưa có, bật localhost no-login cùng Source
+Recipe cho process Compose, migrate rồi smoke trước khi mở dashboard. Nó không auto-enable/auto-crawl
+recipe và không xóa named volume.
+
 ```powershell
 docker compose --env-file .env.example --profile crawler config --quiet
-docker compose --env-file .env.example build api web
+docker compose --env-file .env.example --profile crawler build api web crawler
 docker compose --env-file .env.example up database --wait
 docker compose --env-file .env.example run --rm api python -m alembic upgrade head
-docker compose --env-file .env.example up api web --wait
+docker compose --env-file .env.example --profile crawler up api web crawler --wait
 Invoke-RestMethod http://127.0.0.1:8000/api/v1/health
 .\scripts\web-smoke.ps1 -BaseUrl http://127.0.0.1:3000
 docker compose --env-file .env.example down
@@ -179,21 +189,21 @@ docker compose --env-file .env.example down
 
 `down` không xóa named volume. Không thêm `--volumes` vào teardown mặc định. Migration là schema source of truth; không dùng `Base.metadata.create_all()` thay Alembic và không gọi process health là database integration.
 
-On-demand live crawl có network và ghi PostgreSQL, nên chỉ chạy khi task cho phép source smoke/ingestion. Dùng exact source key từ registry; không sửa CLI để nhận URL tùy ý. Bounded smoke đã kiểm chứng:
+Source Recipe worker có network và ghi PostgreSQL, nên chỉ chạy khi task cho phép preview/ingestion.
+Worker không nhận URL/config override trên CLI; nó chỉ claim preview/run đã persist qua owner-local API:
 
 ```powershell
-docker compose --env-file .env.example --profile crawler run --rm crawler crawl --source naver-vietnam-greenhouse --max-items 1 --deadline-minutes 10
+$env:DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED = 'true'
+$env:DEVRADAR_DEPLOYMENT_CLASS = 'LOCALHOST_SERVICE'
+.venv\Scripts\python -m devradar.cli source-recipe-worker --once --deadline-minutes 10
+Remove-Item Env:\DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED -ErrorAction SilentlyContinue
+Remove-Item Env:\DEVRADAR_DEPLOYMENT_CLASS -ErrorAction SilentlyContinue
 ```
 
-`--max-items` tạo coverage `incomplete` dù run thành công; không dùng run đó làm completeness/removal signal. Service `crawler` cần giữ non-root, read-only filesystem, `no-new-privileges`, capability tối thiểu và seccomp profile cùng version Playwright. Network-level egress control chưa được chứng minh ở V1; application route/IP policy vẫn bắt buộc.
-
-Custom profile worker là command opt-in local/protected; không thay đổi static registry và không nhận URL trên CLI:
-
-```powershell
-$env:DEVRADAR_CUSTOM_SOURCES_LOCAL_ENABLED = 'true'
-.venv\Scripts\python -m devradar.cli custom-source-worker --once --deadline-minutes 10
-Remove-Item Env:\DEVRADAR_CUSTOM_SOURCES_LOCAL_ENABLED -ErrorAction SilentlyContinue
-```
+Bounded/partial run luôn tạo coverage `incomplete`; không dùng nó làm completeness/removal signal. Service
+`crawler` cần giữ non-root, read-only filesystem, `no-new-privileges`, capability tối thiểu và seccomp
+profile cùng version Playwright. Network-level egress control chưa được chứng minh ở V1; application
+route/IP policy vẫn bắt buộc.
 
 ### Khi thay đổi dependency
 

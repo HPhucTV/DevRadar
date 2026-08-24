@@ -15,7 +15,12 @@ Tài liệu này định nghĩa bằng chứng cần có để nói DevRadar ch�
 
 Kết quả kiểm tra capability máy phát triển trước V1 được ghi riêng tại [PRE-007 local prerequisites evidence](evidence/PRE-007-local-prerequisites.md); đây không phải Quick Start hoặc runtime proof của ứng dụng.
 
-Kết quả scaffold nằm tại [V1-001 evidence](evidence/V1-001-scaffold.md); fresh PostgreSQL migration/schema integration nằm tại [V1-002 evidence](evidence/V1-002-postgresql-schema.md); safe fetch/raw snapshot boundary nằm tại [V1-004 evidence](evidence/V1-004-safe-fetch-and-snapshot.md); NAVER/VNG/MoMo adapters nằm tại [V1-006](evidence/V1-006-naver-greenhouse-adapter.md), [V1-007](evidence/V1-007-vng-adapter.md) và [V1-008](evidence/V1-008-momo-adapter.md); current-state persistence nằm tại [V1-009 evidence](evidence/V1-009-job-upsert.md); PostgreSQL-backed read contract nằm tại [V1-010 evidence](evidence/V1-010-read-api.md); safe structured events nằm tại [V1-011 evidence](evidence/V1-011-observability.md); on-demand runner cùng Compose browser sandbox nằm tại [V1-012 evidence](evidence/V1-012-compose-and-runner.md); full source/replay inventory nằm tại [V1-013 evidence](evidence/V1-013-live-inventory.md); phase decision và gate mapping nằm tại [V1 closeout](evidence/V1-closeout.md). V3 model/vector/search/trend gates nằm tại [V3-005 evidence](evidence/V3-005-embeddings-search-trends.md). V6 auth runtime nằm tại [V6-002 evidence](evidence/V6-002-authentication.md). Health endpoint chỉ chứng minh API process sống; API/database/model behavior và browser sandbox được kiểm tra bằng smoke riêng.
+Scaffold, migration, safe fetch/snapshot, canonical persistence, API, observability và historical
+source-specific adapter evidence được giữ trong `docs/evidence/`. Runtime hiện hành được xác minh riêng tại
+[V6-020 Source Recipe evidence](evidence/V6-020-no-code-source-recipes.md); evidence cũ không có nghĩa adapter
+cũ còn hoạt động. V3 model/vector/search/trend gates nằm tại [V3-005 evidence](evidence/V3-005-embeddings-search-trends.md)
+và V6 auth runtime tại [V6-002 evidence](evidence/V6-002-authentication.md). Health endpoint chỉ chứng minh
+API process sống; PostgreSQL, browser fallback và end-to-end recipe phải có gate riêng.
 
 Không dùng production secret/data trong CI. Không gọi source/LLM thật từ default unit test; live integration phải opt-in, có budget và được gắn nhãn rõ.
 
@@ -33,6 +38,9 @@ Không dùng production secret/data trong CI. Không gọi source/LLM thật t�
   `LOCALHOST_SERVICE` + `DEVRADAR_AUTH_ENABLED=false`; API tạo/reuse `local-operator` trong PostgreSQL
   nhưng không tạo session/password/cookie. `PROTECTED`/`PUBLIC` hoặc auth + no-login fail startup;
   Origin/rate-limit/feature gate vẫn áp dụng cho local mutation.
+- `DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED` mặc định `false` và chỉ hợp lệ với `LOCALHOST_SERVICE`.
+  One-click launcher bật flag này cho process Compose; protected/public fail startup. Recipe không nhận
+  credential, proxy, arbitrary header/script hoặc per-run URL.
 - `DEVRADAR_AUTH_SESSION_TTL_SECONDS` phải nằm trong khoảng policy; `DEVRADAR_AUTH_COOKIE_SECURE=false`
   chỉ phù hợp loopback HTTP. Deployment HTTPS phải đặt `true`. `DEVRADAR_ALLOWED_ORIGINS` là allow-list
   cụ thể, không dùng wildcard với credential.
@@ -70,13 +78,13 @@ Chạy nhanh, deterministic, không network:
 
 ### 4.2. Integration tests
 
-- adapter fixture → RawJobSnapshot → normalized Job → PostgreSQL;
+- Source Recipe fixture → preview/mapping → RawJobSnapshot → normalized Job → PostgreSQL;
 - safe fetch result → RawJobSnapshot trên PostgreSQL thật, gồm policy/config mismatch, invalid encoding và caller-owned transaction;
 - rerun/reprocess và transaction rollback;
 - migration up/down hoặc forward/rollback strategy phù hợp;
 - FastAPI → PostgreSQL với OpenAPI/contract assertion;
 - V2 scheduler/retry → run state/metrics;
-- V2 API pending request → `SKIP LOCKED` one-shot claim → ingestion/retry chain, không chạy network trong HTTP request;
+- recipe preview/run request → `SKIP LOCKED` worker claim → ingestion/retry chain, không chạy network trong HTTP request;
 - V3 pgvector extension/version/dimension/logical identity, idempotent backfill và exact query với current hash/model-version/status/source filters;
 - V3 skill/trend denominator, extraction coverage, bounded window và stable ordering;
 - V5 upload parser trong isolated test và owner access control;
@@ -105,7 +113,7 @@ PostgreSQL test hiện dùng `DEVRADAR_TEST_DATABASE_URL`, tạo database tên n
 
 ### 4.3. End-to-end và acceptance
 
-- V1: trigger approved adapter qua operator path, ingest dataset và query qua API.
+- V6-020 local: create recipe → acknowledge notice → preview/map → enable → Crawl now → provenance/history.
 - V2: nhiều scheduled fixture cycles phát hiện new/update/missing/removed/reactivated, duplicate slot không process lại, partial/anomaly không false removal và quarantine recovery đúng policy.
 - V3: deterministic extraction + LLM fallback trên labeled suite; fixed local model backfill; keyword/semantic comparison và skill trend có denominator/coverage.
 - V4: historical planner/validator/analyst safety suite và migration regression chứng minh runtime bị loại ở current head.
@@ -118,7 +126,7 @@ PostgreSQL test hiện dùng `DEVRADAR_TEST_DATABASE_URL`, tạo database tên n
 |---|---|
 | Replay cùng snapshot | Không duplicate Job hoặc JobChange; metric idempotent. |
 | Crawl network/parser fail | Run `partial/failed`; không tăng missing count. |
-| Source chưa approved | Bị chặn trước outbound request. |
+| Recipe chưa preview/current acknowledgement | Không enable hoặc enqueue; không outbound crawl. |
 | Duplicate schedule/API trigger hoặc hai worker claim | Một trigger/pending row chỉ được process một lần; replay trả history hiện hữu. |
 | Redirect/private address | Bị chặn và ghi safe policy error; không follow. |
 | Empty/anomalous source response | Coverage không được coi complete nếu invariant chưa đạt. |
@@ -285,10 +293,20 @@ Command cụ thể trong README/AGENTS phải từng chạy thành công và đ�
 
 ### Local V1–V4
 
+Product one-click path hiện hành trên Windows:
+
+```powershell
+.\start-devradar.cmd
+```
+
+Launcher yêu cầu Docker Compose, giữ `.env` nếu đã có, build API/web/crawler, migrate, bật localhost
+no-login + Source Recipe worker, chạy API/web `/sources`/privacy smoke rồi mới mở dashboard. Nó không
+auto-enable/auto-crawl recipe và không xóa volume. Manual Compose commands trong README/AGENTS là fallback.
+
 - clean setup từ documented prerequisites;
 - migration chạy trên PostgreSQL mới;
-- một approved fixture/source run và API smoke;
-- pending operator run được xử lý ngoài HTTP bằng one-shot worker; queue rỗng exit thành công, source mismatch fail trước network;
+- một recipe fixture run và API smoke;
+- pending preview/run được xử lý ngoài HTTP bằng recipe worker; queue rỗng exit thành công, config mismatch fail trước network;
 - embedding download là explicit fixed-revision step; image/local artifact được kiểm integrity, bounded backfill idempotent và missing model cho safe `503` mà ingestion vẫn chạy;
 - teardown không xóa volume/data nếu thiếu explicit operator action.
 

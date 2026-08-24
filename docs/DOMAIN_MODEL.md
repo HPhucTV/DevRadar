@@ -19,6 +19,8 @@ Tài liệu này là ubiquitous language của DevRadar. Tên entity, enum và s
 | Thuật ngữ | Nghĩa chuẩn |
 |---|---|
 | Source | Một nguồn tuyển dụng đã đăng ký cùng policy crawl. |
+| SourceRecipe | Cấu hình owner-local cho một listing URL, terms notice, seniority, mapping và lịch cố định. |
+| SourceRecipePreview | Artifact ngắn hạn để kiểm tra 3–5 candidate/visual mapping trước canonical ingestion. |
 | CrawlRun | Một lần chạy có boundary, metric và kết quả hoàn chỉnh/không hoàn chỉnh rõ ràng. |
 | RawJobSnapshot | Bằng chứng bất biến cho một response/job observation tại một thời điểm. |
 | Job | Canonical listing của một source; chưa tự động đồng nhất với listing tương tự ở source khác. |
@@ -43,8 +45,8 @@ V4 từng thử entity `AgentRun`, nhưng [ADR-013](decisions/0013-remove-unreta
 | Field logic | Ý nghĩa |
 |---|---|
 | `id`, `name`, `base_url` | Định danh nội bộ và phạm vi nguồn. |
-| `adapter_key` | Parser/adapter được phép dùng; không nhận module path tùy ý từ request. |
-| `approval_status` | `candidate`, `approved`, `paused`, `retired`. |
+| `adapter_key` | Với runtime hiện hành là generic `source_recipe`; không nhận module path tùy ý từ request. |
+| `approval_status` | Gồm lifecycle lịch sử và `owner_authorized_local`; trạng thái local không phải global approval. |
 | `health_status` | `unknown`, `healthy`, `degraded`, `unhealthy`, `quarantined`. |
 | `consecutive_failures`, `health_reason_code` | Bounded health state và safe reason hiện tại. |
 | `baseline_items_found`, `quarantined_at` | Inventory baseline và thời điểm quarantine nếu có. |
@@ -70,7 +72,7 @@ V4 từng thử entity `AgentRun`, nhưng [ADR-013](decisions/0013-remove-unreta
 | `started_at`, `finished_at` | Boundary thời gian. |
 | `status` | `pending`, `running`, `succeeded`, `partial`, `failed`, `cancelled`. |
 | `coverage_status` | `unknown`, `complete`, `incomplete`; tách khỏi technical status. |
-| counters | pages/items found/new/updated/missing/removed/reactivated/failed. |
+| counters | pages/items found/filtered-out/new/updated/missing/removed/reactivated/failed. |
 | `error_code`, `error_summary` | Lỗi đã sanitize; không chứa raw response, secret hoặc PII. |
 | `adapter_version`, `config_version` | Khả năng tái hiện run. |
 
@@ -232,15 +234,20 @@ Default là hai run complete liên tiếp để chuyển từ `active` sang `rem
 
 V1 chỉ giữ current state. V2 hiện đã kích hoạt lifecycle và JobChange; [integration evidence](evidence/V2-003-job-change-and-absence-lifecycle.md) khóa false-removal/replay behavior.
 
-### 5.2. Source lifecycle
+### 5.2. Source và SourceRecipe lifecycle
 
 ```text
-candidate → approved ↔ paused → retired
-                 │
-                 └─ health: healthy/degraded/unhealthy/quarantined
+SourceRecipe: draft → previewing → preview_ready → enabled ↔ paused → retired
+                         │              │
+                         └──────────────┴─→ blocked
+
+Source: owner_authorized_local ↔ paused → retired
+                         │
+                         └─ health: healthy/degraded/unhealthy/quarantined
 ```
 
-`quarantined` là health control tự động/tạm thời; `paused` là quyết định operator về quyền chạy. Quarantine chặn scheduled/retry trigger nhưng cho phép manual operator recheck; chỉ complete success mới phục hồi `healthy`.
+`blocked` là technical stop cho access/challenge/policy failure và không tự retry. `quarantined` là health
+control tạm thời; `paused` là quyết định operator. Chỉ complete success mới phục hồi `healthy`.
 
 ### 5.3. Extraction lifecycle
 
@@ -290,17 +297,31 @@ V1 dùng hash schema `job-content-v1`: canonical URL; title/company/description;
 - Một JobSkill phải có evidence/extraction provenance.
 - Match score phải nằm trong `[0, 1]`, có scoring version và component evidence.
 
-## 8. Owner-local custom source profile
+## 8. Owner-local Source Recipe
 
-`CustomSourceProfile` là cấu hình owner-scoped cho một URL mà operator xác nhận mình có quyền truy cập. Nó không thay thế `Source` trong registry và không biến URL đó thành source `approved` dùng chung.
+`SourceRecipe` là cấu hình duy nhất cho URL crawl hiện hành và chỉ tồn tại trong single-operator
+`LOCALHOST_SERVICE`.
 
-- `SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL`: trạng thái riêng cho source local/protected; không tham gia claim dataset approved.
-- `CustomSourceStatus`: `draft → preview_ready → enabled`; lỗi có thể đưa profile sang `degraded` hoặc `blocked`; chỉ profile `enabled`/`degraded` mới được pause, và `retired` là terminal.
-- `permission_acknowledged_at`: bằng chứng operator đã xác nhận quyền truy cập, không phải chứng nhận pháp lý và không thay thế review terms/robots.
-- `CustomSourceProfile` giữ HTTPS hostname base URL cùng printable-ASCII host/path boundary không có raw/encoded dot segment, encoded slash/backslash hoặc nested percent, parser mode/mapping, item/byte/rate budget và lịch. Generic adapter hiện fetch đúng một configured document mỗi run; không lưu credential, cookie hoặc persistent browser profile.
+| Nhóm field | Ý nghĩa |
+|---|---|
+| Identity | `id`, `owner_user_id`, `name`, immutable normalized `listing_url`, `source_id` sau enable |
+| Policy | `origin`, tối đa ba `allowed_hosts`, bounded path prefixes, versioned `terms_notice`, evidence/review URL |
+| Selection | ordered `seniority_filter`; `all` luôn đứng một mình |
+| Mapping | opaque element IDs cho card/title/company/location/detail/pagination; không lưu arbitrary script |
+| Schedule | `manual`, `every_6_hours`, `daily`, `weekly` cùng timezone/local time/weekday hợp lệ |
+| Budget | page/item/request/byte/time/request-per-minute bounds và cooldown |
+| Lifecycle | `draft`, `previewing`, `preview_ready`, `enabled`, `paused`, `blocked`, `retired` |
 
-Preview là non-canonical: nó không tạo `CrawlRun`, `RawJobSnapshot`, `Job` hoặc `JobChange`. Chỉ profile có preview thành công mới được enable schedule. Crawl thật đi qua `CrawlRun → RawJobSnapshot → Job` hiện hành; một crawl lỗi, partial hoặc coverage unknown không tạo tín hiệu `missing`/`removed`.
+Owner acknowledgement lưu exact `terms_notice_version` và timestamp. Nó không phải permission/legal
+certification, không che warning và không override CAPTCHA, authentication, paywall, anti-bot, access
+denial, SSRF hoặc redirect policy.
 
-`blocked` với `block_reason=permission_required` bao gồm HTTP access denial, CAPTCHA/challenge, paywall hoặc anti-bot marker. Trạng thái này không được tự retry và UI không cung cấp hành động vượt qua kiểm soát truy cập.
+`SourceRecipePreview` là artifact non-canonical có status `pending|processing|preview_ready|mapping_required|blocked|failed`,
+3–5 bounded candidates, parser/provenance warnings, optional screenshot + opaque element map và expiry.
+Preview không tạo `CrawlRun`, `RawJobSnapshot`, `Job` hoặc `JobChange`. Chỉ current successful preview và
+current acknowledgement mới cho phép `enabled`.
 
-`owner_authorized_local` không đồng nghĩa quyền đọc global. `Source`, `Job`, `CrawlRun` và derived result từ profile này bị loại khỏi public/approved catalog, analytics, CV matching và alert dispatch cho tới khi có owner-scoped custom-job contract.
+Crawl thật tạo `Source(owner_authorized_local) → CrawlRun → RawJobSnapshot → Job/JobChange`. Generic empty,
+layout drift, deadline/budget stop hoặc partial failure luôn `coverage_status=incomplete`, vì vậy không tạo
+false `missing`/`removed`. `owner_authorized_local` không đồng nghĩa global approval; visibility chỉ được mở
+trong explicit localhost recipe mode.

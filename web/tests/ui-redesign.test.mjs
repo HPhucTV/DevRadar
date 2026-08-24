@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 
 const webRoot = new URL("../", import.meta.url);
@@ -51,6 +51,14 @@ test("route grids reflow before content creates document overflow", async () => 
     css.lastIndexOf("@media(max-width:960px)") > css.indexOf(".source-recipe-layout{"),
     "the source-recipe base rule must precede its responsive override",
   );
+});
+
+test("app metadata includes a local brand icon", async () => {
+  const iconPath = new URL("src/app/icon.svg", webRoot);
+  await access(iconPath);
+  const icon = await readFile(iconPath, "utf8");
+  assert.match(icon, /#4F46E5/i);
+  assert.match(icon, /viewBox="0 0 64 64"/);
 });
 
 test("source recipe mapper stays operable at narrow widths", async () => {
