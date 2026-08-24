@@ -40,6 +40,8 @@ Proposed → Accepted → Superseded | Deprecated
 | [ADR-021](0021-accept-digitalocean-single-host-production-boundary.md) | Superseded in part | DigitalOcean SGP1 single-host boundary; Caddy artifact được ADR-022 thay thế |
 | [ADR-022](0022-accept-patched-caddy-scratch-ingress.md) | Accepted | Patched Caddy 2.11.4 scratch ingress và immutable production database image |
 | [ADR-023](0023-accept-encrypted-spaces-backup-and-uptime-boundary.md) | Accepted | Custom restic digest, encrypted Spaces backup/retention và read-only DigitalOcean Uptime verification |
+| [ADR-024](0024-accept-local-custom-source-profiles-without-bypass.md) | Accepted | Custom source profile local/protected không bypass access control |
+| [ADR-025](0025-accept-explicit-local-no-login-mode.md) | Accepted | Explicit localhost no-login single-operator mode; protected/public vẫn dùng session auth |
 
 ## Candidate technology chưa được chấp nhận
 
