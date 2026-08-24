@@ -24,9 +24,23 @@ test("shared shell and route surfaces use redesign primitives", async () => {
   const overview = await source("src/app/(dashboard)/page.tsx");
   const jobs = await source("src/components/job-list.tsx");
   assert.match(shell, /brand-mark/);
-  assert.match(shell, /nav-group/);
+  assert.match(shell, /PrimaryNavigation/);
   assert.match(overview, /dashboard-grid/);
   assert.match(jobs, /job-card/);
+});
+
+test("primary navigation exposes current route and bounded mobile disclosure", async () => {
+  const navigation = await source("src/components/primary-navigation.tsx");
+  const shell = await source("src/components/app-shell.tsx");
+
+  assert.match(navigation, /usePathname\(\)/);
+  assert.match(navigation, /aria-current=\{isActive \? "page" : undefined\}/);
+  assert.match(navigation, /aria-expanded=\{open\}/);
+  assert.match(navigation, /event\.key === "Escape"/);
+  assert.match(navigation, /setOpen\(false\)/);
+  assert.match(navigation, /dictionary\.shell\.navigationMenu/);
+  assert.match(shell, /PrimaryNavigation/);
+  assert.doesNotMatch(shell, /routes\.filter/);
 });
 
 test("protected CV surface uses semantic redesign classes", async () => {

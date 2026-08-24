@@ -99,6 +99,7 @@ const clientSurfaces = [
   "src/components/api-state.tsx",
   "src/components/auth-controls.tsx",
   "src/components/login-form.tsx",
+  "src/components/primary-navigation.tsx",
   "src/components/route-placeholder.tsx",
 ];
 

@@ -11,6 +11,7 @@
       "phaseLocal": "V6 local",
       "phaseSession": "V6 session",
       "primaryNavigation": "Điều hướng chính",
+      "navigationMenu": "Menu điều hướng",
       "privacy": "Quyền riêng tư & chính sách nguồn"
     },
     "routes": {
@@ -463,6 +464,7 @@
       "phaseLocal": "V6 local",
       "phaseSession": "V6 session",
       "primaryNavigation": "Primary navigation",
+      "navigationMenu": "Navigation menu",
       "privacy": "Privacy & source policy"
     },
     "routes": {
