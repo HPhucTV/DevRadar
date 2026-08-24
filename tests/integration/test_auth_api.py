@@ -96,6 +96,14 @@ def test_local_no_login_logout_fails_safely(
     assert response.json()["error"]["code"] == "auth_disabled"
 
 
+def test_auth_me_openapi_documents_session_and_local_mode_errors() -> None:
+    with TestClient(app) as client:
+        document = client.get("/api/v1/openapi.json").json()
+
+    responses = document["paths"]["/api/v1/auth/me"]["get"]["responses"]
+    assert {"200", "401", "403", "503"}.issubset(responses)
+
+
 def test_login_sets_opaque_session_and_csrf_cookie_and_me_is_authenticated(
     auth_api: tuple[TestClient, str],
 ) -> None:

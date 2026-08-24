@@ -46,6 +46,33 @@ test("language switch is accessible and refreshes the current route", async () =
   assert.doesNotMatch(control, /router\.(?:push|replace)\(/);
 });
 
+test("domain wire values have localized presentation labels", async () => {
+  const messages = JSON.parse(await source("src/i18n/dictionaries.json"));
+  for (const value of [
+    "parsed", "invalid", "skipped", "created", "updated", "reactivated",
+    "language", "framework", "database", "cloud", "messaging", "testing", "ai", "tool", "other",
+  ]) {
+    assert.equal(typeof messages.vi.status[value], "string", `missing vi.status.${value}`);
+    assert.equal(typeof messages.en.status[value], "string", `missing en.status.${value}`);
+  }
+  for (const field of ["status", "title", "company_name", "description_text", "location_city", "salary_raw", "levels"]) {
+    assert.equal(typeof messages.vi.jobDetail.fields[field], "string", `missing vi.jobDetail.fields.${field}`);
+    assert.equal(typeof messages.en.jobDetail.fields[field], "string", `missing en.jobDetail.fields.${field}`);
+  }
+});
+
+test("job detail and analytics localize enum and date presentation", async () => {
+  const detail = await source("src/app/(dashboard)/jobs/[jobId]/page.tsx");
+  const analytics = await source("src/app/(dashboard)/analytics/page.tsx");
+  assert.match(detail, /statusLabels\[item\.currentSnapshot\.parseStatus\]/);
+  assert.match(detail, /statusLabels\[change\.changeType\]/);
+  assert.match(detail, /fieldLabels\[change\.fieldName\]/);
+  assert.doesNotMatch(detail, /<dd>\{item\.currentSnapshot\.parseStatus\}<\/dd>/);
+  assert.match(analytics, /categoryLabels\[skill\.category\]/);
+  assert.match(analytics, /formatDate\(bucket\.periodStart/);
+  assert.doesNotMatch(analytics, /<strong>\{bucket\.periodStart\}<\/strong>/);
+});
+
 const serverSurfaces = [
   "src/app/login/page.tsx",
   "src/app/(dashboard)/page.tsx",
@@ -93,5 +120,13 @@ for (const path of interactivePanels) {
     const content = await source(path);
     assert.match(content, /useI18n\(\)/);
     assert.doesNotMatch(content, /toLocale(?:Date)?String\("vi-VN"\)/);
+  });
+
+  test(`${path} renders async feedback with the current locale`, async () => {
+    const content = await source(path);
+    assert.match(content, /type Notice = \(dictionary: Dictionary, locale: Locale\) => string;/);
+    assert.match(content, /useState<Notice \| null>\(null\)/);
+    assert.match(content, /setNotice\(\(\) =>/);
+    assert.match(content, /notice\(dictionary, locale\)/);
   });
 }

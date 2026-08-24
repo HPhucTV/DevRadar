@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { ApiErrorState } from "@/components/api-state";
+import type { Dictionary } from "@/i18n/dictionaries";
 import { useI18n } from "@/i18n/locale-provider";
-import { formatDate, formatNumber, formatPercent, interpolate } from "@/i18n/locale";
+import { formatDate, formatNumber, formatPercent, interpolate, type Locale } from "@/i18n/locale";
 import type { ApiFailure } from "@/lib/api";
 import {
   createCustomSource,
@@ -20,6 +21,7 @@ import {
 } from "@/lib/custom-sources";
 
 type FormState = Omit<CustomSourceInput, "permission_acknowledged"> & { permission_acknowledged: boolean };
+type Notice = (dictionary: Dictionary, locale: Locale) => string;
 
 const DEFAULT_FORM: FormState = {
   name: "",
@@ -87,7 +89,7 @@ export function CustomSourcePanel() {
   const [preview, setPreview] = useState<CustomPreview | null>(null);
   const [runs, setRuns] = useState<CustomCrawlRun[]>([]);
   const [error, setError] = useState<ApiFailure | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const [busy, setBusy] = useState(true);
 
   const selected = useMemo(() => sources.find((source) => source.id === selectedId) ?? null, [selectedId, sources]);
@@ -161,7 +163,7 @@ export function CustomSourcePanel() {
       setSelectedId(source.id);
       setForm(toForm(source));
       setPreview(null);
-      setNotice(dictionary.customSources.saved);
+      setNotice(() => (messages: Dictionary) => messages.customSources.saved);
     }
     setBusy(false);
   }
@@ -180,7 +182,8 @@ export function CustomSourcePanel() {
       setPreview(result.value.data);
       setSources((current) => current.map((item) => item.id === result.value.data.profile.id ? result.value.data.profile : item));
       setForm(toForm(result.value.data.profile));
-      setNotice(result.value.data.candidates.length ? dictionary.customSources.previewSuccess : dictionary.customSources.previewEmpty);
+      const hasCandidates = result.value.data.candidates.length > 0;
+      setNotice(() => (messages: Dictionary) => hasCandidates ? messages.customSources.previewSuccess : messages.customSources.previewEmpty);
     }
     setBusy(false);
   }
@@ -198,7 +201,7 @@ export function CustomSourcePanel() {
     else {
       setSources((current) => current.map((item) => item.id === result.value.data.id ? result.value.data : item));
       setForm(toForm(result.value.data));
-      setNotice(status === "enabled" ? dictionary.customSources.scheduleEnabled : dictionary.customSources.schedulePaused);
+      setNotice(() => (messages: Dictionary) => status === "enabled" ? messages.customSources.scheduleEnabled : messages.customSources.schedulePaused);
     }
     setBusy(false);
   }
@@ -212,7 +215,7 @@ export function CustomSourcePanel() {
     else {
       setSources((current) => current.filter((item) => item.id !== selectedId));
       resetForm();
-      setNotice(dictionary.customSources.retired);
+      setNotice(() => (messages: Dictionary) => messages.customSources.retired);
     }
     setBusy(false);
   }
@@ -224,7 +227,11 @@ export function CustomSourcePanel() {
     const result = await requestCustomCrawl(selectedId);
     if (result.kind === "error") setError(result);
     else {
-      setNotice(interpolate(dictionary.customSources.crawlQueued, { status: statusLabels[result.value.data.status] ?? result.value.data.status }));
+      const queuedStatus = result.value.data.status;
+      setNotice(() => (messages: Dictionary) => {
+        const labels = messages.status as Record<string, string>;
+        return interpolate(messages.customSources.crawlQueued, { status: labels[queuedStatus] ?? queuedStatus });
+      });
       await loadHistory(selectedId);
     }
     setBusy(false);
@@ -238,7 +245,7 @@ export function CustomSourcePanel() {
 
   return <>
     {error ? <ApiErrorState error={error} /> : null}
-    {notice ? <p className="status-message" role="status">{notice}</p> : null}
+    {notice ? <p className="status-message" role="status">{notice(dictionary, locale)}</p> : null}
     <section className="content-section custom-source-policy">
       <div className="section-heading"><div><p className="eyebrow">{dictionary.customSources.policyEyebrow}</p><h2>{dictionary.customSources.policyTitle}</h2></div><span className="source-badge">{dictionary.customSources.noOverride}</span></div>
       <p>{dictionary.customSources.policyBody}</p>

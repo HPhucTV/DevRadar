@@ -2,14 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { ApiErrorState, EmptyState, Metric } from "@/components/api-state";
+import type { Dictionary } from "@/i18n/dictionaries";
 import { useI18n } from "@/i18n/locale-provider";
-import { formatDate, formatNumber, interpolate } from "@/i18n/locale";
+import { formatDate, formatNumber, interpolate, type Locale } from "@/i18n/locale";
 import type { ApiFailure } from "@/lib/api";
 import { getIngestionRun, listIngestionRuns, listIngestionSources, requestCrawlRun, type IngestionRun, type IngestionSource } from "@/lib/ingestion";
 
 const POLL_INTERVAL_MS = 2_000;
 const POLL_WINDOW_MS = 30_000;
 const TERMINAL_RUN_STATUSES = new Set(["succeeded", "partial", "failed", "cancelled"]);
+type Notice = (dictionary: Dictionary, locale: Locale) => string;
 
 export function IngestionConsole() {
   const { locale, dictionary } = useI18n();
@@ -17,7 +19,7 @@ export function IngestionConsole() {
   const [sources, setSources] = useState<IngestionSource[]>([]);
   const [runs, setRuns] = useState<IngestionRun[]>([]);
   const [error, setError] = useState<ApiFailure | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const [loading, setLoading] = useState(false);
   const [busySourceId, setBusySourceId] = useState<string | null>(null);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
@@ -42,7 +44,7 @@ export function IngestionConsole() {
     if (result.kind === "error") setError(result);
     else {
       setRuns((current) => [result.value.data, ...current.filter((run) => run.id !== result.value.data.id)]);
-      setNotice(interpolate(dictionary.crawler.crawlRequested, { name: source.name }));
+      setNotice(() => (messages: Dictionary) => interpolate(messages.crawler.crawlRequested, { name: source.name }));
       setActiveRunId(result.value.data.id);
     }
     setBusySourceId(null);
@@ -68,12 +70,16 @@ export function IngestionConsole() {
       const activeRun = result.value.data;
       setRuns((current) => [activeRun, ...current.filter((run) => run.id !== activeRun.id)]);
       if (TERMINAL_RUN_STATUSES.has(activeRun.status)) {
-        setNotice(interpolate(dictionary.crawler.crawlFinished, { status: statusLabels[activeRun.status] ?? activeRun.status }));
+        const finishedStatus = activeRun.status;
+        setNotice(() => (messages: Dictionary) => {
+          const labels = messages.status as Record<string, string>;
+          return interpolate(messages.crawler.crawlFinished, { status: labels[finishedStatus] ?? finishedStatus });
+        });
         setActiveRunId(null);
         return;
       }
       if (Date.now() - startedAt >= POLL_WINDOW_MS) {
-        setNotice(dictionary.crawler.pendingNotice);
+        setNotice(() => (messages: Dictionary) => messages.crawler.pendingNotice);
         setActiveRunId(null);
         return;
       }
@@ -85,7 +91,7 @@ export function IngestionConsole() {
       cancelled = true;
       if (timeout) clearTimeout(timeout);
     };
-  }, [activeRunId, dictionary, statusLabels]);
+  }, [activeRunId]);
 
   const healthy = sources.filter((source) => source.healthStatus === "healthy").length;
   const degraded = sources.length - healthy;
@@ -99,7 +105,7 @@ export function IngestionConsole() {
       <p>{dictionary.crawler.policyBody}</p>
     </section>
     {error ? <ApiErrorState error={error} /> : null}
-    {notice ? <p className="status-message" role="status">{notice}</p> : null}
+    {notice ? <p className="status-message" role="status">{notice(dictionary, locale)}</p> : null}
     <div className="health-grid metric-grid">
       <Metric label={dictionary.crawler.sources} value={formatNumber(sources.length, locale)} />
       <Metric label={dictionary.crawler.healthy} value={formatNumber(healthy, locale)} />

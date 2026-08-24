@@ -162,7 +162,15 @@ def login(request: LoginRequest, response: Response, session: DatabaseSession) -
     return AuthResponse(data=LoginData(user=_user_data(user), csrf_token=csrf_token))
 
 
-@router.get("/me", response_model=MeResponse, responses={401: {"model": ErrorResponse}})
+@router.get(
+    "/me",
+    response_model=MeResponse,
+    responses={
+        401: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        503: {"model": ErrorResponse},
+    },
+)
 def me(context: Annotated[AuthContext, Depends(require_authenticated_user)]) -> MeResponse:
     return MeResponse(data=_user_data(context.user))
 

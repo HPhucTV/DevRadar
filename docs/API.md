@@ -92,7 +92,7 @@ V1 dùng page-based pagination vì dataset portfolio còn bounded và UI cần t
 | `GET /api/v1/health` | Process liveness; không tuyên bố database/source readiness | V1 scaffold | local/read |
 | `GET /api/v1/privacy` | Policy retention, deletion, AI boundary và source permission | V6-010 — implemented | public/read; không yêu cầu session |
 | `POST /api/v1/auth/login` | Xác thực operator/owner và tạo session | V6-002 — implemented | public login; rate limit ở V6-003 |
-| `GET /api/v1/auth/me` | Đọc user của session hiện tại | V6-002 — implemented | authenticated |
+| `GET /api/v1/auth/me` | Đọc user của session hoặc singleton `local-operator` hiện tại | V6-002/V6-017 — implemented | authenticated hoặc explicit localhost no-login; `401/403/503` fail-closed |
 | `POST /api/v1/auth/logout` | Revoke session hiện tại và xóa cookie | V6-002 — implemented | authenticated + CSRF |
 | `GET /api/v1/jobs` | List/filter canonical jobs | V1 — implemented | local/read; public read policy ở V6 |
 | `GET /api/v1/jobs/{jobId}` | Job detail và provenance tóm tắt | V1 — implemented | local/read |
