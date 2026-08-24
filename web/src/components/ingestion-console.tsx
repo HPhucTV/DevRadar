@@ -1,16 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ApiErrorState, EmptyState, Metric } from "@/components/api-state";
 import type { Dictionary } from "@/i18n/dictionaries";
 import { useI18n } from "@/i18n/locale-provider";
-import { formatDate, formatNumber, interpolate, type Locale } from "@/i18n/locale";
+import { formatDate, formatNumber, type Locale } from "@/i18n/locale";
 import type { ApiFailure } from "@/lib/api";
-import { getIngestionRun, listIngestionRuns, listIngestionSources, requestCrawlRun, type IngestionRun, type IngestionSource } from "@/lib/ingestion";
+import { listIngestionRuns, listIngestionSources, type IngestionRun, type IngestionSource } from "@/lib/ingestion";
 
-const POLL_INTERVAL_MS = 2_000;
-const POLL_WINDOW_MS = 30_000;
-const TERMINAL_RUN_STATUSES = new Set(["succeeded", "partial", "failed", "cancelled"]);
 type Notice = (dictionary: Dictionary, locale: Locale) => string;
 
 export function IngestionConsole() {
@@ -21,8 +18,6 @@ export function IngestionConsole() {
   const [error, setError] = useState<ApiFailure | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [loading, setLoading] = useState(false);
-  const [busySourceId, setBusySourceId] = useState<string | null>(null);
-  const [activeRunId, setActiveRunId] = useState<string | null>(null);
 
   async function refresh() {
     setLoading(true);
@@ -32,66 +27,11 @@ export function IngestionConsole() {
     else setError(sourceResult);
     if (runResult.kind === "success") setRuns(runResult.value.data);
     else if (!error) setError(runResult);
+    if (sourceResult.kind === "success" && runResult.kind === "success") {
+      setNotice(() => (messages: Dictionary) => messages.crawler.refreshed);
+    }
     setLoading(false);
   }
-
-  async function runSource(source: IngestionSource) {
-    if (source.approvalStatus !== "approved") return;
-    setBusySourceId(source.id);
-    setError(null);
-    setNotice(null);
-    const result = await requestCrawlRun(source.id, `ingestion-${crypto.randomUUID()}`);
-    if (result.kind === "error") setError(result);
-    else {
-      setRuns((current) => [result.value.data, ...current.filter((run) => run.id !== result.value.data.id)]);
-      setNotice(() => (messages: Dictionary) => interpolate(messages.crawler.crawlRequested, { name: source.name }));
-      setActiveRunId(result.value.data.id);
-    }
-    setBusySourceId(null);
-  }
-
-  useEffect(() => {
-    if (!activeRunId) return;
-
-    const runId = activeRunId;
-    let cancelled = false;
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    const startedAt = Date.now();
-
-    async function poll() {
-      const result = await getIngestionRun(runId);
-      if (cancelled) return;
-      if (result.kind === "error") {
-        setError(result);
-        setActiveRunId(null);
-        return;
-      }
-
-      const activeRun = result.value.data;
-      setRuns((current) => [activeRun, ...current.filter((run) => run.id !== activeRun.id)]);
-      if (TERMINAL_RUN_STATUSES.has(activeRun.status)) {
-        const finishedStatus = activeRun.status;
-        setNotice(() => (messages: Dictionary) => {
-          const labels = messages.status as Record<string, string>;
-          return interpolate(messages.crawler.crawlFinished, { status: labels[finishedStatus] ?? finishedStatus });
-        });
-        setActiveRunId(null);
-        return;
-      }
-      if (Date.now() - startedAt >= POLL_WINDOW_MS) {
-        setNotice(() => (messages: Dictionary) => messages.crawler.pendingNotice);
-        setActiveRunId(null);
-        return;
-      }
-      timeout = setTimeout(() => void poll(), POLL_INTERVAL_MS);
-    }
-
-    void poll();
-    return () => {
-      cancelled = true;
-      if (timeout) clearTimeout(timeout);
-    };
-  }, [activeRunId]);
 
   const healthy = sources.filter((source) => source.healthStatus === "healthy").length;
   const degraded = sources.length - healthy;
@@ -99,7 +39,7 @@ export function IngestionConsole() {
   return <>
     <section className="content-section source-health-intro">
       <div className="section-heading">
-        <div><p className="eyebrow">{dictionary.crawler.controlEyebrow}</p><h2>{dictionary.crawler.approvedOnly}</h2></div>
+        <div><p className="eyebrow">{dictionary.crawler.controlEyebrow}</p><h2>{dictionary.crawler.readOnly}</h2></div>
         <button type="button" onClick={() => void refresh()} disabled={loading}>{loading ? dictionary.common.loading : sources.length || runs.length ? dictionary.common.refresh : dictionary.crawler.loadRegistry}</button>
       </div>
       <p>{dictionary.crawler.policyBody}</p>
@@ -113,7 +53,7 @@ export function IngestionConsole() {
     </div>
     <section className="content-section">
       <div className="section-heading"><div><p className="eyebrow">{dictionary.crawler.allowlist}</p><h2>{dictionary.crawler.sourceHealth}</h2></div><span>{formatNumber(sources.length, locale)} {dictionary.common.loaded}</span></div>
-      {loading && !sources.length ? <p className="loading-state">{dictionary.crawler.loadingRegistry}</p> : sources.length ? <div className="source-list health-source-list">{sources.map((source) => <article className="source-card source-row" key={source.id}><div><strong>{source.name}</strong><p>{source.healthReasonCode ?? dictionary.crawler.noHealthWarning}</p></div><div><span className={`health-pill health-${source.healthStatus}`}>{statusLabels[source.healthStatus] ?? source.healthStatus}</span><button type="button" onClick={() => void runSource(source)} disabled={loading || busySourceId !== null || source.approvalStatus !== "approved"}>{busySourceId === source.id ? dictionary.crawler.requesting : source.approvalStatus === "approved" ? dictionary.crawler.runNow : dictionary.crawler.notApproved}</button></div></article>)}</div> : <EmptyState message={dictionary.crawler.noSources} />}
+      {loading && !sources.length ? <p className="loading-state">{dictionary.crawler.loadingRegistry}</p> : sources.length ? <div className="source-list health-source-list">{sources.map((source) => <article className="source-card source-row" key={source.id}><div><strong>{source.name}</strong><p>{source.healthReasonCode ?? dictionary.crawler.noHealthWarning}</p></div><div className="source-health-labels"><span className={`health-pill health-${source.healthStatus}`}>{statusLabels[source.healthStatus] ?? source.healthStatus}</span><span className="source-badge">{statusLabels[source.approvalStatus] ?? source.approvalStatus}</span></div></article>)}</div> : <EmptyState message={dictionary.crawler.noSources} />}
     </section>
     <section className="content-section">
       <div className="section-heading"><div><p className="eyebrow">{dictionary.crawler.historyEyebrow}</p><h2>{dictionary.crawler.recentRuns}</h2></div><span>{formatNumber(runs.length, locale)} {dictionary.common.shown}</span></div>

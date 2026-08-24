@@ -1,16 +1,16 @@
-import { CustomSourcePanel } from "@/components/custom-source-panel";
+import { SourceRecipePanel } from "@/components/source-recipe-panel";
 import { getI18n } from "@/i18n/server";
 
-export default async function CustomSourcesPage() {
+export default async function SourcesPage() {
   const { dictionary } = await getI18n();
   return (
     <>
       <section className="page-intro">
-        <p className="eyebrow">{dictionary.customSources.pageEyebrow}</p>
-        <h1>{dictionary.customSources.pageTitle}</h1>
-        <p>{dictionary.customSources.pageBody}</p>
+        <p className="eyebrow">{dictionary.sourceRecipes.pageEyebrow}</p>
+        <h1>{dictionary.sourceRecipes.pageTitle}</h1>
+        <p>{dictionary.sourceRecipes.pageBody}</p>
       </section>
-      <CustomSourcePanel />
+      <SourceRecipePanel />
     </>
   );
 }

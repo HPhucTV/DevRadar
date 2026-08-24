@@ -141,6 +141,7 @@ class SourceRecipeData(ApiModel):
     has_mapping: bool
     mapping_version: str | None
     block_reason: str | None
+    cooldown_until: datetime | None
     next_run_at: datetime | None
     created_at: datetime
     updated_at: datetime
@@ -266,6 +267,7 @@ def _recipe_data(recipe: SourceRecipe) -> SourceRecipeData:
         has_mapping=bool(recipe.field_mapping),
         mapping_version=recipe.mapping_version,
         block_reason=recipe.block_reason,
+        cooldown_until=recipe.cooldown_until,
         next_run_at=recipe.next_run_at,
         created_at=recipe.created_at,
         updated_at=recipe.updated_at,

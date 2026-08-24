@@ -1,4 +1,4 @@
-import type { ApiFailure, ApiResult, CrawlRun, DataEnvelope, ListEnvelope, Source } from "@/lib/api";
+import type { ApiFailure, ApiResult, CrawlRun, ListEnvelope, Source } from "@/lib/api";
 import { sessionFetch } from "@/lib/session-request";
 
 export type IngestionSource = Source;
@@ -6,7 +6,6 @@ export type IngestionRun = CrawlRun;
 
 type SourceList = ListEnvelope<IngestionSource>;
 type RunList = ListEnvelope<IngestionRun>;
-type RunResponse = DataEnvelope<IngestionRun>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -56,26 +55,10 @@ function isRunList(value: unknown): value is RunList {
   return isListEnvelope(value) && value.data.every(isRun);
 }
 
-function isRunResponse(value: unknown): value is RunResponse {
-  return isRecord(value) && isRun(value.data);
-}
-
 export function listIngestionSources(): Promise<ApiResult<SourceList>> {
   return request("/api/devradar/sources?page=1&pageSize=100", { method: "GET" }, isSourceList);
 }
 
 export function listIngestionRuns(): Promise<ApiResult<RunList>> {
   return request("/api/devradar/crawl-runs?page=1&pageSize=20", { method: "GET" }, isRunList);
-}
-
-export function getIngestionRun(runId: string): Promise<ApiResult<RunResponse>> {
-  return request(`/api/devradar/crawl-runs/${encodeURIComponent(runId)}`, { method: "GET" }, isRunResponse);
-}
-
-export function requestCrawlRun(sourceId: string, idempotencyKey: string): Promise<ApiResult<RunResponse>> {
-  return request("/api/devradar/crawl-runs", {
-    method: "POST",
-    headers: { "Idempotency-Key": idempotencyKey },
-    body: JSON.stringify({ sourceId }),
-  }, isRunResponse);
 }

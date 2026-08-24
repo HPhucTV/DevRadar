@@ -1,34 +1,19 @@
 import assert from "node:assert/strict";
-import { access, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const webRoot = new URL("../", import.meta.url);
 const source = (path) => readFile(new URL(path, webRoot), "utf8");
 
-test("custom source route and panel expose the protected local workflow", async () => {
+test("sources route no longer exposes the legacy custom source panel", async () => {
   const routes = JSON.parse(await source("src/contracts/routes.json"));
-  const route = routes.find((candidate) => candidate.id === "custom-sources");
+  const route = routes.find((candidate) => candidate.id === "source-recipes");
   assert.ok(route);
   assert.equal(route.path, "/sources");
   assert.equal(route.showInNav, true);
-  await access(new URL(route.pageFile, webRoot));
-
-  const panel = await source("src/components/custom-source-panel.tsx");
-  const dictionaries = await source("src/i18n/dictionaries.json");
-  assert.match(panel, /useI18n/);
-  assert.match(dictionaries, /Test crawl/);
-  assert.match(dictionaries, /permission|authorized|local/i);
-  assert.match(panel, /daily_at|interval_minutes|timezone/);
-  assert.match(panel, /preview|preview_ready/i);
-  assert.match(panel, /blocked|permission_required/i);
-  assert.match(panel, /finalUrl|redirectChain|coverageStatus|warnings/);
-  assert.match(panel, /candidate\.provenance/);
-  assert.match(panel, /custom-byte-budget/);
-  for (const field of ["salary", "description", "postedAt"]) {
-    assert.match(panel, new RegExp(`\\["${field}",`));
-  }
-  assert.doesNotMatch(panel, /localStorage|document\.cookie|bypass|captcha.?solve/i);
-  assert.doesNotMatch(await source("src/app/api/devradar/custom-sources/route.ts"), /page_budget/);
+  const page = await source(route.pageFile);
+  assert.match(page, /SourceRecipePanel/);
+  assert.doesNotMatch(page, /CustomSourcePanel/);
 });
 
 test("custom source client preserves bounded resource paths and safe contracts", async () => {

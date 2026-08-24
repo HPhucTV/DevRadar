@@ -9,6 +9,7 @@ test("light editorial token contract is present and old green theme is gone", as
   const css = await source("src/app/globals.css");
   assert.match(css, /--bg:\s*#F6F8FC/i);
   assert.match(css, /--accent:\s*#4F46E5/i);
+  assert.match(css, /--font-editorial:"Times New Roman",Georgia,serif/);
   assert.match(css, /Georgia/);
   assert.doesNotMatch(css, /--bg:#f4f1e8/);
   assert.doesNotMatch(css, /prefers-color-scheme:\s*dark/);
@@ -50,6 +51,19 @@ test("route grids reflow before content creates document overflow", async () => 
     css.lastIndexOf("@media(max-width:960px)") > css.indexOf(".custom-source-layout{"),
     "the custom-source base rule must precede its responsive override",
   );
+});
+
+test("source recipe mapper stays operable at narrow widths", async () => {
+  const css = await source("src/app/globals.css");
+  const panel = await source("src/components/source-recipe-panel.tsx");
+
+  assert.match(css, /\.source-recipe-layout\{[^}]*grid-template-columns/);
+  assert.match(css, /\.mapping-viewport\{[^}]*overflow:auto/);
+  assert.match(css, /\.mapping-overlay-button\{[^}]*min-width:44px[^}]*min-height:44px/);
+  assert.match(css, /@media\(max-width:420px\)/);
+  assert.match(css, /\.source-recipe-layout[^}]*grid-template-columns:1fr/);
+  assert.match(panel, /aria-label/);
+  assert.match(panel, /aria-pressed/);
 });
 
 test("shared shell and route surfaces use redesign primitives", async () => {
@@ -94,11 +108,13 @@ test("operator surfaces use semantic redesign classes", async () => {
 test("redesign preserves CV, crawler and privacy boundaries", async () => {
   const cv = await source("src/components/cv-match-panel.tsx");
   const crawler = await source("src/components/ingestion-console.tsx");
+  const recipes = await source("src/components/source-recipe-panel.tsx");
   const privacy = await source("src/app/(dashboard)/privacy/page.tsx");
   assert.match(cv, /MAX_RESUME_BYTES/);
   assert.match(cv, /deleteResume/);
-  assert.match(crawler, /POLL_WINDOW_MS\s*=\s*30_000/);
+  assert.doesNotMatch(crawler, /requestCrawlRun|method:\s*["']POST["']/);
   assert.match(crawler, /approvalStatus/);
+  assert.match(recipes, /PREVIEW_POLL_WINDOW_MS\s*=\s*45_000/);
   assert.match(privacy, /sourceRecipesLocalOnly/);
   assert.match(privacy, /termsWarningOwnerOverride/);
   assert.match(privacy, /accessControlBypassAllowed/);

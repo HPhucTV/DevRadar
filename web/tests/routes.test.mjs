@@ -13,7 +13,7 @@ const expected = [
   ["crawler-health", "/crawler-health", "implemented", true],
   ["cv-match", "/cv-match", "implemented", true],
   ["alerts", "/alerts", "implemented", true],
-  ["custom-sources", "/sources", "implemented", true],
+  ["source-recipes", "/sources", "implemented", true],
   ["privacy", "/privacy", "implemented", false],
 ];
 
@@ -43,14 +43,12 @@ test("route manifest owns the current dashboard surface", async () => {
   assert.equal(routes.filter(({ showInNav }) => showInNav).length, 7);
 });
 
-test("crawler health route exposes the operator ingestion contract", async () => {
+test("crawler health route is a read-only operator evidence surface", async () => {
   const routes = JSON.parse(await readFile(new URL("src/contracts/routes.json", webRoot), "utf8"));
   const route = routes.find(({ id }) => id === "crawler-health");
   assert.deepEqual(route.apiResources, [
     "GET /api/devradar/sources",
     "GET /api/devradar/crawl-runs",
-    "GET /api/devradar/crawl-runs/{runId}",
-    "POST /api/devradar/crawl-runs",
   ]);
   const page = await readFile(new URL("src/app/(dashboard)/crawler-health/page.tsx", webRoot), "utf8");
   const component = await readFile(new URL("src/components/ingestion-console.tsx", webRoot), "utf8");
@@ -58,42 +56,32 @@ test("crawler health route exposes the operator ingestion contract", async () =>
   assert.match(page, /IngestionConsole/);
   assert.doesNotMatch(page, /RoutePlaceholder/);
   assert.match(component, /approvalStatus/);
-  assert.match(dictionaries, /idempotency/i);
+  assert.match(dictionaries, /read.only/i);
   assert.doesNotMatch(component, /allowedHosts|rateLimitPolicy|baseUrl/);
+  assert.doesNotMatch(component, /requestCrawlRun|runSource|activeRunId/);
 });
 
-test("crawler console polls a bounded pending run until a terminal status", async () => {
+test("crawler console does not mutate or poll crawl runs", async () => {
   const component = await readFile(new URL("src/components/ingestion-console.tsx", webRoot), "utf8");
-  const dictionaries = await readFile(new URL("src/i18n/dictionaries.json", webRoot), "utf8");
-  assert.match(component, /useEffect/);
-  assert.match(component, /POLL_INTERVAL_MS\s*=\s*2_000/);
-  assert.match(component, /POLL_WINDOW_MS\s*=\s*30_000/);
-  assert.match(component, /succeeded.*partial.*failed.*cancelled/s);
-  assert.match(component, /pendingNotice/);
-  assert.match(dictionaries, /still pending.*refresh/i);
-});
-
-test("crawler polling uses the run detail resource instead of a truncated history page", async () => {
-  const detailRoute = await readFile(new URL("src/app/api/devradar/crawl-runs/[runId]/route.ts", webRoot), "utf8");
   const client = await readFile(new URL("src/lib/ingestion.ts", webRoot), "utf8");
-  const component = await readFile(new URL("src/components/ingestion-console.tsx", webRoot), "utf8");
-  assert.match(detailRoute, /proxyBackend/);
-  assert.match(detailRoute, /crawl-runs\/\$\{encodeURIComponent\(runId\)\}/);
-  assert.match(client, /getIngestionRun/);
-  assert.match(component, /getIngestionRun\((?:activeRunId|runId)\)/);
-  assert.doesNotMatch(component, /nextRuns\.find\(\(run\) => run\.id === activeRunId\)/);
+  assert.doesNotMatch(component + client, /requestCrawlRun|getIngestionRun|method:\s*["']POST["']/);
 });
 
-test("crawler BFF routes preserve the session boundary and reject arbitrary crawl input", async () => {
-  const sources = await readFile(new URL("src/app/api/devradar/sources/route.ts", webRoot), "utf8");
-  const runs = await readFile(new URL("src/app/api/devradar/crawl-runs/route.ts", webRoot), "utf8");
-  assert.match(sources, /proxyBackend/);
-  assert.match(runs, /proxyBackend/);
-  assert.match(runs, /Idempotency-Key/);
-  assert.match(runs, /content-type.*application\/json/i);
-  assert.match(runs, /sourceId/);
-  assert.match(runs, /ingestion_request_invalid/);
-  assert.doesNotMatch(runs, /adapterKey|allowedHosts/i);
+test("sources route owns the complete recipe contract", async () => {
+  const routes = JSON.parse(await readFile(manifestUrl, "utf8"));
+  const route = routes.find(({ id }) => id === "source-recipes");
+  assert.deepEqual(route.apiResources, [
+    "GET /api/devradar/source-catalog",
+    "GET /api/devradar/source-recipes",
+    "POST /api/devradar/source-recipes",
+    "PATCH /api/devradar/source-recipes/{recipeId}",
+    "DELETE /api/devradar/source-recipes/{recipeId}",
+    "POST /api/devradar/source-recipes/{recipeId}/previews",
+    "GET /api/devradar/source-recipes/{recipeId}/previews/{previewId}",
+    "POST /api/devradar/source-recipes/{recipeId}/previews/{previewId}/mapping",
+    "GET /api/devradar/source-recipes/{recipeId}/crawl-runs",
+    "POST /api/devradar/source-recipes/{recipeId}/crawl-runs",
+  ]);
 });
 
 test("cv match route exposes only protected local matching resources", async () => {

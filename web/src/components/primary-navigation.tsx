@@ -18,7 +18,7 @@ export function PrimaryNavigation() {
     "crawler-health": dictionary.routes.crawlerHealth,
     "cv-match": dictionary.routes.cvMatch,
     alerts: dictionary.routes.alerts,
-    "custom-sources": dictionary.routes.customSources,
+    "source-recipes": dictionary.routes.sourceRecipes,
   };
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {

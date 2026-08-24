@@ -173,6 +173,7 @@ def test_create_acknowledge_and_queue_preview_without_canonical_rows(
     assert data["termsNotice"] == "not_reviewed"
     assert data["termsAcknowledgementRequired"] is True
     assert data["termsAcknowledged"] is False
+    assert data["cooldownUntil"] is None
     assert "fieldMapping" not in data
     recipe_id = data["id"]
 

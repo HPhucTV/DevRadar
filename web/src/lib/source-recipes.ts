@@ -22,14 +22,33 @@ export type SourceRecipe = {
   origin: string;
   termsNotice: "not_reviewed" | "no_specific_restriction_found" | "restricted_terms";
   termsNoticeVersion: string;
+  termsEvidenceUrl: string | null;
   termsAcknowledgementRequired: boolean;
   termsAcknowledged: boolean;
   seniorityFilter: string[];
   scheduleKind: "manual" | "every_6_hours" | "daily" | "weekly";
+  scheduleLocalTime: string | null;
+  scheduleWeekday: number | null;
   timezone: string;
   hasMapping: boolean;
   mappingVersion: string | null;
   blockReason: string | null;
+  cooldownUntil: string | null;
+  nextRunAt: string | null;
+};
+
+export type SourceCatalogEntry = {
+  name: string;
+  origin: string;
+  listingHint: string;
+  notice: SourceRecipe["termsNotice"];
+  evidenceUrl: string;
+  reviewedOn: string;
+};
+
+export type SourceCatalog = {
+  schemaVersion: string;
+  entries: SourceCatalogEntry[];
 };
 
 export type SourceRecipeInput = {
@@ -55,13 +74,28 @@ export type SourceRecipePreview = {
   id: string;
   recipeId: string;
   status: "pending" | "running" | "succeeded" | "failed";
-  candidates: Array<Record<string, unknown>>;
+  candidates: PreviewCandidate[];
   warnings: Array<Record<string, unknown>>;
   elements: PreviewElement[];
   proposedHosts: string[];
   screenshotDataUrl: string | null;
   errorCode: string | null;
   expiresAt: string;
+};
+
+export type PreviewCandidate = {
+  externalId: string;
+  jobUrl: string;
+  title: string;
+  company: string;
+  location: string | null;
+  levelRaw: string | null;
+  description: string | null;
+  postedAt: string | null;
+  confidence: number;
+  provenance: Array<{ fieldName: string; sourcePath: string; method: string }>;
+  warnings: string[];
+  parserVersion: string;
 };
 
 export type SourceRecipeCrawlRun = {
@@ -96,8 +130,46 @@ function isRecipe(value: unknown): value is SourceRecipe {
     typeof value.listingUrl === "string" &&
     typeof value.origin === "string" &&
     typeof value.termsNoticeVersion === "string" &&
+    (typeof value.termsEvidenceUrl === "string" || value.termsEvidenceUrl === null) &&
+    typeof value.termsAcknowledgementRequired === "boolean" &&
+    typeof value.termsAcknowledged === "boolean" &&
     Array.isArray(value.seniorityFilter) &&
-    typeof value.hasMapping === "boolean"
+    typeof value.hasMapping === "boolean" &&
+    (typeof value.cooldownUntil === "string" || value.cooldownUntil === null)
+  );
+}
+
+function isCatalogEntry(value: unknown): value is SourceCatalogEntry {
+  return (
+    isRecord(value) &&
+    typeof value.name === "string" &&
+    typeof value.origin === "string" &&
+    typeof value.listingHint === "string" &&
+    typeof value.notice === "string" &&
+    typeof value.evidenceUrl === "string" &&
+    typeof value.reviewedOn === "string"
+  );
+}
+
+function isCatalog(value: unknown): value is SourceCatalog {
+  return (
+    isRecord(value) &&
+    typeof value.schemaVersion === "string" &&
+    Array.isArray(value.entries) &&
+    value.entries.every(isCatalogEntry)
+  );
+}
+
+function isCandidate(value: unknown): value is PreviewCandidate {
+  return (
+    isRecord(value) &&
+    typeof value.externalId === "string" &&
+    typeof value.jobUrl === "string" &&
+    typeof value.title === "string" &&
+    typeof value.company === "string" &&
+    typeof value.confidence === "number" &&
+    Array.isArray(value.provenance) &&
+    Array.isArray(value.warnings)
   );
 }
 
@@ -127,6 +199,7 @@ function isPreview(value: unknown): value is SourceRecipePreview {
   return (
     typeof value.status === "string" &&
     Array.isArray(value.candidates) &&
+    value.candidates.every(isCandidate) &&
     Array.isArray(value.warnings) &&
     Array.isArray(value.elements) &&
     value.elements.every(isElement) &&
@@ -205,6 +278,15 @@ export function listSourceRecipes(): Promise<ApiResult<ListEnvelope<SourceRecipe
   );
 }
 
+export function getSourceCatalog(): Promise<ApiResult<DataEnvelope<SourceCatalog>>> {
+  return request(
+    "/api/devradar/source-catalog",
+    { method: "GET" },
+    (value): value is DataEnvelope<SourceCatalog> => isData(value, isCatalog),
+    "Source catalog could not be loaded.",
+  );
+}
+
 export function createSourceRecipe(
   input: SourceRecipeInput,
 ): Promise<ApiResult<DataEnvelope<SourceRecipe>>> {
@@ -226,6 +308,20 @@ export function updateSourceRecipe(
     (value): value is DataEnvelope<SourceRecipe> => isData(value, isRecipe),
     "Source recipe could not be updated.",
   );
+}
+
+export async function retireSourceRecipe(recipeId: string): Promise<ApiResult<null>> {
+  try {
+    const response = await sessionFetch(`/api/devradar/source-recipes/${encodeURIComponent(recipeId)}`, {
+      method: "DELETE",
+      headers: { accept: "application/json" },
+    });
+    if (response.status === 204) return { kind: "success", value: null };
+    const body: unknown = await response.json().catch(() => null);
+    return failure(response.status, body, "Source recipe could not be retired.");
+  } catch {
+    return failure(503, null, "DevRadar API is not reachable.");
+  }
 }
 
 export function requestSourcePreview(

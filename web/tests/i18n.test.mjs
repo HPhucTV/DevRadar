@@ -113,7 +113,7 @@ const interactivePanels = [
   "src/components/ingestion-console.tsx",
   "src/components/cv-match-panel.tsx",
   "src/components/alert-rules-panel.tsx",
-  "src/components/custom-source-panel.tsx",
+  "src/components/source-recipe-panel.tsx",
 ];
 
 for (const path of interactivePanels) {
