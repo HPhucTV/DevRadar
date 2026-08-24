@@ -1,5 +1,7 @@
 import { AlertRulesPanel } from "@/components/alert-rules-panel";
+import { getI18n } from "@/i18n/server";
 
-export default function AlertsPage() {
-  return <><section className="page-intro alerts-intro"><p className="eyebrow">Evidence-first notifications</p><h1>Alerts with a paper trail.</h1><p>Keep a small, explainable watchlist for the jobs that matter. This local/protected slice uses one Discord connector and makes replay behavior visible.</p></section><AlertRulesPanel /></>;
+export default async function AlertsPage() {
+  const { dictionary } = await getI18n();
+  return <><section className="page-intro alerts-intro"><p className="eyebrow">{dictionary.alerts.pageEyebrow}</p><h1>{dictionary.alerts.pageTitle}</h1><p>{dictionary.alerts.pageBody}</p></section><AlertRulesPanel /></>;
 }

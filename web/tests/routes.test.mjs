@@ -54,20 +54,23 @@ test("crawler health route exposes the operator ingestion contract", async () =>
   ]);
   const page = await readFile(new URL("src/app/(dashboard)/crawler-health/page.tsx", webRoot), "utf8");
   const component = await readFile(new URL("src/components/ingestion-console.tsx", webRoot), "utf8");
+  const dictionaries = await readFile(new URL("src/i18n/dictionaries.json", webRoot), "utf8");
   assert.match(page, /IngestionConsole/);
   assert.doesNotMatch(page, /RoutePlaceholder/);
   assert.match(component, /approvalStatus/);
-  assert.match(component, /Idempotency-Key|idempotency/i);
+  assert.match(dictionaries, /idempotency/i);
   assert.doesNotMatch(component, /allowedHosts|rateLimitPolicy|baseUrl/);
 });
 
 test("crawler console polls a bounded pending run until a terminal status", async () => {
   const component = await readFile(new URL("src/components/ingestion-console.tsx", webRoot), "utf8");
+  const dictionaries = await readFile(new URL("src/i18n/dictionaries.json", webRoot), "utf8");
   assert.match(component, /useEffect/);
   assert.match(component, /POLL_INTERVAL_MS\s*=\s*2_000/);
   assert.match(component, /POLL_WINDOW_MS\s*=\s*30_000/);
   assert.match(component, /succeeded.*partial.*failed.*cancelled/s);
-  assert.match(component, /still pending.*refresh/i);
+  assert.match(component, /pendingNotice/);
+  assert.match(dictionaries, /still pending.*refresh/i);
 });
 
 test("crawler polling uses the run detail resource instead of a truncated history page", async () => {
@@ -195,9 +198,11 @@ test("privacy route exposes truthful retention, AI and source policy", async () 
   const page = await readFile(new URL(route.pageFile, webRoot), "utf8");
   const bff = await readFile(new URL("src/app/api/devradar/privacy/route.ts", webRoot), "utf8");
   const shell = await readFile(new URL("src/components/app-shell.tsx", webRoot), "utf8");
+  const dictionaries = await readFile(new URL("src/i18n/dictionaries.json", webRoot), "utf8");
   assert.match(page, /resumeProfileTtlHours/);
   assert.match(page, /GeoComply|Lever/);
-  assert.match(page, /external LLM/i);
+  assert.match(page, /externalAllowed|externalBlocked/);
+  assert.match(dictionaries, /external LLM/i);
   assert.match(page, /ApiErrorState/);
   assert.match(bff, /proxyBackend/);
   assert.match(shell, /privacy/);

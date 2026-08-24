@@ -1,3 +1,4 @@
 import { IngestionConsole } from "@/components/ingestion-console";
+import { getI18n } from "@/i18n/server";
 
-export default function CrawlerHealthPage() { return <><section className="page-intro crawler-intro"><p className="eyebrow">Operational evidence</p><h1>Trust the source before the chart.</h1><p>Health is derived from approved source state and crawl history. A failed or partial run is never a removal signal.</p></section><IngestionConsole /></>; }
+export default async function CrawlerHealthPage() { const { dictionary } = await getI18n(); return <><section className="page-intro crawler-intro"><p className="eyebrow">{dictionary.crawler.pageEyebrow}</p><h1>{dictionary.crawler.pageTitle}</h1><p>{dictionary.crawler.pageBody}</p></section><IngestionConsole /></>; }

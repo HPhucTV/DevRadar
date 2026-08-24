@@ -1,15 +1,14 @@
 import { CvMatchPanel } from "@/components/cv-match-panel";
+import { getI18n } from "@/i18n/server";
 
-export default function CvMatchPage() {
+export default async function CvMatchPage() {
+  const { dictionary } = await getI18n();
   return (
     <>
       <section className="page-intro cv-intro">
-        <p className="eyebrow">Local and protected</p>
-        <h1>See where your resume fits.</h1>
-        <p>
-          Upload a PDF or DOCX for a bounded local profile, then inspect the evidence behind each
-          match. The original file and raw text are not kept by this page.
-        </p>
+        <p className="eyebrow">{dictionary.cv.pageEyebrow}</p>
+        <h1>{dictionary.cv.pageTitle}</h1>
+        <p>{dictionary.cv.pageBody}</p>
       </section>
       <CvMatchPanel />
     </>

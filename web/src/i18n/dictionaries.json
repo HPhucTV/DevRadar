@@ -63,7 +63,9 @@
         "permission_acknowledgement_required": "Bạn phải xác nhận quyền truy cập nguồn này.",
         "preview_required": "Cần chạy thử thành công trước khi bật lịch.",
         "profile_name_conflict": "Tên profile nguồn đã được sử dụng.",
-        "local_operator_unavailable": "Không thể sử dụng local operator vào lúc này."
+        "local_operator_unavailable": "Không thể sử dụng local operator vào lúc này.",
+        "custom_source_invalid": "Cấu hình nguồn tùy chỉnh không hợp lệ.",
+        "alert_rule_invalid": "Alert rule cần tên và ít nhất một bộ lọc."
       }
     },
     "status": {
@@ -200,15 +202,17 @@
       "requested": "yêu cầu lúc",
       "noHealthSignal": "Không có health signal",
       "noRuns": "Operator này chưa có crawl run nào.",
-      "pendingNotice": "Crawl vẫn đang chờ; hãy làm mới thủ công để kiểm tra lại."
+      "pendingNotice": "Crawl vẫn đang chờ; hãy làm mới thủ công để kiểm tra lại.",
+      "crawlRequested": "Đã yêu cầu crawl cho {name}. Run đang chờ bounded worker.",
+      "crawlFinished": "Crawl {status}."
     },
     "cv": {
       "pageEyebrow": "Local và được bảo vệ",
       "pageTitle": "Xem CV của bạn phù hợp ở đâu.",
       "pageBody": "Tạo profile ngắn hạn từ PDF/DOCX, so khớp với việc làm active và xóa profile cùng dữ liệu dẫn xuất khi hoàn tất.",
       "ariaLabel": "So khớp CV local",
-      "sessionEyebrow": "Session được bảo vệ",
-      "startTitle": "Bắt đầu bằng tài khoản của bạn",
+      "sessionEyebrow": "Phạm vi riêng tư",
+      "startTitle": "Bắt đầu với CV của bạn",
       "browserNote": "Không có dữ liệu nào được lưu trong trình duyệt.",
       "file": "File CV",
       "fileHelp": "PDF hoặc DOCX, tối đa 5 MiB. Raw text và file gốc không hiển thị tại đây.",
@@ -259,10 +263,10 @@
       "scopeTitle": "Theo dõi thị trường mà không spam",
       "channelNote": "Discord connector · webhook không vào browser",
       "scopeBody": "Tạo rule literal theo công ty hoặc kỹ năng. Server giữ webhook và lịch sử delivery, đồng thời ngăn replay trùng. Match-threshold rule vẫn có qua protected API khi profile active.",
-      "sessionEyebrow": "Session đã xác thực",
+      "sessionEyebrow": "Phạm vi chủ sở hữu",
       "manage": "Quản lý watchlist",
       "loadRules": "Tải rule của tôi",
-      "sessionBody": "Session cookie là HttpOnly; mutation dùng CSRF token cùng origin và không để lộ credential cho trang.",
+      "sessionBody": "Credential và owner scope được xử lý phía server; trang không lưu token hoặc secret.",
       "builderEyebrow": "Tạo rule",
       "create": "Tạo cảnh báo",
       "oneFilter": "Ít nhất một bộ lọc",
@@ -280,11 +284,12 @@
       "dispatch": "Gửi tối đa 5",
       "deleteRule": "Xóa",
       "noRules": "Chưa tải rule",
-      "noRulesBody": "Đăng nhập để tải hoặc tạo watch theo công ty và kỹ năng được bảo vệ.",
+      "noRulesBody": "Tải hoặc tạo watch theo công ty và kỹ năng trong phạm vi được bảo vệ.",
       "validation": "Hãy thêm tên và ít nhất một bộ lọc công ty hoặc kỹ năng.",
       "created": "Đã tạo alert rule. Dispatch vẫn bounded và được bảo vệ.",
       "deleteConfirm": "Xóa alert rule {name}?",
-      "deleted": "Đã xóa alert rule và lịch sử delivery."
+      "deleted": "Đã xóa alert rule và lịch sử delivery.",
+      "dispatchSummary": "Dispatch kiểm tra {considered} việc làm: {sent} đã gửi, {skipped} lượt bỏ qua replay-safe."
     },
     "customSources": {
       "pageEyebrow": "Local của chủ sở hữu và được bảo vệ",
@@ -347,6 +352,7 @@
       "schedulePaused": "Đã tạm dừng lịch.",
       "retireConfirm": "Ngừng sử dụng nguồn tùy chỉnh này? Dữ liệu lịch sử vẫn được giữ.",
       "retired": "Đã ngừng nguồn tùy chỉnh. Dữ liệu lịch sử được giữ nguyên.",
+      "crawlQueued": "Crawl đã xếp hàng với trạng thái {status}.",
       "accessRequired": "Cần quyền truy cập",
       "blockedBody": "Profile bị chặn vì phản hồi gần nhất yêu cầu quyền. Hãy sửa quyền tại nguồn rồi chạy thử lại.",
       "previewEyebrow": "Bằng chứng preview",
@@ -386,6 +392,15 @@
       "allowlistDisabled": "Crawler policy không giới hạn allow-list.",
       "noBypass": "Không vượt CAPTCHA, authentication, paywall hoặc anti-bot.",
       "sourceAccess": "Trạng thái truy cập nguồn"
+    },
+    "routePlaceholder": {
+      "unknown": "Route contract không tồn tại.",
+      "scaffolded": "đã scaffold",
+      "implemented": "đã triển khai",
+      "description": "Surface này tuân theo data contract được liệt kê bên dưới.",
+      "dataContract": "Data contract",
+      "noContract": "Backend contract chưa được cung cấp có chủ đích.",
+      "handoff": "Dữ liệu được hiển thị theo availability đã khai báo của route."
     },
     "loading": {
       "eyebrow": "Đang tải bằng chứng",
@@ -457,7 +472,9 @@
         "permission_acknowledgement_required": "Permission acknowledgement is required.",
         "preview_required": "A successful preview is required before enabling the schedule.",
         "profile_name_conflict": "The custom source profile name is already in use.",
-        "local_operator_unavailable": "The local operator identity is unavailable."
+        "local_operator_unavailable": "The local operator identity is unavailable.",
+        "custom_source_invalid": "The custom source configuration is invalid.",
+        "alert_rule_invalid": "The alert rule needs a name and at least one filter."
       }
     },
     "status": {
@@ -594,15 +611,17 @@
       "requested": "requested",
       "noHealthSignal": "No health signal",
       "noRuns": "No crawl runs have been recorded for this operator.",
-      "pendingNotice": "Crawl is still pending; refresh manually to check again."
+      "pendingNotice": "Crawl is still pending; refresh manually to check again.",
+      "crawlRequested": "Crawl requested for {name}. It is pending for the bounded worker.",
+      "crawlFinished": "Crawl {status}."
     },
     "cv": {
       "pageEyebrow": "Local and protected",
       "pageTitle": "See where your resume fits.",
       "pageBody": "Create a short-lived profile from PDF/DOCX, match it against active jobs, and delete the profile with derived data when you are done.",
       "ariaLabel": "Local resume matching",
-      "sessionEyebrow": "Protected session",
-      "startTitle": "Start with your account",
+      "sessionEyebrow": "Private owner scope",
+      "startTitle": "Start with your resume",
       "browserNote": "Nothing is saved in the browser.",
       "file": "Resume file",
       "fileHelp": "PDF or DOCX, maximum 5 MiB. Raw text and the original file are not shown here.",
@@ -653,10 +672,10 @@
       "scopeTitle": "Watch the market without spamming it.",
       "channelNote": "Discord connector · no webhook in browser",
       "scopeBody": "Create a literal company or skill rule. The server owns the webhook, keeps delivery history, and prevents replay duplicates. Match-threshold rules remain available through the protected API when a profile is active.",
-      "sessionEyebrow": "Authenticated session",
+      "sessionEyebrow": "Owner scope",
       "manage": "Manage your watchlist",
       "loadRules": "Load my rules",
-      "sessionBody": "The session cookie is HttpOnly; mutations use a same-origin CSRF token and never expose credentials to the page.",
+      "sessionBody": "Credentials and owner scope stay server-side; the page stores no token or secret.",
       "builderEyebrow": "Rule builder",
       "create": "Create an alert",
       "oneFilter": "At least one filter",
@@ -674,11 +693,12 @@
       "dispatch": "Dispatch up to 5",
       "deleteRule": "Delete",
       "noRules": "No rules loaded",
-      "noRulesBody": "Sign in to load or create your protected company and skill watches.",
+      "noRulesBody": "Load or create protected company and skill watches within the owner scope.",
       "validation": "Add a name and at least one company or skill filter.",
       "created": "Alert rule created. Dispatch stays bounded and protected.",
       "deleteConfirm": "Delete alert rule {name}?",
-      "deleted": "Alert rule and delivery history deleted."
+      "deleted": "Alert rule and delivery history deleted.",
+      "dispatchSummary": "Dispatch checked {considered} jobs: {sent} sent, {skipped} replay-safe skips."
     },
     "customSources": {
       "pageEyebrow": "Owner-local and protected",
@@ -741,6 +761,7 @@
       "schedulePaused": "Schedule paused.",
       "retireConfirm": "Retire this custom source? Historical jobs stay preserved.",
       "retired": "Custom source retired. Historical data was preserved.",
+      "crawlQueued": "Crawl queued with status {status}.",
       "accessRequired": "Access required",
       "blockedBody": "This profile is blocked because the last response required permission. Fix access at the source, then run Test crawl again.",
       "previewEyebrow": "Preview evidence",
@@ -780,6 +801,15 @@
       "allowlistDisabled": "Crawler policy is not restricted to an allow-list.",
       "noBypass": "CAPTCHA, authentication, paywall and anti-bot controls are never bypassed.",
       "sourceAccess": "Source access status"
+    },
+    "routePlaceholder": {
+      "unknown": "Unknown route contract.",
+      "scaffolded": "scaffolded",
+      "implemented": "implemented",
+      "description": "This surface follows the data contract listed below.",
+      "dataContract": "Data contract",
+      "noContract": "The backend contract is intentionally unavailable.",
+      "handoff": "Data rendering follows the availability declared by this route."
     },
     "loading": {
       "eyebrow": "Loading evidence",

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useI18n } from "@/i18n/locale-provider";
 import { currentUser, logout, type AuthUser } from "@/lib/auth";
 
 export function AuthControls({ localNoLoginEnabled }: { localNoLoginEnabled: boolean }) {
@@ -10,6 +11,7 @@ export function AuthControls({ localNoLoginEnabled }: { localNoLoginEnabled: boo
 }
 
 function SessionAuthControls() {
+  const { dictionary } = useI18n();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -26,5 +28,5 @@ function SessionAuthControls() {
     setBusy(false);
   }
 
-  return user ? <span className="auth-controls"><span>{user.username} · {user.role}</span><button type="button" onClick={() => void signOut()} disabled={busy}>{busy ? "Signing out..." : "Sign out"}</button></span> : <Link href="/login">Sign in</Link>;
+  return user ? <span className="auth-controls"><span>{user.username} · {dictionary.status[user.role]}</span><button type="button" onClick={() => void signOut()} disabled={busy}>{busy ? dictionary.auth.signingOut : dictionary.auth.signOut}</button></span> : <Link href="/login">{dictionary.auth.signIn}</Link>;
 }

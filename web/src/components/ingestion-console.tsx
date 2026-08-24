@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { ApiErrorState, EmptyState, Metric } from "@/components/api-state";
+import { useI18n } from "@/i18n/locale-provider";
+import { formatDate, formatNumber, interpolate } from "@/i18n/locale";
 import type { ApiFailure } from "@/lib/api";
 import { getIngestionRun, listIngestionRuns, listIngestionSources, requestCrawlRun, type IngestionRun, type IngestionSource } from "@/lib/ingestion";
 
@@ -10,6 +12,8 @@ const POLL_WINDOW_MS = 30_000;
 const TERMINAL_RUN_STATUSES = new Set(["succeeded", "partial", "failed", "cancelled"]);
 
 export function IngestionConsole() {
+  const { locale, dictionary } = useI18n();
+  const statusLabels = dictionary.status as Record<string, string>;
   const [sources, setSources] = useState<IngestionSource[]>([]);
   const [runs, setRuns] = useState<IngestionRun[]>([]);
   const [error, setError] = useState<ApiFailure | null>(null);
@@ -38,7 +42,7 @@ export function IngestionConsole() {
     if (result.kind === "error") setError(result);
     else {
       setRuns((current) => [result.value.data, ...current.filter((run) => run.id !== result.value.data.id)]);
-      setNotice(`Crawl requested for ${source.name}. It is pending for the bounded worker.`);
+      setNotice(interpolate(dictionary.crawler.crawlRequested, { name: source.name }));
       setActiveRunId(result.value.data.id);
     }
     setBusySourceId(null);
@@ -64,12 +68,12 @@ export function IngestionConsole() {
       const activeRun = result.value.data;
       setRuns((current) => [activeRun, ...current.filter((run) => run.id !== activeRun.id)]);
       if (TERMINAL_RUN_STATUSES.has(activeRun.status)) {
-        setNotice(`Crawl ${activeRun.status}.`);
+        setNotice(interpolate(dictionary.crawler.crawlFinished, { status: statusLabels[activeRun.status] ?? activeRun.status }));
         setActiveRunId(null);
         return;
       }
       if (Date.now() - startedAt >= POLL_WINDOW_MS) {
-        setNotice("Crawl is still pending; refresh manually to check again.");
+        setNotice(dictionary.crawler.pendingNotice);
         setActiveRunId(null);
         return;
       }
@@ -81,7 +85,7 @@ export function IngestionConsole() {
       cancelled = true;
       if (timeout) clearTimeout(timeout);
     };
-  }, [activeRunId]);
+  }, [activeRunId, dictionary, statusLabels]);
 
   const healthy = sources.filter((source) => source.healthStatus === "healthy").length;
   const degraded = sources.length - healthy;
@@ -89,25 +93,25 @@ export function IngestionConsole() {
   return <>
     <section className="content-section source-health-intro">
       <div className="section-heading">
-        <div><p className="eyebrow">Operator control</p><h2>Approved sources only</h2></div>
-        <button type="button" onClick={() => void refresh()} disabled={loading}>{loading ? "Loading..." : sources.length || runs.length ? "Refresh" : "Load registry"}</button>
+        <div><p className="eyebrow">{dictionary.crawler.controlEyebrow}</p><h2>{dictionary.crawler.approvedOnly}</h2></div>
+        <button type="button" onClick={() => void refresh()} disabled={loading}>{loading ? dictionary.common.loading : sources.length || runs.length ? dictionary.common.refresh : dictionary.crawler.loadRegistry}</button>
       </div>
-      <p>Triggering sends only a server-validated source identity. The API owns allow-list, approval, CSRF, operator authorization and idempotency; crawl network work stays outside this request.</p>
+      <p>{dictionary.crawler.policyBody}</p>
     </section>
     {error ? <ApiErrorState error={error} /> : null}
     {notice ? <p className="status-message" role="status">{notice}</p> : null}
     <div className="health-grid metric-grid">
-      <Metric label="Sources" value={sources.length} />
-      <Metric label="Healthy" value={healthy} />
-      <Metric label="Needs attention" value={degraded} />
+      <Metric label={dictionary.crawler.sources} value={formatNumber(sources.length, locale)} />
+      <Metric label={dictionary.crawler.healthy} value={formatNumber(healthy, locale)} />
+      <Metric label={dictionary.crawler.attention} value={formatNumber(degraded, locale)} />
     </div>
     <section className="content-section">
-      <div className="section-heading"><div><p className="eyebrow">Allow-list</p><h2>Source health</h2></div><span>{sources.length} loaded</span></div>
-      {loading && !sources.length ? <p className="loading-state">Loading source registry...</p> : sources.length ? <div className="source-list health-source-list">{sources.map((source) => <article className="source-card source-row" key={source.id}><div><strong>{source.name}</strong><p>{source.healthReasonCode ?? "No active health warning"}</p></div><div><span className={`health-pill health-${source.healthStatus}`}>{source.healthStatus}</span><button type="button" onClick={() => void runSource(source)} disabled={loading || busySourceId !== null || source.approvalStatus !== "approved"}>{busySourceId === source.id ? "Requesting..." : source.approvalStatus === "approved" ? "Run now" : "Not approved"}</button></div></article>)}</div> : <EmptyState message="No source registry rows are available." />}
+      <div className="section-heading"><div><p className="eyebrow">{dictionary.crawler.allowlist}</p><h2>{dictionary.crawler.sourceHealth}</h2></div><span>{formatNumber(sources.length, locale)} {dictionary.common.loaded}</span></div>
+      {loading && !sources.length ? <p className="loading-state">{dictionary.crawler.loadingRegistry}</p> : sources.length ? <div className="source-list health-source-list">{sources.map((source) => <article className="source-card source-row" key={source.id}><div><strong>{source.name}</strong><p>{source.healthReasonCode ?? dictionary.crawler.noHealthWarning}</p></div><div><span className={`health-pill health-${source.healthStatus}`}>{statusLabels[source.healthStatus] ?? source.healthStatus}</span><button type="button" onClick={() => void runSource(source)} disabled={loading || busySourceId !== null || source.approvalStatus !== "approved"}>{busySourceId === source.id ? dictionary.crawler.requesting : source.approvalStatus === "approved" ? dictionary.crawler.runNow : dictionary.crawler.notApproved}</button></div></article>)}</div> : <EmptyState message={dictionary.crawler.noSources} />}
     </section>
     <section className="content-section">
-      <div className="section-heading"><div><p className="eyebrow">Workflow history</p><h2>Recent crawl runs</h2></div><span>{runs.length} shown</span></div>
-      {runs.length ? <div className="run-timeline source-list">{runs.map((run) => <article className="run-card source-row" key={run.id}><div><strong>{run.status} · {run.coverageStatus}</strong><p>{run.counts.itemsFound} found · {run.counts.itemsFailed} failed · requested {new Date(run.requestedAt).toLocaleString()}</p></div><span>{run.healthSignalCode ?? "No health signal"}</span></article>)}</div> : <EmptyState message="No crawl runs have been recorded for this operator." />}
+      <div className="section-heading"><div><p className="eyebrow">{dictionary.crawler.historyEyebrow}</p><h2>{dictionary.crawler.recentRuns}</h2></div><span>{formatNumber(runs.length, locale)} {dictionary.common.shown}</span></div>
+      {runs.length ? <div className="run-timeline source-list">{runs.map((run) => <article className="run-card source-row" key={run.id}><div><strong>{statusLabels[run.status] ?? run.status} · {statusLabels[run.coverageStatus] ?? run.coverageStatus}</strong><p>{formatNumber(run.counts.itemsFound, locale)} {dictionary.crawler.found} · {formatNumber(run.counts.itemsFailed, locale)} {dictionary.crawler.failed} · {dictionary.crawler.requested} {formatDate(run.requestedAt, locale)}</p></div><span>{run.healthSignalCode ?? dictionary.crawler.noHealthSignal}</span></article>)}</div> : <EmptyState message={dictionary.crawler.noRuns} />}
     </section>
   </>;
 }

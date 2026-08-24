@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/login-form";
+import { getI18n } from "@/i18n/server";
 import { localNoLoginEnabled } from "@/lib/deployment-mode";
 
-export default function LoginPage() {
+export default async function LoginPage() {
   if (localNoLoginEnabled()) redirect("/");
-  return <main className="auth-page"><div className="page-intro"><p className="eyebrow">DevRadar access</p><h1>Keep private work private.</h1><p>Use the authenticated session to manage CV matching and alerts. Public job browsing remains separate from owner data.</p></div><LoginForm /><p className="field-help"><Link href="/">Back to the dashboard</Link></p></main>;
+  const { dictionary } = await getI18n();
+  return <main className="auth-page"><div className="page-intro"><p className="eyebrow">{dictionary.auth.accessEyebrow}</p><h1>{dictionary.auth.accessTitle}</h1><p>{dictionary.auth.accessBody}</p></div><LoginForm /><p className="field-help"><Link href="/">{dictionary.auth.back}</Link></p></main>;
 }

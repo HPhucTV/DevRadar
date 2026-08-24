@@ -14,8 +14,10 @@ test("custom source route and panel expose the protected local workflow", async 
   await access(new URL(route.pageFile, webRoot));
 
   const panel = await source("src/components/custom-source-panel.tsx");
-  assert.match(panel, /Test crawl/);
-  assert.match(panel, /permission|authorized|local/i);
+  const dictionaries = await source("src/i18n/dictionaries.json");
+  assert.match(panel, /useI18n/);
+  assert.match(dictionaries, /Test crawl/);
+  assert.match(dictionaries, /permission|authorized|local/i);
   assert.match(panel, /daily_at|interval_minutes|timezone/);
   assert.match(panel, /preview|preview_ready/i);
   assert.match(panel, /blocked|permission_required/i);

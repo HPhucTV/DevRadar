@@ -3,10 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ApiErrorState } from "@/components/api-state";
+import { useI18n } from "@/i18n/locale-provider";
 import { login } from "@/lib/auth";
 import type { ApiFailure } from "@/lib/api";
 
 export function LoginForm() {
+  const { dictionary } = useI18n();
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -28,5 +30,5 @@ export function LoginForm() {
     router.refresh();
   }
 
-  return <section className="content-section auth-panel"><p className="eyebrow">V6 authenticated session</p><h1>Sign in to DevRadar</h1><p className="field-help">The server stores only a password hash. Session and CSRF credentials are never placed in localStorage or the URL.</p><form className="cv-form" onSubmit={submit}><label>Username<input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" required minLength={3} maxLength={64} /></label><label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required maxLength={1024} /></label><button type="submit" disabled={busy}>{busy ? "Signing in..." : "Sign in"}</button></form>{error ? <ApiErrorState error={error} /> : null}</section>;
+  return <section className="content-section auth-panel"><p className="eyebrow">{dictionary.auth.sessionEyebrow}</p><h1>{dictionary.auth.title}</h1><p className="field-help">{dictionary.auth.body}</p><form className="cv-form" onSubmit={submit}><label>{dictionary.auth.username}<input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" required minLength={3} maxLength={64} /></label><label>{dictionary.auth.password}<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required maxLength={1024} /></label><button type="submit" disabled={busy}>{busy ? dictionary.auth.signingIn : dictionary.auth.signIn}</button></form>{error ? <ApiErrorState error={error} /> : null}</section>;
 }
