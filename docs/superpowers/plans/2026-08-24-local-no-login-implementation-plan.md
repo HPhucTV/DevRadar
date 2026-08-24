@@ -119,7 +119,9 @@ Expected: test local mode FAIL với `auth_disabled` từ `/auth/me`.
 
 ```python
 LOCAL_OPERATOR_USERNAME = "local-operator"
-LOCAL_OPERATOR_PASSWORD_DISABLED = "local-no-login-disabled$0000000000000000000000000000000000000000"
+LOCAL_OPERATOR_PASSWORD_DISABLED = (
+    "local-no-login-disabled$0000000000000000000000000000000000000000"
+)
 
 
 def get_or_create_local_operator(session: Session) -> User:
@@ -291,4 +293,3 @@ Expected: tất cả PASS.
 git add .env.example .env.production.example compose.yaml web/src/lib/deployment-mode.ts web/src/components/app-shell.tsx web/src/components/auth-controls.tsx web/src/app/login/page.tsx web/tests/routes.test.mjs docs/API.md docs/OPERATIONS.md README.md
 git commit -m "feat: expose local no-login mode to web"
 ```
-

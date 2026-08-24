@@ -432,6 +432,18 @@ ghi API/web/Compose/browser smoke; không claim public deployment hoặc managed
 
 Custom source profiles đã hoàn tất theo [ADR-024](decisions/0024-accept-local-custom-source-profiles-without-bypass.md): owner-local/protected URL, preview gate, deterministic multi-record/card mapping, PostgreSQL schedule và bounded one-document HTTP worker. `owner_authorized_local` không nâng source thành global `approved`, không đi vào global catalog/analytics/matching/alerts; challenge/permission failure bị `blocked` và không retry. [Thiết kế](superpowers/specs/2026-08-23-custom-source-profile-design.md), [implementation plan](superpowers/plans/2026-08-23-custom-source-profile-implementation-plan.md) và [evidence](evidence/V6-016-custom-source-profiles.md) ghi PostgreSQL integration, full gates, live authenticated create → preview → enable → queue → worker → history → retire browser flow, fixture cleanup và security/privacy regression fixes. Production example vẫn default-disable; generic pagination/browser fallback, owner-scoped custom-job catalog và public custom-source support chưa thuộc V6-016; task này không đóng V6.
 
+### V6-017 closeout (`Done`)
+
+Toàn bộ dashboard đã hỗ trợ Việt/Anh, mặc định Việt, bằng dictionary nội bộ không thêm dependency; locale
+được allow-list, giữ qua reload và đồng bộ `<html lang>`, ngày/số, server/client state cùng accessible
+`VI | EN`. [ADR-025](decisions/0025-accept-explicit-local-no-login-mode.md) chấp nhận explicit
+localhost no-login với singleton PostgreSQL `local-operator`; protected/public vẫn dùng session auth và
+invalid deployment matrix fail startup. [Thiết kế](superpowers/specs/2026-08-24-dashboard-i18n-local-no-login-design.md),
+[implementation plans](superpowers/plans/2026-08-24-dashboard-i18n-implementation-plan.md) và
+[evidence](evidence/V6-017-dashboard-i18n-local-no-login.md) ghi `430` PostgreSQL tests, `55` web tests,
+static/build/Compose/API/BFF/browser gates, redirect `/login`, form URL, viewport 320px cùng no-bypass
+boundary. Task này chỉ đóng local UX slice, không đóng V6 hoặc claim public deployment.
+
 ## 9. Quy tắc cập nhật roadmap
 
 - Chỉ đổi status khi kiểm tra exit criteria và link evidence cụ thể.

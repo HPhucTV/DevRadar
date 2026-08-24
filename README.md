@@ -14,6 +14,9 @@
 
 V1 đã hoàn tất safe fetch/snapshot pipeline, ba concrete source adapters, PostgreSQL persistence và REST API. V2 đã hoàn tất direct schedule/retry, JobChange lifecycle, source health/quarantine, operator enqueue và one-shot worker. V3 đã đóng với `3339` canonical jobs từ approved complete runs, semantic held-out gate đạt, `1003/3339` accepted deterministic extraction results, `3339/3339` current embeddings và analytics denominator/coverage có evidence. ADR-010 chấp nhận local `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` 384d cùng exact pgvector; RemoteJobs.org là cohort remote thứ cấp, không đại diện cho claim thị trường Việt Nam. V4 đã đánh giá typed planner/validator/analyst proposal paths và LangGraph, nhưng cả ba reasoning path bị loại theo ADR-013 vì safe facts đã xác định outcome và không có measurable usefulness gain. V5 hiện có Next.js dashboard kết nối FastAPI thật, local-gated PDF/DOCX upload tạo `ResumeProfile` 24 giờ không lưu file/raw text, owner-scoped JobMatch generation/read với local MiniLM, top 100, stale-hash filtering và cascade delete, cùng một Discord alert connector local/protected với AlertRule/AlertDelivery idempotent. V6-001 đã hoàn tất threat model public exposure; V6-002 đã triển khai PostgreSQL-backed session authentication, CSRF, owner/operator authorization và Next.js login/BFF flow. V6-003 đã hoàn tất rate limit, security headers, CORS, managed-secret guard và Trivy scan hai trust boundary image; V6-004 có CI/deploy/rollback command surface; V6-013 đã có local patched-Caddy production foundation và exact-SHA workflow contract; V6-014 đã thêm custom restic/Spaces và DigitalOcean Uptime workflow contract cùng local encrypted smoke, còn provider/public HTTPS deployment chưa được claim.
 
+V6-017 đã hoàn tất dashboard Việt/Anh mặc định Việt và explicit localhost no-login; provider/public HTTPS
+deployment vẫn chưa được claim.
+
 ## Mục tiêu
 
 DevRadar hướng tới các khả năng sau:
@@ -102,6 +105,7 @@ Chi tiết về prerequisite, non-goal, exit criteria và demo evidence nằm tr
 - [V6-013 DigitalOcean production foundation](docs/evidence/V6-013-digitalocean-production-foundation.md): patched Caddy scratch ingress, immutable release contract, firewall cleanup, local Compose smoke và exact-SHA seven-job CI; chưa claim live provider.
 - [V6-014 backup/Uptime evidence](docs/evidence/V6-014-backup-uptime.md): custom restic build/scan, local encrypted init/backup/check/retention/restore smoke, exact-SHA seven-job CI và provider boundary chưa có credential.
 - [V6-016 custom source evidence](docs/evidence/V6-016-custom-source-profiles.md): owner-local protected profile, live preview gate, schedule/worker/history flow, full PostgreSQL/web/static gates và no-bypass boundary đã pass; production example vẫn default-disable.
+- [V6-017 dashboard i18n/local no-login evidence](docs/evidence/V6-017-dashboard-i18n-local-no-login.md): toàn bộ dashboard Việt/Anh, accessible locale persistence, explicit singleton local operator, Compose/browser smoke và public-auth boundary.
 - [Operations](docs/OPERATIONS.md): test, security, observability, retention, CI/CD và deployment gates.
 - [Source discovery](docs/sources/SHORTLIST.md): evidence và approval outcome; VNG, NAVER Vietnam/Greenhouse và MoMo đã được duyệt cho bounded Vietnam scope, RemoteJobs.org được duyệt riêng cho V3 remote cohort có attribution, GeoComply/Lever vẫn `permission_required`.
 - [Pre-V1 local evidence](docs/evidence/PRE-007-local-prerequisites.md): Docker/PostgreSQL capability và constraint đã xác minh.
@@ -218,6 +222,7 @@ API tạo/reuse một PostgreSQL identity `local-operator`, không tạo passwor
 scope, Origin allow-list, rate limit, feature gate và toàn bộ policy không bypass CAPTCHA/auth/paywall/
 anti-bot vẫn giữ nguyên. Header login/logout bị ẩn ở web và `/login` redirect về dashboard. Trước khi
 expose ngoài loopback phải tắt `DEVRADAR_LOCAL_NO_LOGIN_ENABLED` và dùng session auth theo ADR-015.
+Dashboard mặc định tiếng Việt; nút `VI | EN` đổi toàn bộ UI và giữ lựa chọn qua reload mà không đổi route.
 
 V6-004 local deploy/rollback smoke:
 

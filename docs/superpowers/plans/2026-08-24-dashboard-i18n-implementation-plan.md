@@ -299,7 +299,7 @@ git commit -m "feat: translate interactive dashboard panels"
 ### Task 5: Browser acceptance và evidence
 
 **Files:**
-- Create: `docs/evidence/V6-015-dashboard-i18n-local-no-login.md`
+- Create: `docs/evidence/V6-017-dashboard-i18n-local-no-login.md`
 - Modify: `README.md`
 - Modify: `docs/ROADMAP.md`
 - Modify: `TASK_BOARD.md` (local, ignored)
@@ -344,7 +344,7 @@ Evidence ghi commit SHA, test counts, Compose health, locale smoke, custom-sourc
 - [ ] **Step 5: Cập nhật roadmap/task board và commit**
 
 ```powershell
-git add docs/evidence/V6-015-dashboard-i18n-local-no-login.md README.md docs/ROADMAP.md
+git add docs/evidence/V6-017-dashboard-i18n-local-no-login.md README.md docs/ROADMAP.md
 git commit -m "docs: record bilingual local dashboard evidence"
 ```
 
