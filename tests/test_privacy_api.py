@@ -15,14 +15,13 @@ def test_privacy_policy_is_explicit_and_secret_free() -> None:
     assert response.status_code == 200
     assert response.json() == {
         "data": {
-            "policyVersion": "privacy-v1",
+            "policyVersion": "privacy-v2",
+            "sourceRecipesLocalOnly": True,
+            "termsWarningOwnerOverride": True,
+            "accessControlBypassAllowed": False,
             "rawCvFileRetained": False,
             "resumeProfileTtlHours": 24,
-            "ownerDeletionSupported": True,
             "externalLlmCvJdAllowed": False,
-            "deterministicExtractionFirst": True,
-            "sourceAllowlistOnly": True,
-            "permissionRequiredSourceKeys": ["geocomply-lever"],
         }
     }
     assert not re.search(r"password|secret|webhook|rawJd|databaseUrl", response.text, re.I)

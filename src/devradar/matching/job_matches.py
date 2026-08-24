@@ -13,7 +13,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from devradar.catalog.models import Job, JobLevel, JobStatus
-from devradar.ingestion.models import Source, SourceApprovalStatus
+from devradar.ingestion.models import Source
 from devradar.ingestion.normalization import normalize_text
 from devradar.intelligence.embeddings import (
     EMBEDDING_DIMENSION,
@@ -39,6 +39,7 @@ from devradar.matching.scoring import (
     MatchScore,
     score_match,
 )
+from devradar.source_recipes.visibility import visible_source_condition
 
 MAX_STORED_MATCHES = 100
 MAX_PROFILE_EMBEDDING_TEXT_CHARS = 2_000
@@ -279,9 +280,7 @@ def _persist_current_matches(
         if active_profile is None:
             raise MatchProfileUnavailable
 
-        approved_source_ids = select(Source.id).where(
-            Source.approval_status == SourceApprovalStatus.APPROVED
-        )
+        approved_source_ids = select(Source.id).where(visible_source_condition())
         public_job_conditions = (
             Job.status == JobStatus.ACTIVE,
             Job.source_id.in_(approved_source_ids),

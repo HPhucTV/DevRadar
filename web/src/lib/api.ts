@@ -21,14 +21,13 @@ export type SkillFrequency = ListEnvelope<Skill> & { meta: AnalyticsMeta };
 export type TrendBucket = { periodStart: string; denominator: number; analyzedJobs: number; coverage: number; skills: { name: string; jobCount: number; share: number }[] };
 export type SkillTrend = { data: TrendBucket[]; meta: AnalyticsMeta & { from: string; to: string; cohort: string; granularity: string } };
 export type PrivacyPolicy = {
-  policyVersion: "privacy-v1";
+  policyVersion: "privacy-v2";
+  sourceRecipesLocalOnly: true;
+  termsWarningOwnerOverride: true;
+  accessControlBypassAllowed: false;
   rawCvFileRetained: false;
   resumeProfileTtlHours: 24;
-  ownerDeletionSupported: true;
   externalLlmCvJdAllowed: false;
-  deterministicExtractionFirst: true;
-  sourceAllowlistOnly: true;
-  permissionRequiredSourceKeys: ["geocomply-lever"];
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null; }
@@ -37,16 +36,13 @@ function isDataEnvelope(value: unknown): value is DataEnvelope<unknown> { return
 function isSkillFrequency(value: unknown): value is SkillFrequency { return isListEnvelope(value) && isRecord((value as Record<string, unknown>).meta) && value.data.every(isRecord); }
 function isPrivacyPolicy(value: unknown): value is PrivacyPolicy {
   return isRecord(value)
-    && value.policyVersion === "privacy-v1"
+    && value.policyVersion === "privacy-v2"
+    && value.sourceRecipesLocalOnly === true
+    && value.termsWarningOwnerOverride === true
+    && value.accessControlBypassAllowed === false
     && value.rawCvFileRetained === false
     && value.resumeProfileTtlHours === 24
-    && value.ownerDeletionSupported === true
-    && value.externalLlmCvJdAllowed === false
-    && value.deterministicExtractionFirst === true
-    && value.sourceAllowlistOnly === true
-    && Array.isArray(value.permissionRequiredSourceKeys)
-    && value.permissionRequiredSourceKeys.length === 1
-    && value.permissionRequiredSourceKeys[0] === "geocomply-lever";
+    && value.externalLlmCvJdAllowed === false;
 }
 function baseUrl(): string { return process.env.DEVRADAR_API_BASE_URL?.trim() || "http://127.0.0.1:8000"; }
 function url(path: string, query?: Record<string, string | number | undefined>): string { const target = new URL(`/api/v1${path}`, baseUrl()); for (const [key, value] of Object.entries(query ?? {})) if (value !== undefined) target.searchParams.set(key, String(value)); return target.toString(); }

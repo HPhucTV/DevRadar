@@ -22,7 +22,7 @@ from devradar.api.common import (
     pagination_data,
 )
 from devradar.catalog.models import Job, JobStatus
-from devradar.ingestion.models import Source, SourceApprovalStatus
+from devradar.ingestion.models import Source
 from devradar.intelligence.evaluation import canonicalize_skill_name
 from devradar.intelligence.extraction import (
     CANONICALIZATION_VERSION,
@@ -31,6 +31,7 @@ from devradar.intelligence.extraction import (
 from devradar.intelligence.models import ExtractionResult, ExtractionValidationStatus
 from devradar.intelligence.taxonomy import TAXONOMY_VERSION, SkillCategory, skill_category
 from devradar.platform.database import get_database_session
+from devradar.source_recipes.visibility import visible_source_condition
 
 router = APIRouter(tags=["analytics"])
 DatabaseSession = Annotated[Session, Depends(get_database_session)]
@@ -222,7 +223,7 @@ def _analytics_rows(
                 latest.c.result_rank == 1,
             ),
         )
-        .where(Source.approval_status == SourceApprovalStatus.APPROVED, *conditions)
+        .where(visible_source_condition(), *conditions)
         .order_by(cohort_column.asc(), Job.id.asc())
     ).all()
     return [

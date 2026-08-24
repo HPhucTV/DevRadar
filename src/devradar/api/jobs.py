@@ -28,7 +28,6 @@ from devradar.ingestion.models import (
     ParseStatus,
     RawJobSnapshot,
     Source,
-    SourceApprovalStatus,
 )
 from devradar.intelligence.embeddings import (
     EMBEDDING_DIMENSION,
@@ -51,6 +50,7 @@ from devradar.intelligence.models import (
     JobEmbedding,
 )
 from devradar.platform.database import get_database_session
+from devradar.source_recipes.visibility import visible_source_condition
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 DatabaseSession = Annotated[Session, Depends(get_database_session)]
@@ -231,9 +231,7 @@ def _like_pattern(value: str) -> str:
 
 def _conditions(filters: JobQuery) -> list[ColumnElement[bool]]:
     conditions: list[ColumnElement[bool]] = [
-        Job.source_id.in_(
-            select(Source.id).where(Source.approval_status == SourceApprovalStatus.APPROVED)
-        )
+        Job.source_id.in_(select(Source.id).where(visible_source_condition()))
     ]
     if filters.status is not None:
         conditions.append(Job.status == filters.status)
@@ -415,7 +413,7 @@ def get_job(
         .join(RawJobSnapshot, RawJobSnapshot.id == Job.current_snapshot_id)
         .where(
             Job.id == job_id,
-            Source.approval_status == SourceApprovalStatus.APPROVED,
+            visible_source_condition(),
         )
     ).one_or_none()
     if row is None:
@@ -457,7 +455,7 @@ def list_job_changes(
             .join(Source, Source.id == Job.source_id)
             .where(
                 Job.id == job_id,
-                Source.approval_status == SourceApprovalStatus.APPROVED,
+                visible_source_condition(),
             )
         )
         is None

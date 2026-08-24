@@ -129,6 +129,7 @@ def test_generate_replay_get_pagination_and_min_score(
 @pytest.mark.postgresql
 def test_match_list_hides_rows_when_job_source_is_not_globally_approved(
     match_api: tuple[TestClient, str, str, FakeEmbeddingModel],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client, database_url, profile_id, _ = match_api
     headers = {OWNER_HEADER: OWNER_TOKEN}
@@ -151,6 +152,14 @@ def test_match_list_hides_rows_when_job_source_is_not_globally_approved(
     assert listed.status_code == 200
     assert listed.json()["data"] == []
     assert listed.json()["pagination"]["totalItems"] == 0
+
+    monkeypatch.setenv("DEVRADAR_DEPLOYMENT_CLASS", "LOCALHOST_SERVICE")
+    monkeypatch.setenv("DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED", "true")
+    local_listed = client.get(
+        f"/api/v1/resume-profiles/{profile_id}/matches",
+        headers=headers,
+    )
+    assert local_listed.json()["pagination"]["totalItems"] == 1
 
 
 @pytest.mark.postgresql

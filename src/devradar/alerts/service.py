@@ -23,7 +23,7 @@ from devradar.alerts.delivery import (
 )
 from devradar.alerts.models import AlertDelivery, AlertDeliveryStatus, AlertRule
 from devradar.catalog.models import Job, JobStatus
-from devradar.ingestion.models import Source, SourceApprovalStatus
+from devradar.ingestion.models import Source
 from devradar.intelligence.embeddings import (
     EMBEDDING_INPUT_SCHEMA_VERSION,
     EMBEDDING_MODEL_ID,
@@ -39,6 +39,7 @@ from devradar.matching.job_matches import PROFILE_EMBEDDING_INPUT_VERSION
 from devradar.matching.models import JobMatch, ResumeProfile
 from devradar.matching.scoring import SCORING_VERSION
 from devradar.platform.observability import record_alert_delivery_processed
+from devradar.source_recipes.visibility import visible_source_condition
 
 DISCORD_WEBHOOK_ENV = "DEVRADAR_DISCORD_WEBHOOK_URL"
 PENDING_STALE_AFTER = timedelta(minutes=10)
@@ -99,9 +100,7 @@ def _candidate_jobs(
 ) -> list[Job]:
     conditions: list[ColumnElement[bool]] = [
         Job.status == JobStatus.ACTIVE,
-        Job.source_id.in_(
-            select(Source.id).where(Source.approval_status == SourceApprovalStatus.APPROVED)
-        ),
+        Job.source_id.in_(select(Source.id).where(visible_source_condition())),
     ]
     if rule.company_query:
         pattern = _literal_pattern(rule.company_query)

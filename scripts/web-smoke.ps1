@@ -20,7 +20,7 @@ if ($login.StatusCode -ne 200 -or $login.Content -notmatch "DevRadar") {
 
 $privacyUri = [uri]::new($BaseUrl, "/api/devradar/privacy")
 $privacy = Invoke-RestMethod -Uri $privacyUri -Method Get -TimeoutSec $TimeoutSeconds
-if ($privacy.data.policyVersion -ne "privacy-v1") {
+if ($privacy.data.policyVersion -ne "privacy-v2") {
     throw "DevRadar web privacy BFF smoke failed."
 }
 

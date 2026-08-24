@@ -21,6 +21,7 @@ from devradar.api.common import (
 )
 from devradar.ingestion.models import Source, SourceApprovalStatus, SourceHealthStatus
 from devradar.platform.database import get_database_session
+from devradar.source_recipes.visibility import visible_source_condition
 
 router = APIRouter(prefix="/sources", tags=["sources"])
 DatabaseSession = Annotated[Session, Depends(get_database_session)]
@@ -71,7 +72,7 @@ def list_sources(
     pagination: Annotated[PaginationQuery, Query()],
     session: DatabaseSession,
 ) -> SourceListResponse:
-    approved = Source.approval_status == SourceApprovalStatus.APPROVED
+    approved = visible_source_condition()
     total_items = session.scalar(select(func.count()).select_from(Source).where(approved)) or 0
     sources = session.scalars(
         select(Source)
@@ -101,7 +102,7 @@ def get_source(
     source = session.scalar(
         select(Source).where(
             Source.id == source_id,
-            Source.approval_status == SourceApprovalStatus.APPROVED,
+            visible_source_condition(),
         )
     )
     if source is None:

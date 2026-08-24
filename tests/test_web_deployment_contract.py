@@ -72,7 +72,7 @@ def test_release_commands_and_ci_cover_web_and_api() -> None:
         assert "web-smoke.ps1" in script
     assert "/login" in smoke
     assert "/api/devradar/privacy" in smoke
-    assert "privacy-v1" in smoke
+    assert "privacy-v2" in smoke
     assert "devradar-web:ci" in ci
     assert "devradar-web:known-good" in ci
     assert "devradar-web:ci" in ci.split("Trivy full reports", maxsplit=1)[1]

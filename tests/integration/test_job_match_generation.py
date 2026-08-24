@@ -325,6 +325,20 @@ def test_generation_excludes_owner_local_jobs_from_global_match_catalog(
         assert report.available_jobs == 1
         assert session.scalar(select(func.count()).select_from(JobMatch)) == 1
         assert session.scalar(select(JobMatch.job_id)) == approved_jobs[0].id
+
+        monkeypatch.setenv("DEVRADAR_DEPLOYMENT_CLASS", "LOCALHOST_SERVICE")
+        monkeypatch.setenv("DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED", "true")
+        local_report = generate_job_matches(
+            session,
+            profile_id=profile.id,
+            owner_hash=profile.owner_hash,
+            now=profile.created_at,
+            embed_profile=lambda _text: tuple([1.0] + [0.0] * (EMBEDDING_DIMENSION - 1)),
+        )
+        assert local_report.considered_jobs == 2
+        assert local_report.available_jobs == 2
+        assert session.scalar(select(func.count()).select_from(JobMatch)) == 2
+        assert custom_source.approval_status is SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL
     engine.dispose()
 
 

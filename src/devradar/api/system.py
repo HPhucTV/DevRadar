@@ -17,14 +17,13 @@ class HealthResponse(BaseModel):
 
 
 class PrivacyData(ApiModel):
-    policy_version: Literal["privacy-v1"]
+    policy_version: Literal["privacy-v2"]
+    source_recipes_local_only: Literal[True]
+    terms_warning_owner_override: Literal[True]
+    access_control_bypass_allowed: Literal[False]
     raw_cv_file_retained: Literal[False]
     resume_profile_ttl_hours: Literal[24]
-    owner_deletion_supported: Literal[True]
     external_llm_cv_jd_allowed: Literal[False]
-    deterministic_extraction_first: Literal[True]
-    source_allowlist_only: Literal[True]
-    permission_required_source_keys: tuple[Literal["geocomply-lever"], ...]
 
 
 PrivacyResponse = DataResponse[PrivacyData]
@@ -39,13 +38,12 @@ def get_health() -> HealthResponse:
 def get_privacy() -> PrivacyResponse:
     return PrivacyResponse(
         data=PrivacyData(
-            policy_version="privacy-v1",
+            policy_version="privacy-v2",
+            source_recipes_local_only=True,
+            terms_warning_owner_override=True,
+            access_control_bypass_allowed=False,
             raw_cv_file_retained=False,
             resume_profile_ttl_hours=24,
-            owner_deletion_supported=True,
             external_llm_cv_jd_allowed=False,
-            deterministic_extraction_first=True,
-            source_allowlist_only=True,
-            permission_required_source_keys=("geocomply-lever",),
         )
     )

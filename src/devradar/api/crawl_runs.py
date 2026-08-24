@@ -30,9 +30,9 @@ from devradar.ingestion.models import (
     CrawlRunStatus,
     CrawlTriggerType,
     Source,
-    SourceApprovalStatus,
 )
 from devradar.platform.database import get_database_session
+from devradar.source_recipes.visibility import visible_source_condition
 
 router = APIRouter(prefix="/crawl-runs", tags=["crawl-runs"])
 DatabaseSession = Annotated[Session, Depends(get_database_session)]
@@ -147,7 +147,7 @@ def _conditions(filters: CrawlRunQuery) -> list[ColumnElement[bool]]:
         select(Source.id)
         .where(
             Source.id == CrawlRun.source_id,
-            Source.approval_status == SourceApprovalStatus.APPROVED,
+            visible_source_condition(),
         )
         .exists()
     ]
@@ -253,7 +253,7 @@ def get_crawl_run(
         .join(Source, Source.id == CrawlRun.source_id)
         .where(
             CrawlRun.id == run_id,
-            Source.approval_status == SourceApprovalStatus.APPROVED,
+            visible_source_condition(),
         )
     )
     if crawl_run is None:

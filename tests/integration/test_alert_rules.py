@@ -180,6 +180,7 @@ def test_dispatch_filters_replays_without_duplicate_and_records_safe_delivery(
 @pytest.mark.postgresql
 def test_dispatch_excludes_owner_local_jobs_from_global_alert_catalog(
     alert_api: tuple[TestClient, str, FakeConnector],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client, database_url, connector = alert_api
     engine = _database_engine(database_url)
@@ -192,6 +193,7 @@ def test_dispatch_excludes_owner_local_jobs_from_global_alert_catalog(
         )
         custom_source = session.get(Source, custom_jobs[0].source_id)
         assert custom_source is not None
+        custom_source_id = custom_source.id
         custom_source.approval_status = SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL
         session.commit()
     engine.dispose()
@@ -210,6 +212,27 @@ def test_dispatch_excludes_owner_local_jobs_from_global_alert_catalog(
     assert dispatched.status_code == 200
     assert dispatched.json()["data"]["consideredJobs"] == 2
     assert len(connector.calls) == 2
+
+    monkeypatch.setenv("DEVRADAR_DEPLOYMENT_CLASS", "LOCALHOST_SERVICE")
+    monkeypatch.setenv("DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED", "true")
+    local_rule = client.post(
+        "/api/v1/alert-rules",
+        headers=headers,
+        json={"name": "Local recipe jobs", "companyQuery": "Example"},
+    )
+    local_dispatch = client.post(
+        f"/api/v1/alert-rules/{local_rule.json()['data']['id']}/dispatch",
+        headers=headers,
+    )
+    assert local_dispatch.json()["data"]["consideredJobs"] == 3
+    assert len(connector.calls) == 5
+
+    engine = _database_engine(database_url)
+    with Session(engine) as session:
+        custom_source = session.get(Source, custom_source_id)
+        assert custom_source is not None
+        assert custom_source.approval_status is SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL
+    engine.dispose()
 
 
 @pytest.mark.postgresql

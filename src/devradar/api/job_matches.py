@@ -27,7 +27,7 @@ from devradar.api.resume_profiles import (
     require_cv_local_enabled,
 )
 from devradar.catalog.models import Job, JobStatus
-from devradar.ingestion.models import Source, SourceApprovalStatus
+from devradar.ingestion.models import Source
 from devradar.intelligence.embeddings import (
     EMBEDDING_INPUT_SCHEMA_VERSION,
     EMBEDDING_MODEL_ID,
@@ -54,6 +54,7 @@ from devradar.matching.models import JobMatch
 from devradar.matching.resume_profiles import get_active_profile
 from devradar.matching.scoring import SCORING_VERSION
 from devradar.platform.database import get_database_session
+from devradar.source_recipes.visibility import visible_source_condition
 
 router = APIRouter(prefix="/resume-profiles", tags=["job-matches"])
 DatabaseSession = Annotated[Session, Depends(get_database_session)]
@@ -258,7 +259,7 @@ def list_matches_for_profile(
         JobMatch.embedding_revision == EMBEDDING_MODEL_REVISION,
         JobMatch.embedding_dimension == 384,
         Job.status == JobStatus.ACTIVE,
-        Source.approval_status == SourceApprovalStatus.APPROVED,
+        visible_source_condition(),
     )
     conditions = [current]
     if min_score is not None:

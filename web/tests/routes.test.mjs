@@ -200,8 +200,11 @@ test("privacy route exposes truthful retention, AI and source policy", async () 
   const shell = await readFile(new URL("src/components/app-shell.tsx", webRoot), "utf8");
   const dictionaries = await readFile(new URL("src/i18n/dictionaries.json", webRoot), "utf8");
   assert.match(page, /resumeProfileTtlHours/);
-  assert.match(page, /GeoComply|Lever/);
+  assert.match(page, /sourceRecipesLocalOnly/);
+  assert.match(page, /termsWarningOwnerOverride/);
+  assert.match(page, /accessControlBypassAllowed/);
   assert.match(page, /externalAllowed|externalBlocked/);
+  assert.doesNotMatch(page, /permissionRequiredSourceKeys|sourceAllowlistOnly/);
   assert.match(dictionaries, /external LLM/i);
   assert.match(page, /ApiErrorState/);
   assert.match(bff, /proxyBackend/);
