@@ -166,6 +166,17 @@ test("auth routes and login page are present", async () => {
   assert.doesNotMatch(proxy, /x-devradar-owner/i);
 });
 
+test("explicit local no-login mode hides session controls and redirects login", async () => {
+  const shell = await readFile(new URL("src/components/app-shell.tsx", webRoot), "utf8");
+  const controls = await readFile(new URL("src/components/auth-controls.tsx", webRoot), "utf8");
+  const login = await readFile(new URL("src/app/login/page.tsx", webRoot), "utf8");
+
+  assert.match(shell, /localNoLoginEnabled/);
+  assert.match(controls, /localNoLoginEnabled/);
+  assert.match(login, /redirect\("\/"\)/);
+  assert.match(login, /localNoLoginEnabled/);
+});
+
 test("BFF has bounded rate, timeout and security-header policy", async () => {
   const proxy = await readFile(new URL("src/lib/backend-proxy.ts", webRoot), "utf8");
   const nextConfig = await readFile(new URL("next.config.mjs", webRoot), "utf8");

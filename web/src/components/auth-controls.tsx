@@ -4,7 +4,12 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { currentUser, logout, type AuthUser } from "@/lib/auth";
 
-export function AuthControls() {
+export function AuthControls({ localNoLoginEnabled }: { localNoLoginEnabled: boolean }) {
+  if (localNoLoginEnabled) return null;
+  return <SessionAuthControls />;
+}
+
+function SessionAuthControls() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [busy, setBusy] = useState(false);
 

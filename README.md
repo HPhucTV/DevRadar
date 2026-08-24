@@ -201,6 +201,24 @@ token vào argument, log, URL, `localStorage` hay Git. Khi chạy HTTPS ngoài l
 configuration guard; Trivy pinned container gate đã pass với `0` fixable HIGH/CRITICAL finding ở API và crawler; V6-012 local web image cũng đạt `0` fixable. V6-004 có command surface cho local/protected
 API + web deploy/rollback, còn public deployment cần ingress và secret provider thật.
 
+### V6 localhost không cần login (opt-in)
+
+Single operator có thể dùng dashboard trên loopback mà không tạo session bằng một file `.env` bị Git
+ignore. Mode này cần cả ba điều kiện dưới đây và fail startup nếu dùng cùng session auth hoặc trên
+`PROTECTED`/`PUBLIC`:
+
+```dotenv
+DEVRADAR_DEPLOYMENT_CLASS=LOCALHOST_SERVICE
+DEVRADAR_AUTH_ENABLED=false
+DEVRADAR_LOCAL_NO_LOGIN_ENABLED=true
+DEVRADAR_CUSTOM_SOURCES_LOCAL_ENABLED=true
+```
+
+API tạo/reuse một PostgreSQL identity `local-operator`, không tạo password, session hoặc cookie. Owner
+scope, Origin allow-list, rate limit, feature gate và toàn bộ policy không bypass CAPTCHA/auth/paywall/
+anti-bot vẫn giữ nguyên. Header login/logout bị ẩn ở web và `/login` redirect về dashboard. Trước khi
+expose ngoài loopback phải tắt `DEVRADAR_LOCAL_NO_LOGIN_ENABLED` và dùng session auth theo ADR-015.
+
 V6-004 local deploy/rollback smoke:
 
 ```powershell

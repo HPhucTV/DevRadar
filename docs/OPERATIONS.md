@@ -29,6 +29,10 @@ Không dùng production secret/data trong CI. Không gọi source/LLM thật t�
 - `DEVRADAR_AUTH_ENABLED` mặc định `false` để giữ compatibility local. Khi bật, bắt buộc có
   `DEVRADAR_OPERATOR_PASSWORD_HASH` hợp lệ; tạo hash bằng `devradar.cli auth-hash-password` từ prompt,
   không truyền password qua command-line hoặc ghi hash vào log.
+- `DEVRADAR_LOCAL_NO_LOGIN_ENABLED` mặc định `false`. Chỉ bật explicit cùng
+  `LOCALHOST_SERVICE` + `DEVRADAR_AUTH_ENABLED=false`; API tạo/reuse `local-operator` trong PostgreSQL
+  nhưng không tạo session/password/cookie. `PROTECTED`/`PUBLIC` hoặc auth + no-login fail startup;
+  Origin/rate-limit/feature gate vẫn áp dụng cho local mutation.
 - `DEVRADAR_AUTH_SESSION_TTL_SECONDS` phải nằm trong khoảng policy; `DEVRADAR_AUTH_COOKIE_SECURE=false`
   chỉ phù hợp loopback HTTP. Deployment HTTPS phải đặt `true`. `DEVRADAR_ALLOWED_ORIGINS` là allow-list
   cụ thể, không dùng wildcard với credential.

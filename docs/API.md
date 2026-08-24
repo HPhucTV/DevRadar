@@ -361,9 +361,13 @@ Auth mechanism được khóa tại [ADR-015](decisions/0015-accept-v6-authentic
 - User `owner` chỉ thao tác resource có owner scope của session; `operator` mới được enqueue crawl.
   Cross-owner resource trả generic `404` theo resource policy.
 - `X-DevRadar-Owner` bị từ chối với `403 legacy_owner_header_rejected` khi auth bật, kể cả khi session
-  hợp lệ. Compatibility header chỉ còn khi auth tắt trên local/protected deployment.
+  hợp lệ. Compatibility header chỉ còn khi auth tắt và explicit local no-login không bật.
 - Login sai, session thiếu/hết hạn/revoked trả generic `401 auth_required` hoặc
   `401 auth_invalid_credentials`; logout revoke session và xóa cả hai cookie.
+- `DEVRADAR_LOCAL_NO_LOGIN_ENABLED=true` chỉ hợp lệ với `LOCALHOST_SERVICE` và
+  `DEVRADAR_AUTH_ENABLED=false`. Owner/operator dependencies dùng singleton PostgreSQL
+  `local-operator`; không tạo session/password/cookie, từ chối legacy owner header và vẫn kiểm Origin
+  cho mutation. Flag này trên `PROTECTED`/`PUBLIC` hoặc cùng session auth làm startup fail closed.
 
 Rate limit bật mặc định bằng `DEVRADAR_RATE_LIMIT_ENABLED=true`, dùng fixed-window process-local:
 general API `120/60s`, login `10/900s`, alert dispatch `5/60s`. Giới hạn có thể giảm/tăng theo
@@ -402,7 +406,10 @@ phép nhưng wildcard `*` bị cấm.
 
 ## Custom source profiles (local/protected)
 
-Các endpoint dưới đây nằm dưới `/api/v1/custom-sources`, yêu cầu session authenticated và feature flag `DEVRADAR_CUSTOM_SOURCES_LOCAL_ENABLED=true`. Mutation và preview cần CSRF. Mọi truy vấn đều owner-scoped; profile của owner khác trả `404` generic.
+Các endpoint dưới đây nằm dưới `/api/v1/custom-sources`, yêu cầu feature flag
+`DEVRADAR_CUSTOM_SOURCES_LOCAL_ENABLED=true` cùng session authenticated hoặc explicit localhost
+no-login. Session mutation/preview cần CSRF; local no-login mutation vẫn kiểm Origin allow-list. Mọi
+truy vấn đều owner-scoped; profile của owner khác trả `404` generic.
 
 | Method | Resource | Phase/điều kiện |
 |---|---|---|

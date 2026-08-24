@@ -4,6 +4,8 @@ WEB_DOCKERFILE = Path("web/Dockerfile")
 WEB_DOCKERIGNORE = Path("web/.dockerignore")
 NEXT_CONFIG = Path("web/next.config.mjs")
 COMPOSE = Path("compose.yaml")
+LOCAL_ENV = Path(".env.example")
+PRODUCTION_ENV = Path(".env.production.example")
 DEPLOY = Path("scripts/deploy.ps1")
 ROLLBACK = Path("scripts/rollback.ps1")
 WEB_SMOKE = Path("scripts/web-smoke.ps1")
@@ -45,6 +47,16 @@ def test_compose_web_is_loopback_internal_api_and_hardened() -> None:
     assert "/app/.next/cache" in compose
     assert "read_only: true" in compose
     assert "no-new-privileges:true" in compose
+
+
+def test_local_no_login_is_explicit_and_defaults_off() -> None:
+    compose = _read(COMPOSE)
+    local_env = _read(LOCAL_ENV)
+    production_env = _read(PRODUCTION_ENV)
+
+    assert compose.count("DEVRADAR_LOCAL_NO_LOGIN_ENABLED") >= 2
+    assert "DEVRADAR_LOCAL_NO_LOGIN_ENABLED=false" in local_env
+    assert "DEVRADAR_LOCAL_NO_LOGIN_ENABLED=false" in production_env
 
 
 def test_release_commands_and_ci_cover_web_and_api() -> None:
