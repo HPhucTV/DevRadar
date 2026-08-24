@@ -31,21 +31,10 @@ DevRadar biến job posting công khai thành dữ liệu có thể tìm kiếm,
 ## ◈ Product showcase
 
 <p align="center">
-  <img src="docs/assets/readme/dashboard-overview.png" alt="DevRadar dashboard tổng quan bằng tiếng Việt" width="100%" />
+  <img src="docs/assets/readme/devradar-product-poster.png" alt="DevRadar product poster kết hợp market overview, skill analytics và bounded custom-source workflow" width="100%" />
 </p>
 
-<p align="center"><sub>Tổng quan nguồn, độ phủ kỹ năng và những job chuẩn hóa mới nhất.</sub></p>
-
-<table>
-  <tr>
-    <td width="50%"><img src="docs/assets/readme/analytics.png" alt="DevRadar analytics và skill trends" /></td>
-    <td width="50%"><img src="docs/assets/readme/sources.png" alt="DevRadar source và custom source workflow" /></td>
-  </tr>
-  <tr>
-    <td><strong>Market analytics</strong><br />Trend có denominator, coverage và evaluation rõ ràng.</td>
-    <td><strong>Source operations</strong><br />Cấu hình local custom source mà không vượt access control.</td>
-  </tr>
-</table>
+<p align="center"><sub>UI thật, metric có evidence và data flow có provenance — trong một product overview duy nhất.</sub></p>
 
 ## ◎ Why DevRadar
 
