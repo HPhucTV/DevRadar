@@ -2,7 +2,7 @@ import { bffRateLimit } from "@/lib/bff-rate-limit";
 
 const DEFAULT_API_BASE_URL = "http://127.0.0.1:8000";
 export const MAX_PROXY_BODY_BYTES = 6 * 1024 * 1024;
-const MAX_PROXY_RESPONSE_BYTES = 2 * 1024 * 1024;
+const MAX_PROXY_RESPONSE_BYTES = 3 * 1024 * 1024;
 const BACKEND_TIMEOUT_MS = 10_000;
 
 function backendUrl(path: string): string {

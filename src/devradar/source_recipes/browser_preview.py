@@ -311,6 +311,10 @@ def build_browser_artifact(
             "selector": selector,
             "card_selector": card_selector,
             "signature": signature,
+            "tag": tag,
+            "role": role or None,
+            "text_summary": text_summary,
+            "bounds": bounds,
         }
     normalized_hosts = tuple(sorted(set(proposed_hosts)))
     if len(normalized_hosts) > _MAX_PROPOSED_HOSTS:

@@ -1,0 +1,894 @@
+"""Protected localhost-only REST contract for no-code source recipes."""
+
+from __future__ import annotations
+
+import base64
+import json
+from datetime import UTC, date, datetime, time
+from hashlib import sha256
+from typing import Annotated, Any, Literal
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, Header, Path, Query, status
+from pydantic import Field
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from devradar.api.common import (
+    ERROR_RESPONSES,
+    ApiModel,
+    DataResponse,
+    ErrorResponse,
+    ListResponse,
+    PaginationQuery,
+    pagination_data,
+)
+from devradar.api.errors import ApiContractError
+from devradar.auth.dependencies import AuthContext, require_authenticated_user, require_csrf
+from devradar.ingestion.models import (
+    CoverageStatus,
+    CrawlRun,
+    CrawlRunStatus,
+    CrawlTriggerType,
+    Source,
+    SourceApprovalStatus,
+    SourceHealthStatus,
+)
+from devradar.platform.database import get_database_session
+from devradar.platform.security_config import source_recipes_local_enabled
+from devradar.source_recipes.catalog import CATALOG_SCHEMA_VERSION, SOURCE_CATALOG
+from devradar.source_recipes.models import (
+    PreviewStatus,
+    RecipeScheduleKind,
+    RecipeStatus,
+    SourceRecipe,
+    SourceRecipeDraft,
+    SourceRecipeError,
+    SourceRecipePreview,
+    TermsNotice,
+)
+from devradar.source_recipes.preview import request_preview
+from devradar.source_recipes.service import apply_recipe_mapping
+
+router = APIRouter(tags=["source-recipes"])
+DatabaseSession = Annotated[Session, Depends(get_database_session)]
+Authenticated = Annotated[AuthContext, Depends(require_authenticated_user)]
+CsrfContext = Annotated[AuthContext, Depends(require_csrf)]
+_RECIPE_ADAPTER_KEY = "source_recipe"
+
+
+def require_source_recipes_enabled() -> None:
+    if not source_recipes_local_enabled():
+        raise ApiContractError(
+            status.HTTP_403_FORBIDDEN,
+            "source_recipes_disabled",
+            "Source recipes are disabled outside the explicit localhost feature gate.",
+        )
+
+
+class SourceCatalogEntryData(ApiModel):
+    name: str
+    origin: str
+    listing_hint: str
+    notice: TermsNotice
+    evidence_url: str
+    reviewed_on: date
+
+
+class SourceCatalogData(ApiModel):
+    schema_version: str
+    entries: list[SourceCatalogEntryData]
+
+
+class SourceRecipeCreate(ApiModel):
+    name: str = Field(min_length=1, max_length=200)
+    listing_url: str = Field(min_length=1, max_length=2048)
+    seniority_filter: list[str] = Field(default_factory=lambda: ["all"], min_length=1, max_length=8)
+    acknowledged_notice_version: str | None = Field(default=None, min_length=64, max_length=64)
+    allowed_hosts: list[str] | None = Field(default=None, max_length=3)
+    allowed_path_prefixes: list[str] | None = Field(default=None, max_length=10)
+    schedule_kind: RecipeScheduleKind = RecipeScheduleKind.MANUAL
+    schedule_local_time: time | None = None
+    schedule_weekday: int | None = Field(default=None, ge=0, le=6)
+    timezone: str = Field(default="Asia/Ho_Chi_Minh", min_length=1, max_length=64)
+    item_budget: int = Field(default=500, ge=1, le=10_000)
+    page_budget: int = Field(default=20, ge=1, le=100)
+    request_budget: int = Field(default=100, ge=1, le=500)
+    byte_budget: int = Field(default=2_000_000, ge=1, le=10_000_000)
+    time_budget_seconds: int = Field(default=600, ge=1, le=3_600)
+    requests_per_minute: int = Field(default=2, ge=1, le=60)
+
+    def to_draft(self) -> SourceRecipeDraft:
+        return SourceRecipeDraft.from_input(**self.model_dump())
+
+
+class SourceRecipePatch(ApiModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    seniority_filter: list[str] | None = Field(default=None, min_length=1, max_length=8)
+    acknowledged_notice_version: str | None = Field(default=None, min_length=64, max_length=64)
+    allowed_hosts: list[str] | None = Field(default=None, max_length=3)
+    allowed_path_prefixes: list[str] | None = Field(default=None, max_length=10)
+    schedule_kind: RecipeScheduleKind | None = None
+    schedule_local_time: time | None = None
+    schedule_weekday: int | None = Field(default=None, ge=0, le=6)
+    timezone: str | None = Field(default=None, min_length=1, max_length=64)
+    status: Literal["enabled", "paused"] | None = None
+
+
+class SourceRecipeData(ApiModel):
+    id: UUID
+    source_id: UUID | None
+    name: str
+    status: RecipeStatus
+    listing_url: str
+    origin: str
+    allowed_hosts: list[str]
+    allowed_path_prefixes: list[str]
+    terms_notice: TermsNotice
+    terms_notice_version: str
+    terms_evidence_url: str | None
+    terms_acknowledgement_required: bool
+    terms_acknowledged: bool
+    seniority_filter: list[str]
+    schedule_kind: RecipeScheduleKind
+    schedule_local_time: time | None
+    schedule_weekday: int | None
+    timezone: str
+    has_mapping: bool
+    mapping_version: str | None
+    block_reason: str | None
+    next_run_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SourceRecipePreviewRequest(ApiModel):
+    pass
+
+
+class SourceRecipeMappingRequest(ApiModel):
+    card_element_id: str = Field(min_length=32, max_length=32, pattern=r"^[0-9a-f]{32}$")
+    title_element_id: str = Field(min_length=32, max_length=32, pattern=r"^[0-9a-f]{32}$")
+    company_element_id: str = Field(min_length=32, max_length=32, pattern=r"^[0-9a-f]{32}$")
+    location_element_id: str | None = Field(
+        default=None, min_length=32, max_length=32, pattern=r"^[0-9a-f]{32}$"
+    )
+    job_url_element_id: str = Field(min_length=32, max_length=32, pattern=r"^[0-9a-f]{32}$")
+    pagination_element_id: str | None = Field(
+        default=None, min_length=32, max_length=32, pattern=r"^[0-9a-f]{32}$"
+    )
+
+    def selected_ids(self) -> dict[str, str | None]:
+        return {
+            "card": self.card_element_id,
+            "title": self.title_element_id,
+            "company": self.company_element_id,
+            "location": self.location_element_id,
+            "job_url": self.job_url_element_id,
+            "pagination": self.pagination_element_id,
+        }
+
+
+class SourceRecipeCrawlRequest(ApiModel):
+    pass
+
+
+class PreviewProvenanceData(ApiModel):
+    field_name: str
+    source_path: str
+    method: str
+
+
+class PreviewCandidateData(ApiModel):
+    external_id: str
+    job_url: str
+    title: str
+    company: str
+    location: str | None = None
+    level_raw: str | None = None
+    description: str | None = None
+    posted_at: str | None = None
+    confidence: float
+    provenance: list[PreviewProvenanceData]
+    warnings: list[str]
+    parser_version: str
+
+
+class PreviewElementData(ApiModel):
+    element_id: str
+    tag: str
+    role: str | None
+    text_summary: str
+    bounds: dict[str, float]
+
+
+class SourceRecipePreviewData(ApiModel):
+    id: UUID
+    recipe_id: UUID
+    status: PreviewStatus
+    candidates: list[PreviewCandidateData]
+    warnings: list[dict[str, Any]]
+    elements: list[PreviewElementData]
+    proposed_hosts: list[str]
+    screenshot_data_url: str | None = Field(default=None, max_length=2_100_000)
+    error_code: str | None
+    requested_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+    expires_at: datetime
+
+
+class SourceRecipeCrawlData(ApiModel):
+    id: UUID
+    source_id: UUID
+    trigger_type: CrawlTriggerType
+    status: CrawlRunStatus
+    coverage_status: CoverageStatus
+    requested_at: datetime
+
+
+SourceCatalogResponse = DataResponse[SourceCatalogData]
+SourceRecipeResponse = DataResponse[SourceRecipeData]
+SourceRecipeListResponse = ListResponse[SourceRecipeData]
+SourceRecipePreviewResponse = DataResponse[SourceRecipePreviewData]
+SourceRecipeCrawlResponse = DataResponse[SourceRecipeCrawlData]
+SourceRecipeCrawlListResponse = ListResponse[SourceRecipeCrawlData]
+
+
+def _ack_required(recipe: SourceRecipe) -> bool:
+    return recipe.terms_notice in {TermsNotice.NOT_REVIEWED, TermsNotice.RESTRICTED_TERMS}
+
+
+def _recipe_data(recipe: SourceRecipe) -> SourceRecipeData:
+    return SourceRecipeData(
+        id=recipe.id,
+        source_id=recipe.source_id,
+        name=recipe.name,
+        status=recipe.status,
+        listing_url=recipe.listing_url,
+        origin=recipe.origin,
+        allowed_hosts=list(recipe.allowed_hosts),
+        allowed_path_prefixes=list(recipe.allowed_path_prefixes),
+        terms_notice=recipe.terms_notice,
+        terms_notice_version=recipe.terms_notice_version,
+        terms_evidence_url=recipe.terms_evidence_url,
+        terms_acknowledgement_required=_ack_required(recipe),
+        terms_acknowledged=not _ack_required(recipe) or recipe.terms_acknowledged_at is not None,
+        seniority_filter=list(recipe.seniority_filter),
+        schedule_kind=recipe.schedule_kind,
+        schedule_local_time=recipe.schedule_local_time,
+        schedule_weekday=recipe.schedule_weekday,
+        timezone=recipe.timezone,
+        has_mapping=bool(recipe.field_mapping),
+        mapping_version=recipe.mapping_version,
+        block_reason=recipe.block_reason,
+        next_run_at=recipe.next_run_at,
+        created_at=recipe.created_at,
+        updated_at=recipe.updated_at,
+    )
+
+
+def _candidate_data(candidate: dict[str, Any]) -> PreviewCandidateData:
+    return PreviewCandidateData.model_validate(candidate)
+
+
+def _public_elements(preview: SourceRecipePreview) -> list[PreviewElementData]:
+    elements = (
+        preview.element_map.get("elements", {}) if isinstance(preview.element_map, dict) else {}
+    )
+    if not isinstance(elements, dict):
+        return []
+    public: list[PreviewElementData] = []
+    for element_id, value in sorted(elements.items()):
+        if not isinstance(value, dict):
+            continue
+        try:
+            public.append(
+                PreviewElementData(
+                    element_id=element_id,
+                    tag=value["tag"],
+                    role=value.get("role"),
+                    text_summary=value["text_summary"],
+                    bounds=value["bounds"],
+                )
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+    return public
+
+
+def _preview_data(preview: SourceRecipePreview) -> SourceRecipePreviewData:
+    screenshot_data_url = None
+    if preview.screenshot is not None and preview.screenshot_media_type is not None:
+        encoded = base64.b64encode(preview.screenshot).decode("ascii")
+        screenshot_data_url = f"data:{preview.screenshot_media_type};base64,{encoded}"
+    proposed_hosts = (
+        preview.element_map.get("proposed_hosts", [])
+        if isinstance(preview.element_map, dict)
+        else []
+    )
+    return SourceRecipePreviewData(
+        id=preview.id,
+        recipe_id=preview.recipe_id,
+        status=preview.status,
+        candidates=[_candidate_data(candidate) for candidate in preview.candidate_jobs],
+        warnings=list(preview.warnings),
+        elements=_public_elements(preview),
+        proposed_hosts=(
+            [value for value in proposed_hosts if isinstance(value, str)]
+            if isinstance(proposed_hosts, list)
+            else []
+        ),
+        screenshot_data_url=screenshot_data_url,
+        error_code=preview.error_code,
+        requested_at=preview.requested_at,
+        started_at=preview.started_at,
+        finished_at=preview.finished_at,
+        expires_at=preview.expires_at,
+    )
+
+
+def _crawl_data(crawl_run: CrawlRun) -> SourceRecipeCrawlData:
+    return SourceRecipeCrawlData(
+        id=crawl_run.id,
+        source_id=crawl_run.source_id,
+        trigger_type=crawl_run.trigger_type,
+        status=crawl_run.status,
+        coverage_status=crawl_run.coverage_status,
+        requested_at=crawl_run.requested_at,
+    )
+
+
+def _owned_recipe(session: Session, *, owner_id: UUID, recipe_id: UUID) -> SourceRecipe:
+    recipe = session.scalar(
+        select(SourceRecipe).where(
+            SourceRecipe.id == recipe_id,
+            SourceRecipe.owner_user_id == owner_id,
+        )
+    )
+    if recipe is None:
+        raise ApiContractError(404, "recipe_not_found", "Source recipe was not found.")
+    return recipe
+
+
+def _owned_preview(
+    session: Session,
+    *,
+    owner_id: UUID,
+    recipe_id: UUID,
+    preview_id: UUID,
+) -> tuple[SourceRecipe, SourceRecipePreview]:
+    recipe = _owned_recipe(session, owner_id=owner_id, recipe_id=recipe_id)
+    preview = session.scalar(
+        select(SourceRecipePreview).where(
+            SourceRecipePreview.id == preview_id,
+            SourceRecipePreview.recipe_id == recipe.id,
+        )
+    )
+    if preview is None:
+        raise ApiContractError(404, "preview_not_found", "Source recipe preview was not found.")
+    return recipe, preview
+
+
+def _domain_error(error: SourceRecipeError) -> ApiContractError:
+    status_code = (
+        status.HTTP_404_NOT_FOUND
+        if error.code in {"source_recipe_not_found", "preview_claim_not_found"}
+        else status.HTTP_409_CONFLICT
+        if error.code
+        in {
+            "preview_mapping_expired",
+            "preview_mapping_invalid",
+            "preview_required",
+            "recipe_not_enabled",
+            "recipe_status_transition_invalid",
+            "source_run_active",
+            "idempotency_conflict",
+            "terms_notice_acknowledgement_required",
+            "terms_notice_acknowledgement_stale",
+        }
+        else status.HTTP_422_UNPROCESSABLE_CONTENT
+    )
+    return ApiContractError(
+        status_code, error.code, "Source recipe request could not be completed."
+    )
+
+
+def _draft_to_recipe(draft: SourceRecipeDraft, *, owner_id: UUID, now: datetime) -> SourceRecipe:
+    reviewed_at = (
+        datetime.combine(draft.terms_reviewed_on, time.min, tzinfo=UTC)
+        if draft.terms_reviewed_on is not None
+        else None
+    )
+    return SourceRecipe(
+        owner_user_id=owner_id,
+        name=draft.name,
+        status=RecipeStatus.DRAFT,
+        listing_url=draft.listing_url,
+        origin=draft.origin,
+        allowed_hosts=list(draft.allowed_hosts),
+        allowed_path_prefixes=list(draft.allowed_path_prefixes),
+        terms_notice=draft.terms_notice,
+        terms_notice_version=draft.terms_notice_version,
+        terms_evidence_url=draft.terms_evidence_url,
+        terms_reviewed_at=reviewed_at,
+        terms_acknowledged_at=now if draft.terms_acknowledged else None,
+        field_mapping={},
+        pagination_mapping={},
+        seniority_filter=list(draft.seniority_filter),
+        schedule_kind=draft.schedule_kind,
+        schedule_local_time=draft.schedule_local_time,
+        schedule_weekday=draft.schedule_weekday,
+        timezone=draft.timezone,
+        config_version="source-recipe-config-v1",
+        item_budget=draft.item_budget,
+        page_budget=draft.page_budget,
+        request_budget=draft.request_budget,
+        byte_budget=draft.byte_budget,
+        time_budget_seconds=draft.time_budget_seconds,
+        requests_per_minute=draft.requests_per_minute,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+@router.get(
+    "/source-catalog",
+    response_model=SourceCatalogResponse,
+    dependencies=[Depends(require_source_recipes_enabled)],
+    responses={**ERROR_RESPONSES, 401: {"model": ErrorResponse}},
+)
+def get_source_catalog(context: Authenticated) -> SourceCatalogResponse:
+    del context
+    return SourceCatalogResponse(
+        data=SourceCatalogData(
+            schema_version=CATALOG_SCHEMA_VERSION,
+            entries=[
+                SourceCatalogEntryData(
+                    name=entry.name,
+                    origin=entry.origin,
+                    listing_hint=entry.listing_hint,
+                    notice=entry.notice,
+                    evidence_url=entry.evidence_url,
+                    reviewed_on=entry.reviewed_on,
+                )
+                for entry in SOURCE_CATALOG
+            ],
+        )
+    )
+
+
+@router.get(
+    "/source-recipes",
+    response_model=SourceRecipeListResponse,
+    dependencies=[Depends(require_source_recipes_enabled)],
+    responses={**ERROR_RESPONSES, 401: {"model": ErrorResponse}},
+)
+def list_source_recipes(
+    pagination: Annotated[PaginationQuery, Query()],
+    context: Authenticated,
+    session: DatabaseSession,
+) -> SourceRecipeListResponse:
+    condition = SourceRecipe.owner_user_id == context.user.id
+    total = session.scalar(select(func.count()).select_from(SourceRecipe).where(condition)) or 0
+    recipes = session.scalars(
+        select(SourceRecipe)
+        .where(condition)
+        .order_by(SourceRecipe.name.asc(), SourceRecipe.id.asc())
+        .offset((pagination.page - 1) * pagination.page_size)
+        .limit(pagination.page_size)
+    ).all()
+    return SourceRecipeListResponse(
+        data=[_recipe_data(recipe) for recipe in recipes],
+        pagination=pagination_data(pagination, total),
+    )
+
+
+@router.post(
+    "/source-recipes",
+    status_code=status.HTTP_201_CREATED,
+    response_model=SourceRecipeResponse,
+    dependencies=[Depends(require_source_recipes_enabled)],
+    responses={**ERROR_RESPONSES, 401: {"model": ErrorResponse}},
+)
+def create_source_recipe(
+    request: SourceRecipeCreate,
+    context: CsrfContext,
+    session: DatabaseSession,
+) -> SourceRecipeResponse:
+    try:
+        draft = request.to_draft()
+    except SourceRecipeError as error:
+        raise _domain_error(error) from None
+    now = datetime.now(UTC)
+    recipe = _draft_to_recipe(draft, owner_id=context.user.id, now=now)
+    session.add(recipe)
+    session.commit()
+    return SourceRecipeResponse(data=_recipe_data(recipe))
+
+
+@router.get(
+    "/source-recipes/{recipeId}",
+    response_model=SourceRecipeResponse,
+    dependencies=[Depends(require_source_recipes_enabled)],
+    responses={**ERROR_RESPONSES, 401: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def get_source_recipe(
+    recipe_id: Annotated[UUID, Path(alias="recipeId")],
+    context: Authenticated,
+    session: DatabaseSession,
+) -> SourceRecipeResponse:
+    return SourceRecipeResponse(
+        data=_recipe_data(_owned_recipe(session, owner_id=context.user.id, recipe_id=recipe_id))
+    )
+
+
+def _apply_config_patch(
+    recipe: SourceRecipe,
+    payload: dict[str, Any],
+    *,
+    acknowledged_version: str | None,
+) -> None:
+    draft = SourceRecipeDraft.from_input(
+        name=payload.get("name", recipe.name),
+        listing_url=recipe.listing_url,
+        seniority_filter=payload.get("seniority_filter", list(recipe.seniority_filter)),
+        acknowledged_notice_version=acknowledged_version,
+        allowed_hosts=payload.get("allowed_hosts", list(recipe.allowed_hosts)),
+        allowed_path_prefixes=payload.get(
+            "allowed_path_prefixes", list(recipe.allowed_path_prefixes)
+        ),
+        schedule_kind=payload.get("schedule_kind", recipe.schedule_kind),
+        schedule_local_time=payload.get("schedule_local_time", recipe.schedule_local_time),
+        schedule_weekday=payload.get("schedule_weekday", recipe.schedule_weekday),
+        timezone=payload.get("timezone", recipe.timezone),
+        item_budget=recipe.item_budget,
+        page_budget=recipe.page_budget,
+        request_budget=recipe.request_budget,
+        byte_budget=recipe.byte_budget,
+        time_budget_seconds=recipe.time_budget_seconds,
+        requests_per_minute=recipe.requests_per_minute,
+    )
+    recipe.name = draft.name
+    recipe.allowed_hosts = list(draft.allowed_hosts)
+    recipe.allowed_path_prefixes = list(draft.allowed_path_prefixes)
+    recipe.seniority_filter = list(draft.seniority_filter)
+    recipe.schedule_kind = draft.schedule_kind
+    recipe.schedule_local_time = draft.schedule_local_time
+    recipe.schedule_weekday = draft.schedule_weekday
+    recipe.timezone = draft.timezone
+    recipe.status = RecipeStatus.DRAFT
+    recipe.latest_successful_preview_id = None
+    recipe.latest_successful_preview_hash = None
+
+
+def _enable_recipe(session: Session, recipe: SourceRecipe, *, now: datetime) -> None:
+    if recipe.status not in {RecipeStatus.PREVIEW_READY, RecipeStatus.PAUSED}:
+        raise SourceRecipeError("preview_required")
+    if _ack_required(recipe) and recipe.terms_acknowledged_at is None:
+        raise SourceRecipeError("terms_notice_acknowledgement_required")
+    source = session.get(Source, recipe.source_id) if recipe.source_id is not None else None
+    if source is None:
+        source = Source(
+            name=f"{recipe.name} [{recipe.id.hex[:8]}]",
+            base_url=recipe.listing_url,
+            adapter_key=_RECIPE_ADAPTER_KEY,
+            approval_status=SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL,
+            health_status=SourceHealthStatus.UNKNOWN,
+            rate_limit_policy={
+                "requests_per_minute": recipe.requests_per_minute,
+                "concurrency": 1,
+            },
+            allowed_hosts=list(recipe.allowed_hosts),
+            terms_reviewed_at=recipe.terms_reviewed_at,
+        )
+        session.add(source)
+        session.flush()
+        recipe.source_id = source.id
+    else:
+        source.approval_status = SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL
+    recipe.status = RecipeStatus.ENABLED
+    recipe.updated_at = now
+
+
+@router.patch(
+    "/source-recipes/{recipeId}",
+    response_model=SourceRecipeResponse,
+    dependencies=[Depends(require_source_recipes_enabled)],
+    responses={
+        **ERROR_RESPONSES,
+        401: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+    },
+)
+def patch_source_recipe(
+    request: SourceRecipePatch,
+    recipe_id: Annotated[UUID, Path(alias="recipeId")],
+    context: CsrfContext,
+    session: DatabaseSession,
+) -> SourceRecipeResponse:
+    recipe = _owned_recipe(session, owner_id=context.user.id, recipe_id=recipe_id)
+    payload = request.model_dump(exclude_unset=True)
+    target_status = payload.pop("status", None)
+    acknowledged_version = payload.pop("acknowledged_notice_version", None)
+    now = datetime.now(UTC)
+    try:
+        if acknowledged_version is not None:
+            if acknowledged_version != recipe.terms_notice_version:
+                raise SourceRecipeError("terms_notice_acknowledgement_stale")
+            recipe.terms_acknowledged_at = now
+        if payload:
+            if recipe.status in {
+                RecipeStatus.ENABLED,
+                RecipeStatus.PREVIEWING,
+                RecipeStatus.RETIRED,
+            }:
+                raise SourceRecipeError("recipe_status_transition_invalid")
+            effective_ack = (
+                recipe.terms_notice_version
+                if recipe.terms_acknowledged_at is not None or not _ack_required(recipe)
+                else None
+            )
+            _apply_config_patch(recipe, payload, acknowledged_version=effective_ack)
+        if target_status == "enabled":
+            _enable_recipe(session, recipe, now=now)
+        elif target_status == "paused":
+            if recipe.status is not RecipeStatus.ENABLED or recipe.source_id is None:
+                raise SourceRecipeError("recipe_status_transition_invalid")
+            source = session.get(Source, recipe.source_id)
+            if source is not None:
+                source.approval_status = SourceApprovalStatus.PAUSED
+            recipe.status = RecipeStatus.PAUSED
+        recipe.updated_at = now
+        session.commit()
+    except SourceRecipeError as error:
+        session.rollback()
+        raise _domain_error(error) from None
+    except IntegrityError:
+        session.rollback()
+        raise ApiContractError(
+            409, "recipe_conflict", "Source recipe conflicts with existing data."
+        ) from None
+    return SourceRecipeResponse(data=_recipe_data(recipe))
+
+
+@router.delete(
+    "/source-recipes/{recipeId}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_source_recipes_enabled)],
+    responses={**ERROR_RESPONSES, 401: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def delete_source_recipe(
+    recipe_id: Annotated[UUID, Path(alias="recipeId")],
+    context: CsrfContext,
+    session: DatabaseSession,
+) -> None:
+    recipe = _owned_recipe(session, owner_id=context.user.id, recipe_id=recipe_id)
+    if recipe.source_id is not None:
+        source = session.get(Source, recipe.source_id)
+        if source is not None:
+            source.approval_status = SourceApprovalStatus.RETIRED
+    recipe.status = RecipeStatus.RETIRED
+    recipe.updated_at = datetime.now(UTC)
+    session.commit()
+
+
+@router.post(
+    "/source-recipes/{recipeId}/previews",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=SourceRecipePreviewResponse,
+    dependencies=[Depends(require_source_recipes_enabled)],
+    responses={
+        **ERROR_RESPONSES,
+        401: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+    },
+)
+def create_source_recipe_preview(
+    request: SourceRecipePreviewRequest,
+    recipe_id: Annotated[UUID, Path(alias="recipeId")],
+    context: CsrfContext,
+    session: DatabaseSession,
+) -> SourceRecipePreviewResponse:
+    del request
+    recipe = _owned_recipe(session, owner_id=context.user.id, recipe_id=recipe_id)
+    if _ack_required(recipe) and recipe.terms_acknowledged_at is None:
+        raise _domain_error(SourceRecipeError("terms_notice_acknowledgement_required"))
+    try:
+        preview = request_preview(session, recipe_id=recipe.id, now=datetime.now(UTC))
+    except SourceRecipeError as error:
+        session.rollback()
+        raise _domain_error(error) from None
+    return SourceRecipePreviewResponse(data=_preview_data(preview))
+
+
+@router.get(
+    "/source-recipes/{recipeId}/previews/{previewId}",
+    response_model=SourceRecipePreviewResponse,
+    dependencies=[Depends(require_source_recipes_enabled)],
+    responses={**ERROR_RESPONSES, 401: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def get_source_recipe_preview(
+    recipe_id: Annotated[UUID, Path(alias="recipeId")],
+    preview_id: Annotated[UUID, Path(alias="previewId")],
+    context: Authenticated,
+    session: DatabaseSession,
+) -> SourceRecipePreviewResponse:
+    _, preview = _owned_preview(
+        session,
+        owner_id=context.user.id,
+        recipe_id=recipe_id,
+        preview_id=preview_id,
+    )
+    return SourceRecipePreviewResponse(data=_preview_data(preview))
+
+
+@router.post(
+    "/source-recipes/{recipeId}/previews/{previewId}/mapping",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=SourceRecipePreviewResponse,
+    dependencies=[Depends(require_source_recipes_enabled)],
+    responses={
+        **ERROR_RESPONSES,
+        401: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+    },
+)
+def map_source_recipe_preview(
+    request: SourceRecipeMappingRequest,
+    recipe_id: Annotated[UUID, Path(alias="recipeId")],
+    preview_id: Annotated[UUID, Path(alias="previewId")],
+    context: CsrfContext,
+    session: DatabaseSession,
+) -> SourceRecipePreviewResponse:
+    _owned_preview(
+        session,
+        owner_id=context.user.id,
+        recipe_id=recipe_id,
+        preview_id=preview_id,
+    )
+    try:
+        apply_recipe_mapping(
+            session,
+            recipe_id=recipe_id,
+            preview_id=preview_id,
+            selected_ids=request.selected_ids(),
+            now=datetime.now(UTC),
+        )
+        preview = request_preview(session, recipe_id=recipe_id, now=datetime.now(UTC))
+    except SourceRecipeError as error:
+        session.rollback()
+        raise _domain_error(error) from None
+    return SourceRecipePreviewResponse(data=_preview_data(preview))
+
+
+def _run_identity(owner_id: UUID, source_id: UUID, idempotency_key: str) -> tuple[str, str, str]:
+    requester = f"recipe:{owner_id}"
+    trigger_key = f"api:{sha256(idempotency_key.encode()).hexdigest()}"
+    request_hash = sha256(
+        json.dumps({"sourceId": str(source_id)}, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    return requester, trigger_key, request_hash
+
+
+def _request_recipe_run(
+    session: Session,
+    *,
+    recipe: SourceRecipe,
+    owner_id: UUID,
+    idempotency_key: str,
+) -> CrawlRun:
+    if recipe.status is not RecipeStatus.ENABLED or recipe.source_id is None:
+        raise SourceRecipeError("recipe_not_enabled")
+    requester, trigger_key, request_hash = _run_identity(
+        owner_id, recipe.source_id, idempotency_key
+    )
+    existing = session.scalar(
+        select(CrawlRun).where(
+            CrawlRun.requested_by == requester,
+            CrawlRun.trigger_key == trigger_key,
+        )
+    )
+    if existing is not None:
+        if existing.request_hash != request_hash:
+            raise SourceRecipeError("idempotency_conflict")
+        return existing
+    active = session.scalar(
+        select(CrawlRun).where(
+            CrawlRun.source_id == recipe.source_id,
+            CrawlRun.status.in_((CrawlRunStatus.PENDING, CrawlRunStatus.RUNNING)),
+        )
+    )
+    if active is not None:
+        raise SourceRecipeError("source_run_active")
+    crawl_run = CrawlRun(
+        source_id=recipe.source_id,
+        trigger_type=CrawlTriggerType.MANUAL,
+        trigger_key=trigger_key,
+        requested_at=datetime.now(UTC),
+        requested_by=requester,
+        request_hash=request_hash,
+        status=CrawlRunStatus.PENDING,
+        coverage_status=CoverageStatus.UNKNOWN,
+        adapter_version="pending",
+        config_version=recipe.mapping_version or recipe.config_version,
+    )
+    session.add(crawl_run)
+    session.commit()
+    return crawl_run
+
+
+@router.get(
+    "/source-recipes/{recipeId}/crawl-runs",
+    response_model=SourceRecipeCrawlListResponse,
+    dependencies=[Depends(require_source_recipes_enabled)],
+    responses={**ERROR_RESPONSES, 401: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def list_source_recipe_runs(
+    recipe_id: Annotated[UUID, Path(alias="recipeId")],
+    pagination: Annotated[PaginationQuery, Query()],
+    context: Authenticated,
+    session: DatabaseSession,
+) -> SourceRecipeCrawlListResponse:
+    recipe = _owned_recipe(session, owner_id=context.user.id, recipe_id=recipe_id)
+    if recipe.source_id is None:
+        return SourceRecipeCrawlListResponse(data=[], pagination=pagination_data(pagination, 0))
+    condition = CrawlRun.source_id == recipe.source_id
+    total = session.scalar(select(func.count()).select_from(CrawlRun).where(condition)) or 0
+    runs = session.scalars(
+        select(CrawlRun)
+        .where(condition)
+        .order_by(CrawlRun.requested_at.desc(), CrawlRun.id.asc())
+        .offset((pagination.page - 1) * pagination.page_size)
+        .limit(pagination.page_size)
+    ).all()
+    return SourceRecipeCrawlListResponse(
+        data=[_crawl_data(run) for run in runs],
+        pagination=pagination_data(pagination, total),
+    )
+
+
+@router.post(
+    "/source-recipes/{recipeId}/crawl-runs",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=SourceRecipeCrawlResponse,
+    dependencies=[Depends(require_source_recipes_enabled)],
+    responses={
+        **ERROR_RESPONSES,
+        401: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+    },
+)
+def create_source_recipe_run(
+    request: SourceRecipeCrawlRequest,
+    recipe_id: Annotated[UUID, Path(alias="recipeId")],
+    idempotency_key: Annotated[
+        str,
+        Header(
+            alias="Idempotency-Key",
+            min_length=8,
+            max_length=128,
+            pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+        ),
+    ],
+    context: CsrfContext,
+    session: DatabaseSession,
+) -> SourceRecipeCrawlResponse:
+    del request
+    recipe = _owned_recipe(session, owner_id=context.user.id, recipe_id=recipe_id)
+    try:
+        crawl_run = _request_recipe_run(
+            session,
+            recipe=recipe,
+            owner_id=context.user.id,
+            idempotency_key=idempotency_key,
+        )
+    except SourceRecipeError as error:
+        session.rollback()
+        raise _domain_error(error) from None
+    return SourceRecipeCrawlResponse(data=_crawl_data(crawl_run))
