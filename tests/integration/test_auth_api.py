@@ -8,7 +8,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from devradar.auth.models import AuthRole, AuthSession, User
@@ -45,6 +45,55 @@ def auth_api(
         yield client, fresh_postgresql_url
     _database_engine(fresh_postgresql_url).dispose()
     _database_engine.cache_clear()
+
+
+@pytest.fixture
+def local_no_login_api(
+    fresh_postgresql_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[tuple[TestClient, str]]:
+    monkeypatch.setenv(DATABASE_URL_ENV, fresh_postgresql_url)
+    monkeypatch.setenv(AUTH_ENABLED_ENV, "false")
+    monkeypatch.setenv("DEVRADAR_DEPLOYMENT_CLASS", "LOCALHOST_SERVICE")
+    monkeypatch.setenv("DEVRADAR_LOCAL_NO_LOGIN_ENABLED", "true")
+    command.upgrade(Config(str(PROJECT_ROOT / "alembic.ini")), "head")
+    _database_engine.cache_clear()
+    with TestClient(app) as client:
+        yield client, fresh_postgresql_url
+    _database_engine(fresh_postgresql_url).dispose()
+    _database_engine.cache_clear()
+
+
+@pytest.mark.postgresql
+def test_local_no_login_reuses_operator_without_session(
+    local_no_login_api: tuple[TestClient, str],
+) -> None:
+    client, database_url = local_no_login_api
+
+    first = client.get("/api/v1/auth/me")
+    second = client.get("/api/v1/auth/me")
+
+    assert first.status_code == second.status_code == 200
+    assert first.json()["data"] == {"username": "local-operator", "role": "operator"}
+    assert "set-cookie" not in first.headers
+    with Session(_database_engine(database_url)) as session:
+        assert session.scalar(select(func.count()).select_from(User)) == 1
+        user = session.scalar(select(User))
+        assert user is not None
+        assert user.username == "local-operator"
+        assert user.role == AuthRole.OPERATOR.value
+
+
+@pytest.mark.postgresql
+def test_local_no_login_logout_fails_safely(
+    local_no_login_api: tuple[TestClient, str],
+) -> None:
+    client, _ = local_no_login_api
+
+    response = client.post("/api/v1/auth/logout")
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "auth_disabled"
 
 
 def test_login_sets_opaque_session_and_csrf_cookie_and_me_is_authenticated(

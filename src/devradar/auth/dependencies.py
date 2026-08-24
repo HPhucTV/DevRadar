@@ -10,9 +10,11 @@ from typing import Annotated
 
 from fastapi import Cookie, Depends, Header, Request, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from devradar.api.errors import ApiContractError
+from devradar.auth.local_operator import LocalOperatorUnavailable, get_or_create_local_operator
 from devradar.auth.models import AuthRole, AuthSession, User
 from devradar.auth.service import (
     CSRF_COOKIE,
@@ -25,6 +27,7 @@ from devradar.auth.service import (
     owner_hash_for_subject,
 )
 from devradar.platform.database import _database_engine, get_database_session, get_database_url
+from devradar.platform.security_config import local_no_login_enabled
 
 DatabaseSession = Annotated[Session, Depends(get_database_session)]
 _OWNER_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{31,127}$")
@@ -33,7 +36,7 @@ _OWNER_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{31,127}$")
 @dataclass(frozen=True, slots=True)
 class AuthContext:
     user: User
-    auth_session: AuthSession
+    auth_session: AuthSession | None
 
 
 def _unauthorized() -> ApiContractError:
@@ -79,11 +82,13 @@ def validate_csrf(request: Request, context: AuthContext) -> None:
     _validate_origin(request)
     header_token = request.headers.get(CSRF_HEADER, "")
     cookie_token = request.cookies.get(CSRF_COOKIE, "")
+    auth_session = context.auth_session
     if (
-        not header_token
+        auth_session is None
+        or not header_token
         or not cookie_token
         or not hmac.compare_digest(header_token, cookie_token)
-        or not hmac.compare_digest(hash_token(header_token), context.auth_session.csrf_hash)
+        or not hmac.compare_digest(hash_token(header_token), auth_session.csrf_hash)
     ):
         raise ApiContractError(
             status.HTTP_403_FORBIDDEN,
@@ -98,13 +103,15 @@ def require_authenticated_user(
     session_token: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
 ) -> AuthContext:
     del request
-    if not auth_enabled():
-        raise ApiContractError(
-            status.HTTP_403_FORBIDDEN,
-            "auth_disabled",
-            "Authentication is disabled for this deployment.",
-        )
-    return _load_context(session, session_token)
+    if auth_enabled():
+        return _load_context(session, session_token)
+    if local_no_login_enabled():
+        return _local_context(session)
+    raise ApiContractError(
+        status.HTTP_403_FORBIDDEN,
+        "auth_disabled",
+        "Authentication is disabled for this deployment.",
+    )
 
 
 def require_csrf(
@@ -113,13 +120,33 @@ def require_csrf(
     session_token: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
 ) -> AuthContext:
     context = require_authenticated_user(request, session, session_token)
-    validate_csrf(request, context)
+    if context.auth_session is None:
+        _validate_origin(request)
+    else:
+        validate_csrf(request, context)
     return context
+
+
+def _local_context(session: Session) -> AuthContext:
+    try:
+        user = get_or_create_local_operator(session)
+    except (IntegrityError, LocalOperatorUnavailable) as error:
+        raise ApiContractError(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "local_operator_unavailable",
+            "The local operator identity is unavailable.",
+        ) from error
+    return AuthContext(user=user, auth_session=None)
 
 
 def _load_context_from_database(token: str | None) -> AuthContext:
     with Session(_database_engine(get_database_url())) as session:
         return _load_context(session, token)
+
+
+def _load_local_context_from_database() -> AuthContext:
+    with Session(_database_engine(get_database_url())) as session:
+        return _local_context(session)
 
 
 def require_owner_hash(
@@ -143,6 +170,18 @@ def require_owner_hash(
             validate_csrf(request, context)
         return owner_hash_for_subject(context.user.id)
 
+    if local_no_login_enabled():
+        if owner_token is not None:
+            raise ApiContractError(
+                status.HTTP_403_FORBIDDEN,
+                "legacy_owner_header_rejected",
+                "The legacy owner header is not accepted in local no-login mode.",
+            )
+        context = _load_local_context_from_database()
+        if request.method.upper() not in {"GET", "HEAD", "OPTIONS"}:
+            _validate_origin(request)
+        return owner_hash_for_subject(context.user.id)
+
     if owner_token is None or _OWNER_PATTERN.fullmatch(owner_token) is None:
         raise ApiContractError(
             status.HTTP_403_FORBIDDEN,
@@ -159,7 +198,12 @@ def require_operator(
     """Require operator role in auth mode; preserve local compatibility otherwise."""
 
     if not auth_enabled():
-        return None
+        if not local_no_login_enabled():
+            return None
+        context = _load_local_context_from_database()
+        if request.method.upper() not in {"GET", "HEAD", "OPTIONS"}:
+            _validate_origin(request)
+        return context
     context = _load_context_from_database(session_token)
     if context.user.role != AuthRole.OPERATOR.value:
         raise ApiContractError(

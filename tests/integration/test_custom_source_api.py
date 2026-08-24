@@ -61,6 +61,25 @@ def custom_source_api(
     _database_engine.cache_clear()
 
 
+@pytest.fixture
+def local_no_login_custom_source_api(
+    fresh_postgresql_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[tuple[TestClient, str]]:
+    monkeypatch.setenv(DATABASE_URL_ENV, fresh_postgresql_url)
+    monkeypatch.setenv(AUTH_ENABLED_ENV, "false")
+    monkeypatch.setenv("DEVRADAR_DEPLOYMENT_CLASS", "LOCALHOST_SERVICE")
+    monkeypatch.setenv("DEVRADAR_LOCAL_NO_LOGIN_ENABLED", "true")
+    monkeypatch.setenv("DEVRADAR_CUSTOM_SOURCES_LOCAL_ENABLED", "true")
+    monkeypatch.setenv("DEVRADAR_RATE_LIMIT_ENABLED", "false")
+    command.upgrade(Config(str(PROJECT_ROOT / "alembic.ini")), "head")
+    _database_engine.cache_clear()
+    with TestClient(app) as client:
+        yield client, fresh_postgresql_url
+    _database_engine(fresh_postgresql_url).dispose()
+    _database_engine.cache_clear()
+
+
 def _payload() -> dict[str, object]:
     return {
         "name": f"Example {uuid4().hex[:8]}",
@@ -85,6 +104,42 @@ def test_feature_flag_blocks_custom_source_api_when_disabled(
         response = client.get("/api/v1/custom-sources")
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "custom_sources_disabled"
+
+
+@pytest.mark.postgresql
+def test_custom_sources_work_in_explicit_local_no_login_mode(
+    local_no_login_custom_source_api: tuple[TestClient, str],
+) -> None:
+    client, database_url = local_no_login_custom_source_api
+
+    created = client.post("/api/v1/custom-sources", json=_payload())
+    listed = client.get("/api/v1/custom-sources")
+
+    assert created.status_code == 201
+    assert listed.status_code == 200
+    assert listed.json()["data"][0]["id"] == created.json()["data"]["id"]
+    with Session(_database_engine(database_url)) as session:
+        profile = session.get(CustomSourceProfile, UUID(created.json()["data"]["id"]))
+        operator = session.scalar(select(User).where(User.username == "local-operator"))
+        assert profile is not None
+        assert operator is not None
+        assert profile.owner_user_id == operator.id
+
+
+@pytest.mark.postgresql
+def test_local_no_login_custom_source_mutation_rejects_foreign_origin(
+    local_no_login_custom_source_api: tuple[TestClient, str],
+) -> None:
+    client, _ = local_no_login_custom_source_api
+
+    response = client.post(
+        "/api/v1/custom-sources",
+        json=_payload(),
+        headers={"Origin": "https://attacker.test"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "csrf_origin_invalid"
 
 
 @pytest.mark.postgresql

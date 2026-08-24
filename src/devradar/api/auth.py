@@ -178,6 +178,12 @@ def logout(
     context: Annotated[AuthContext, Depends(require_csrf)],
     session: DatabaseSession,
 ) -> Response:
+    if context.auth_session is None:
+        raise ApiContractError(
+            status.HTTP_403_FORBIDDEN,
+            "auth_disabled",
+            "Authentication is disabled for this deployment.",
+        )
     context.auth_session.revoked_at = datetime.now(UTC)
     session.commit()
     response.status_code = status.HTTP_204_NO_CONTENT
