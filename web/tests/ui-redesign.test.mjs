@@ -19,6 +19,23 @@ test("document does not force horizontal overflow at a 320px viewport", async ()
   assert.doesNotMatch(css, /html\{[^}]*min-width:\s*320px/);
 });
 
+test("readable type scale, controls and navigation are bounded", async () => {
+  const css = await source("src/app/globals.css");
+
+  assert.match(css, /--font-ui:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif/);
+  assert.match(css, /--text-xs:\.8125rem/);
+  assert.match(css, /--control-min-height:44px/);
+  assert.match(css, /font-size:clamp\(2\.25rem,4vw,3\.5rem\)/);
+  assert.match(css, /line-height:1\.08/);
+  assert.match(css, /letter-spacing:-\.025em/);
+  assert.doesNotMatch(css, /15vw|font-size:clamp\(2\.65rem,7vw,5\.4rem\)/);
+  assert.doesNotMatch(css, /font-size:\.(?:7\d|8)rem/);
+  assert.match(css, /\.nav-links\{[^}]*flex-wrap:wrap/);
+  assert.match(css, /\.nav-links a\[aria-current="page"\]/);
+  assert.match(css, /\.nav-toggle\{[^}]*min-height:var\(--control-min-height\)/);
+  assert.doesNotMatch(css, /\.primary-nav\{[^}]*overflow-x:auto/);
+});
+
 test("shared shell and route surfaces use redesign primitives", async () => {
   const shell = await source("src/components/app-shell.tsx");
   const overview = await source("src/app/(dashboard)/page.tsx");
