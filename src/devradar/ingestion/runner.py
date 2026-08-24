@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import cast
 from uuid import UUID, uuid4
@@ -16,10 +16,6 @@ from sqlalchemy.orm import Session
 from devradar.automation.health import evaluate_source_health, source_allows_trigger
 from devradar.catalog.job_changes import apply_absence_lifecycle
 from devradar.catalog.job_upsert import upsert_parsed_job
-from devradar.ingestion.adapters.greenhouse import GreenhouseJobBoardAdapter
-from devradar.ingestion.adapters.momo import MomoCareersAdapter
-from devradar.ingestion.adapters.remotejobs import RemoteJobsApiAdapter
-from devradar.ingestion.adapters.vng import VngCareersAdapter
 from devradar.ingestion.contracts import (
     DiscoverySummary,
     DiscoverySummaryProvider,
@@ -40,13 +36,7 @@ from devradar.ingestion.models import (
     SourceApprovalStatus,
 )
 from devradar.ingestion.snapshot_persistence import persist_raw_snapshot
-from devradar.ingestion.source_registry import (
-    V1_SOURCE_REGISTRY,
-    V3_SOURCE_REGISTRY,
-    AdapterRegistry,
-    ResolvedSource,
-    SourceConfig,
-)
+from devradar.ingestion.source_registry import SourceConfig
 from devradar.platform.observability import record_crawl_run_summary
 
 _ERROR_CODE_PATTERN = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$")
@@ -88,62 +78,8 @@ class RunReport:
     reused: bool
 
 
-def resolve_v1_source(source_key: str) -> ResolvedSource:
-    adapters = AdapterRegistry(
-        (
-            GreenhouseJobBoardAdapter(),
-            VngCareersAdapter(),
-            MomoCareersAdapter(),
-        )
-    )
-    return V1_SOURCE_REGISTRY.resolve(source_key, adapters)
-
-
-def resolve_approved_source(source_key: str) -> ResolvedSource:
-    adapters = AdapterRegistry(
-        (
-            GreenhouseJobBoardAdapter(),
-            VngCareersAdapter(),
-            MomoCareersAdapter(),
-            RemoteJobsApiAdapter(),
-        )
-    )
-    return V3_SOURCE_REGISTRY.resolve(source_key, adapters)
-
-
-def _review_timestamp(value: date) -> datetime:
-    return datetime.combine(value, time.min, UTC)
-
-
-def _rate_limit_policy(config: SourceConfig) -> dict[str, int | None]:
-    policy = config.fetch_policy
-    return {
-        "concurrency": policy.concurrency,
-        "requests_per_minute": policy.requests_per_minute,
-        "minimum_action_interval_seconds": policy.minimum_action_interval_seconds,
-        "timeout_seconds": policy.timeout_seconds,
-        "redirect_limit": policy.redirect_limit,
-        "max_response_bytes": policy.max_response_bytes,
-    }
-
-
-def source_matches_config(source: Source, config: SourceConfig) -> bool:
-    return bool(
-        source.name == config.name
-        and source.base_url == config.base_url
-        and source.adapter_key == config.adapter_key
-        and source.approval_status is SourceApprovalStatus.APPROVED
-        and source.allowed_hosts == list(config.fetch_policy.allowed_hosts)
-        and source.rate_limit_policy == _rate_limit_policy(config)
-        and source.terms_reviewed_at is not None
-        and source.terms_reviewed_at.date() == config.policy_review.terms_reviewed_at
-        and source.robots_reviewed_at is not None
-        and source.robots_reviewed_at.date() == config.policy_review.robots_reviewed_at
-    )
-
-
-def custom_source_matches_config(source: Source, config: SourceConfig) -> bool:
-    """Validate a persisted owner-local source without treating it as globally approved."""
+def source_recipe_matches_config(source: Source, config: SourceConfig) -> bool:
+    """Validate the persisted owner-local source behind one Source Recipe."""
 
     return bool(
         source.name == config.name
@@ -152,31 +88,6 @@ def custom_source_matches_config(source: Source, config: SourceConfig) -> bool:
         and source.approval_status is SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL
         and source.allowed_hosts == list(config.fetch_policy.allowed_hosts)
     )
-
-
-def _ensure_source(session: Session, config: SourceConfig) -> UUID:
-    source = session.scalar(select(Source).where(Source.name == config.name))
-    if source is None:
-        source = Source(
-            name=config.name,
-            base_url=config.base_url,
-            adapter_key=config.adapter_key,
-            approval_status=SourceApprovalStatus.APPROVED,
-            rate_limit_policy=_rate_limit_policy(config),
-            allowed_hosts=list(config.fetch_policy.allowed_hosts),
-            terms_reviewed_at=_review_timestamp(config.policy_review.terms_reviewed_at),
-            robots_reviewed_at=_review_timestamp(config.policy_review.robots_reviewed_at),
-        )
-        session.add(source)
-        session.flush()
-    elif not source_matches_config(source, config):
-        raise IngestionRunError(
-            "source_config_mismatch",
-            "Persisted source does not match the approved registry configuration.",
-        )
-    source_id = source.id
-    session.commit()
-    return source_id
 
 
 def _create_run(
@@ -449,37 +360,7 @@ def _finalize_run(
     return report
 
 
-def run_approved_source(
-    session: Session,
-    *,
-    config: SourceConfig,
-    adapter: JobSourceAdapter,
-    deadline: datetime,
-    max_items: int | None = None,
-    trigger_type: CrawlTriggerType = CrawlTriggerType.MANUAL,
-    trigger_key: str | None = None,
-    scheduled_for: datetime | None = None,
-    retry_of_run_id: UUID | None = None,
-    attempt_number: int = 1,
-    claimed_run_id: UUID | None = None,
-) -> RunReport:
-    return _run_source(
-        session,
-        config=config,
-        adapter=adapter,
-        deadline=deadline,
-        max_items=max_items,
-        trigger_type=trigger_type,
-        trigger_key=trigger_key,
-        scheduled_for=scheduled_for,
-        retry_of_run_id=retry_of_run_id,
-        attempt_number=attempt_number,
-        claimed_run_id=claimed_run_id,
-        expected_status=SourceApprovalStatus.APPROVED,
-    )
-
-
-def run_custom_source(
+def run_source_recipe(
     session: Session,
     *,
     config: SourceConfig,
@@ -494,7 +375,7 @@ def run_custom_source(
     attempt_number: int = 1,
     claimed_run_id: UUID | None = None,
 ) -> RunReport:
-    return _run_source(
+    return _execute_source_recipe(
         session,
         config=config,
         adapter=adapter,
@@ -506,12 +387,11 @@ def run_custom_source(
         retry_of_run_id=retry_of_run_id,
         attempt_number=attempt_number,
         claimed_run_id=claimed_run_id,
-        expected_status=SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL,
         persisted_source_id=persisted_source_id,
     )
 
 
-def _run_source(
+def _execute_source_recipe(
     session: Session,
     *,
     config: SourceConfig,
@@ -524,8 +404,7 @@ def _run_source(
     retry_of_run_id: UUID | None = None,
     attempt_number: int = 1,
     claimed_run_id: UUID | None = None,
-    expected_status: SourceApprovalStatus,
-    persisted_source_id: UUID | None = None,
+    persisted_source_id: UUID,
 ) -> RunReport:
     """Own one claimed run lifecycle; network work happens outside DB transactions."""
 
@@ -534,12 +413,12 @@ def _run_source(
             "transaction_already_active",
             "Ingestion runner requires a fresh session transaction boundary.",
         )
-    if config.approval_status is not expected_status:
+    if config.approval_status is not SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL:
         raise IngestionRunError("source_not_approved", "Ingestion source status is not permitted.")
     if adapter.adapter_key != config.adapter_key or not adapter.adapter_version.strip():
         raise IngestionRunError(
             "adapter_config_mismatch",
-            "Ingestion adapter does not match the approved source configuration.",
+            "Ingestion adapter does not match the Source Recipe configuration.",
         )
     if deadline.tzinfo is None or deadline.utcoffset() is None or deadline <= datetime.now(UTC):
         raise IngestionRunError("invalid_deadline", "Ingestion deadline must be in the future.")
@@ -590,27 +469,15 @@ def _run_source(
                 "Only retry runs may carry retry relation or attempt number greater than one.",
             )
 
-    if expected_status is SourceApprovalStatus.APPROVED:
-        try:
-            source_id = _ensure_source(session, config)
-        except Exception:
-            session.rollback()
-            raise
-    else:
-        if persisted_source_id is None:
-            raise IngestionRunError(
-                "source_id_required",
-                "Owner-local ingestion requires its persisted source identity.",
-            )
-        source_id = persisted_source_id
-        persisted_source = session.get(Source, source_id)
-        if persisted_source is None or not custom_source_matches_config(persisted_source, config):
-            session.rollback()
-            raise IngestionRunError(
-                "source_config_mismatch",
-                "Persisted owner-local source does not match its profile configuration.",
-            )
-        session.commit()
+    source_id = persisted_source_id
+    persisted_source = session.get(Source, source_id)
+    if persisted_source is None or not source_recipe_matches_config(persisted_source, config):
+        session.rollback()
+        raise IngestionRunError(
+            "source_config_mismatch",
+            "Persisted owner-local source does not match its Source Recipe configuration.",
+        )
+    session.commit()
     source = session.get(Source, source_id)
     if source is None:
         session.rollback()

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from hashlib import sha256
 from pathlib import Path
 
@@ -26,12 +26,43 @@ from devradar.ingestion.snapshot_persistence import (
     persist_raw_snapshot,
 )
 from devradar.ingestion.source_registry import (
-    NAVER_VIETNAM_GREENHOUSE,
+    DiscoveryMode,
+    FetchPolicy,
+    IdentityStrategy,
+    PolicyReview,
     PolicyScope,
+    SourceConfig,
 )
 from devradar.platform.database import DATABASE_URL_ENV
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+SNAPSHOT_CONFIG = SourceConfig(
+    source_key="snapshot-fixture",
+    name="Snapshot fixture",
+    approval_status=SourceApprovalStatus.APPROVED,
+    base_url="https://jobs.example.com/api",
+    adapter_key="source_recipe",
+    discovery_mode=DiscoveryMode.PUBLIC_JSON_API,
+    identity_strategy=IdentityStrategy.EXTERNAL_ID,
+    external_id_field="external_id",
+    expected_pagination="single_page",
+    fetch_policy=FetchPolicy(
+        allowed_hosts=("jobs.example.com",),
+        allowed_path_prefixes=("/api/jobs",),
+        content_types=("application/json",),
+        timeout_seconds=20,
+        redirect_limit=3,
+        max_response_bytes=2_000_000,
+        requests_per_minute=2,
+    ),
+    policy_review=PolicyReview(
+        scope=PolicyScope.APPROVED_LOCAL_NONCOMMERCIAL_SPIKE,
+        robots_reviewed_at=date(2026, 8, 24),
+        terms_reviewed_at=date(2026, 8, 24),
+        next_review_at=date(2026, 11, 24),
+    ),
+    config_version="snapshot-fixture-v1",
+)
 
 
 def _alembic_config() -> Config:
@@ -40,7 +71,7 @@ def _alembic_config() -> Config:
 
 def _fetch_result(payload: bytes, *, content_type: str = "application/json") -> FetchResult:
     return FetchResult(
-        final_url="https://boards-api.greenhouse.io/v1/boards/navervietnam/jobs/123",
+        final_url="https://jobs.example.com/api/jobs/123",
         fetched_at=datetime(2026, 8, 21, 3, 4, 5, tzinfo=UTC),
         http_status=200,
         content_type=content_type,
@@ -57,7 +88,7 @@ def test_persist_raw_snapshot_enforces_policy_provenance_and_transaction_ownersh
     monkeypatch.setenv(DATABASE_URL_ENV, fresh_postgresql_url)
     command.upgrade(_alembic_config(), "head")
     engine = create_engine(fresh_postgresql_url)
-    config = NAVER_VIETNAM_GREENHOUSE
+    config = SNAPSHOT_CONFIG
     reviewed_at = datetime(2026, 8, 21, tzinfo=UTC)
 
     try:
@@ -91,7 +122,7 @@ def test_persist_raw_snapshot_enforces_policy_provenance_and_transaction_ownersh
         payload = b'{"id":123,"title":"Backend Engineer"}'
         listing_ref = ListingRef(
             external_id="123",
-            canonical_url="https://job-boards.greenhouse.io/navervietnam/jobs/123",
+            canonical_url="https://jobs.example.com/api/jobs/123",
         )
         fetch_result = _fetch_result(payload)
 

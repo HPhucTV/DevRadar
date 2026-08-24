@@ -1,27 +1,21 @@
-"""Immutable V1 source allow-list and adapter resolution."""
+"""Validated fetch policy and source configuration contracts."""
 
 from __future__ import annotations
 
 import ipaddress
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date
 from enum import StrEnum
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
 from devradar.ingestion.models import SourceApprovalStatus
 
-if TYPE_CHECKING:
-    from devradar.ingestion.contracts import JobSourceAdapter
-
 _SOURCE_KEY_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _ADAPTER_KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 _USER_AGENT = "DevRadar/0.1 (+https://github.com/HPhucTV/DevRadar)"
-_REVIEWED_AT = date(2026, 8, 21)
-_NEXT_REVIEW_AT = date(2026, 11, 21)
 
 
 class DiscoveryMode(StrEnum):
@@ -169,225 +163,3 @@ class SourceConfig:
             "adapter_settings",
             MappingProxyType(dict(self.adapter_settings)),
         )
-
-
-class RegistryError(LookupError):
-    code = "registry_error"
-
-
-class UnknownSourceError(RegistryError):
-    code = "source_not_found"
-
-
-class SourceNotApprovedError(RegistryError):
-    code = "source_not_approved"
-
-
-class AdapterNotRegisteredError(RegistryError):
-    code = "adapter_not_registered"
-
-
-@dataclass(frozen=True, slots=True)
-class ResolvedSource:
-    config: SourceConfig
-    adapter: JobSourceAdapter
-
-
-class AdapterRegistry:
-    def __init__(self, adapters: Iterable[JobSourceAdapter] = ()) -> None:
-        registered: dict[str, JobSourceAdapter] = {}
-        for adapter in adapters:
-            adapter_key = adapter.adapter_key
-            if not _ADAPTER_KEY_PATTERN.fullmatch(adapter_key):
-                raise ValueError("registered adapter_key must use lower_snake_case")
-            if adapter_key in registered:
-                raise ValueError(f"duplicate adapter_key: {adapter_key}")
-            registered[adapter_key] = adapter
-        self._adapters = MappingProxyType(registered)
-
-    def resolve_for(self, config: SourceConfig) -> JobSourceAdapter:
-        if config.approval_status is not SourceApprovalStatus.APPROVED:
-            raise SourceNotApprovedError(config.source_key)
-        try:
-            return self._adapters[config.adapter_key]
-        except KeyError:
-            raise AdapterNotRegisteredError(config.adapter_key) from None
-
-
-class SourceRegistry:
-    def __init__(self, configs: Iterable[SourceConfig]) -> None:
-        registered: dict[str, SourceConfig] = {}
-        for config in configs:
-            if config.source_key in registered:
-                raise ValueError(f"duplicate source_key: {config.source_key}")
-            registered[config.source_key] = config
-        self._configs = MappingProxyType(registered)
-
-    def keys(self) -> tuple[str, ...]:
-        return tuple(sorted(self._configs))
-
-    def get(self, source_key: str) -> SourceConfig:
-        try:
-            return self._configs[source_key]
-        except KeyError:
-            raise UnknownSourceError(source_key) from None
-
-    def resolve(self, source_key: str, adapters: AdapterRegistry) -> ResolvedSource:
-        config = self.get(source_key)
-        if config.approval_status is not SourceApprovalStatus.APPROVED:
-            raise SourceNotApprovedError(source_key)
-        return ResolvedSource(config=config, adapter=adapters.resolve_for(config))
-
-
-_APPROVED_POLICY_REVIEW = PolicyReview(
-    scope=PolicyScope.APPROVED_LOCAL_NONCOMMERCIAL_SPIKE,
-    robots_reviewed_at=_REVIEWED_AT,
-    terms_reviewed_at=_REVIEWED_AT,
-    next_review_at=_NEXT_REVIEW_AT,
-)
-
-_REMOTEJOBS_POLICY_REVIEW = PolicyReview(
-    scope=PolicyScope.APPROVED_LOCAL_NONCOMMERCIAL_SPIKE,
-    robots_reviewed_at=date(2026, 8, 22),
-    terms_reviewed_at=date(2026, 8, 22),
-    next_review_at=date(2026, 11, 22),
-)
-
-VNG_CAREERS = SourceConfig(
-    source_key="vng-careers",
-    name="VNG Careers",
-    approval_status=SourceApprovalStatus.APPROVED,
-    base_url="https://career.vng.com.vn",
-    adapter_key="vng_careers",
-    discovery_mode=DiscoveryMode.SERVER_RENDERED_HTML,
-    identity_strategy=IdentityStrategy.EXTERNAL_ID,
-    external_id_field="job_id",
-    expected_pagination="numbered_pages_with_reported_total",
-    fetch_policy=FetchPolicy(
-        allowed_hosts=("career.vng.com.vn",),
-        allowed_path_prefixes=("/tim-kiem-viec-lam",),
-        content_types=("text/html",),
-        timeout_seconds=20,
-        redirect_limit=3,
-        max_response_bytes=2_000_000,
-        requests_per_minute=6,
-    ),
-    policy_review=_APPROVED_POLICY_REVIEW,
-    config_version="2026-08-21.2",
-    adapter_settings={
-        "job_families": (
-            "Software",
-            "System",
-            "QC/P-QA",
-            "Tech Management",
-            "Data Engineering",
-            "Data Science",
-            "Business Analysis",
-            "Artificial Intelligence",
-        ),
-        "job_group_ids": (
-            "385",
-            "423",
-            "384",
-            "387",
-            "457",
-            "462",
-            "464",
-            "465",
-        ),
-    },
-)
-
-NAVER_VIETNAM_GREENHOUSE = SourceConfig(
-    source_key="naver-vietnam-greenhouse",
-    name="NAVER Vietnam Careers via Greenhouse",
-    approval_status=SourceApprovalStatus.APPROVED,
-    base_url="https://boards-api.greenhouse.io/v1/boards/navervietnam",
-    adapter_key="greenhouse_job_board",
-    discovery_mode=DiscoveryMode.PUBLIC_JSON_API,
-    identity_strategy=IdentityStrategy.EXTERNAL_ID,
-    external_id_field="id",
-    expected_pagination="single_response_with_meta_total",
-    fetch_policy=FetchPolicy(
-        allowed_hosts=("boards-api.greenhouse.io",),
-        allowed_path_prefixes=("/v1/boards/navervietnam/jobs",),
-        content_types=("application/json",),
-        timeout_seconds=20,
-        redirect_limit=3,
-        max_response_bytes=2_000_000,
-        requests_per_minute=10,
-    ),
-    policy_review=_APPROVED_POLICY_REVIEW,
-    config_version="2026-08-21.1",
-    reference_hosts=("job-boards.greenhouse.io",),
-    adapter_settings={"board_token": "navervietnam"},
-)
-
-MOMO_CAREERS = SourceConfig(
-    source_key="momo-careers",
-    name="MoMo Careers",
-    approval_status=SourceApprovalStatus.APPROVED,
-    base_url="https://momo.careers",
-    adapter_key="momo_careers",
-    discovery_mode=DiscoveryMode.BROWSER_PUBLIC_UI,
-    identity_strategy=IdentityStrategy.EXTERNAL_ID,
-    external_id_field="jobId",
-    expected_pagination="public_load_more_until_reported_total",
-    fetch_policy=FetchPolicy(
-        allowed_hosts=("momo.careers",),
-        allowed_path_prefixes=("/jobs-opening", "/jobs/"),
-        content_types=("text/html",),
-        timeout_seconds=20,
-        redirect_limit=3,
-        max_response_bytes=2_000_000,
-        minimum_action_interval_seconds=5,
-        browser_network_hosts=("aws.momo.vn",),
-    ),
-    policy_review=_APPROVED_POLICY_REVIEW,
-    config_version="2026-08-21.1",
-    adapter_settings={
-        "division_group_id": "DGM.0001",
-        "division_group_name": "Trung tâm Công nghệ Thông tin",
-    },
-)
-
-REMOTEJOBS_ORG = SourceConfig(
-    source_key="remotejobs-org",
-    name="RemoteJobs.org API (global_remote_it_secondary)",
-    approval_status=SourceApprovalStatus.APPROVED,
-    base_url="https://remotejobs.org/api/v1/jobs",
-    adapter_key="remotejobs_api",
-    discovery_mode=DiscoveryMode.PUBLIC_JSON_API,
-    identity_strategy=IdentityStrategy.EXTERNAL_ID,
-    external_id_field="id",
-    expected_pagination="category_limit_offset_until_has_more_false",
-    fetch_policy=FetchPolicy(
-        allowed_hosts=("remotejobs.org",),
-        allowed_path_prefixes=("/api/v1/jobs",),
-        content_types=("application/json",),
-        timeout_seconds=20,
-        redirect_limit=3,
-        max_response_bytes=2_000_000,
-        requests_per_minute=2,
-    ),
-    policy_review=_REMOTEJOBS_POLICY_REVIEW,
-    config_version="2026-08-22.1",
-    countries=(),
-    cohort="global_remote_it_secondary",
-    reference_hosts=("remotejobs.org",),
-    adapter_settings={
-        "categories": (
-            "programming",
-            "data-science",
-            "devops",
-            "product-management",
-            "design",
-        ),
-        "page_size": "50",
-    },
-)
-
-V1_SOURCE_CONFIGS = (VNG_CAREERS, NAVER_VIETNAM_GREENHOUSE, MOMO_CAREERS)
-V1_SOURCE_REGISTRY = SourceRegistry(V1_SOURCE_CONFIGS)
-V3_SOURCE_CONFIGS = (*V1_SOURCE_CONFIGS, REMOTEJOBS_ORG)
-V3_SOURCE_REGISTRY = SourceRegistry(V3_SOURCE_CONFIGS)

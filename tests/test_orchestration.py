@@ -131,7 +131,7 @@ def test_source_recipe_orchestration_does_not_retry_rate_limit(
             retry_after_seconds=300,
         )
 
-    monkeypatch.setattr(orchestrator_module, "run_custom_source", run_once)
+    monkeypatch.setattr(orchestrator_module, "run_source_recipe", run_once)
     result = orchestrate_source_recipe(
         cast(Session, object()),
         config=cast(SourceConfig, object()),

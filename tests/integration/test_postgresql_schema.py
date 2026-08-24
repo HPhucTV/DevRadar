@@ -80,6 +80,7 @@ def test_migration_and_domain_invariants_on_postgresql(
     head_tables = inspect(head_engine).get_table_names()
     head_engine.dispose()
     assert "agent_runs" not in head_tables
+    assert "custom_source_profiles" not in head_tables
 
     command.downgrade(alembic_config, "f4a6c2d8e901")
     historical_engine = create_engine(fresh_postgresql_url)

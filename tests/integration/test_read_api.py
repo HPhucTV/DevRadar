@@ -16,7 +16,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 import devradar.api.jobs as jobs_api
-from devradar.api.crawl_runs import OPERATOR_WRITE_ENABLED_ENV
 from devradar.catalog.models import Job, JobChange, JobChangeType, JobStatus
 from devradar.ingestion.models import (
     CoverageStatus,
@@ -44,7 +43,7 @@ from devradar.intelligence.extraction import (
 )
 from devradar.intelligence.models import ExtractionResult, JobEmbedding
 from devradar.main import app
-from devradar.platform.database import DATABASE_URL_ENV, _database_engine, get_database_url
+from devradar.platform.database import DATABASE_URL_ENV, _database_engine
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 NOW = datetime(2026, 8, 21, 8, 0, tzinfo=UTC)
@@ -202,7 +201,7 @@ def _seed_database(session: Session) -> ApiSeed:
         source_id=_uuid(1),
         name="VNG Careers",
         base_url="https://career.vng.com.vn",
-        adapter_key="vng_careers",
+        adapter_key="source_recipe",
     )
     source_vng.health_status = SourceHealthStatus.DEGRADED
     source_vng.consecutive_failures = 1
@@ -782,107 +781,6 @@ def test_skill_frequency_and_trends_publish_denominator_and_coverage(
     assert invalid.status_code == 422
 
 
-@pytest.mark.postgresql
-def test_operator_crawl_request_is_fail_closed_allowlisted_and_idempotent(
-    seeded_api: tuple[TestClient, ApiSeed],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    client, seed = seeded_api
-    body = {"sourceId": str(seed.source_vng_id)}
-    first_key = "api-request-0001"
-
-    monkeypatch.setenv(OPERATOR_WRITE_ENABLED_ENV, "false")
-    disabled = client.post(
-        "/api/v1/crawl-runs",
-        json=body,
-        headers={"Idempotency-Key": first_key},
-    )
-    assert disabled.status_code == 403
-    assert disabled.json()["error"]["code"] == "operator_write_disabled"
-
-    monkeypatch.setenv(OPERATOR_WRITE_ENABLED_ENV, "true")
-    missing_header = client.post("/api/v1/crawl-runs", json=body)
-    assert missing_header.status_code == 422
-    arbitrary_url = client.post(
-        "/api/v1/crawl-runs",
-        json={**body, "url": "http://127.0.0.1/admin"},
-        headers={"Idempotency-Key": "api-request-0002"},
-    )
-    assert arbitrary_url.status_code == 422
-
-    unknown = client.post(
-        "/api/v1/crawl-runs",
-        json={"sourceId": str(_uuid(997))},
-        headers={"Idempotency-Key": "api-request-0003"},
-    )
-    assert unknown.status_code == 404
-    assert unknown.json()["error"]["code"] == "source_not_found"
-
-    with Session(_database_engine(get_database_url())) as session:
-        session.add(
-            Source(
-                id=_uuid(998),
-                name="Candidate fixture",
-                base_url="https://candidate.example.test",
-                adapter_key="candidate_fixture",
-                approval_status=SourceApprovalStatus.CANDIDATE,
-                rate_limit_policy={"concurrency": 1},
-                allowed_hosts=["candidate.example.test"],
-            )
-        )
-        session.commit()
-    unapproved = client.post(
-        "/api/v1/crawl-runs",
-        json={"sourceId": str(_uuid(998))},
-        headers={"Idempotency-Key": "api-request-0004"},
-    )
-    assert unapproved.status_code == 403
-    assert unapproved.json()["error"]["code"] == "source_not_approved"
-
-    accepted = client.post(
-        "/api/v1/crawl-runs",
-        json=body,
-        headers={"Idempotency-Key": first_key},
-    )
-    assert accepted.status_code == 202
-    accepted_data = accepted.json()["data"]
-    assert accepted_data["status"] == "pending"
-    assert accepted_data["sourceId"] == str(seed.source_vng_id)
-    assert accepted_data["startedAt"] is None
-    assert accepted_data["counts"]["itemsReactivated"] == 0
-    assert "requestedAt" in accepted_data
-    for hidden in ("triggerKey", "requestHash", "requestedBy", first_key):
-        assert hidden.lower() not in _json(accepted.json())
-
-    replayed = client.post(
-        "/api/v1/crawl-runs",
-        json=body,
-        headers={"Idempotency-Key": first_key},
-    )
-    assert replayed.status_code == 202
-    assert replayed.json()["data"]["id"] == accepted_data["id"]
-
-    conflicting_payload = client.post(
-        "/api/v1/crawl-runs",
-        json={"sourceId": str(seed.source_naver_id)},
-        headers={"Idempotency-Key": first_key},
-    )
-    assert conflicting_payload.status_code == 409
-    assert conflicting_payload.json()["error"]["code"] == "idempotency_conflict"
-
-    overlapping = client.post(
-        "/api/v1/crawl-runs",
-        json=body,
-        headers={"Idempotency-Key": "api-request-0005"},
-    )
-    assert overlapping.status_code == 409
-    assert overlapping.json()["error"]["code"] == "source_run_active"
-
-    detail = client.get(f"/api/v1/crawl-runs/{accepted_data['id']}")
-    assert detail.status_code == 200
-    assert detail.json()["data"]["id"] == accepted_data["id"]
-
-
 def test_openapi_exposes_v3_contract_with_camel_case_parameters() -> None:
     with TestClient(app) as client:
         response = client.get("/api/v1/openapi.json")
@@ -910,10 +808,6 @@ def test_openapi_exposes_v3_contract_with_camel_case_parameters() -> None:
         "/api/v1/alert-rules",
         "/api/v1/alert-rules/{ruleId}",
         "/api/v1/alert-rules/{ruleId}/dispatch",
-        "/api/v1/custom-sources",
-        "/api/v1/custom-sources/{profileId}",
-        "/api/v1/custom-sources/{profileId}/preview",
-        "/api/v1/custom-sources/{profileId}/crawl-runs",
         "/api/v1/source-catalog",
         "/api/v1/source-recipes",
         "/api/v1/source-recipes/{recipeId}",
@@ -923,14 +817,7 @@ def test_openapi_exposes_v3_contract_with_camel_case_parameters() -> None:
         "/api/v1/source-recipes/{recipeId}/crawl-runs",
     }
     assert set(openapi["paths"]) == expected_paths
-    assert set(openapi["paths"]["/api/v1/crawl-runs"]) == {"get", "post"}
-    post_parameters = openapi["paths"]["/api/v1/crawl-runs"]["post"]["parameters"]
-    assert any(
-        parameter["name"] == "Idempotency-Key"
-        and parameter["in"] == "header"
-        and parameter["required"] is True
-        for parameter in post_parameters
-    )
+    assert set(openapi["paths"]["/api/v1/crawl-runs"]) == {"get"}
     job_query_names = {
         parameter["name"] for parameter in openapi["paths"]["/api/v1/jobs"]["get"]["parameters"]
     }

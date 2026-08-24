@@ -13,13 +13,27 @@ from devradar.ingestion.safe_http import (
     TransportRequest,
     TransportResponse,
 )
-from devradar.ingestion.source_registry import (
-    NAVER_VIETNAM_GREENHOUSE,
-    VNG_CAREERS,
-    FetchPolicy,
-)
+from devradar.ingestion.source_registry import FetchPolicy
 
 PUBLIC_ADDRESS = "8.8.8.8"
+HTML_POLICY = FetchPolicy(
+    allowed_hosts=("career.vng.com.vn",),
+    allowed_path_prefixes=("/tim-kiem-viec-lam",),
+    content_types=("text/html",),
+    timeout_seconds=20,
+    redirect_limit=3,
+    max_response_bytes=2_000_000,
+    requests_per_minute=6,
+)
+JSON_POLICY = FetchPolicy(
+    allowed_hosts=("boards-api.greenhouse.io",),
+    allowed_path_prefixes=("/v1/boards/navervietnam/jobs",),
+    content_types=("application/json",),
+    timeout_seconds=20,
+    redirect_limit=3,
+    max_response_bytes=2_000_000,
+    requests_per_minute=10,
+)
 
 
 class SequenceTransport:
@@ -74,7 +88,7 @@ def _fetcher(transport: SequenceTransport, *, fake_time: FakeTime | None = None)
 def test_fetch_success_pins_validated_address_and_hashes_bounded_payload() -> None:
     transport = SequenceTransport((_response(),))
     fetcher = _fetcher(transport)
-    policy = NAVER_VIETNAM_GREENHOUSE.fetch_policy
+    policy = JSON_POLICY
 
     result = fetcher.fetch(
         "https://boards-api.greenhouse.io/v1/boards/navervietnam/jobs?content=true",
@@ -110,7 +124,7 @@ def test_private_reserved_or_mixed_dns_answers_fail_before_transport(
     with pytest.raises(FetchError) as captured:
         fetcher.fetch(
             "https://career.vng.com.vn/tim-kiem-viec-lam",
-            VNG_CAREERS.fetch_policy,
+            HTML_POLICY,
         )
 
     assert captured.value.code is FetchErrorCode.POLICY_BLOCKED
@@ -131,7 +145,7 @@ def test_redirect_is_revalidated_and_cannot_escape_allow_list() -> None:
     with pytest.raises(FetchError) as captured:
         _fetcher(transport).fetch(
             "https://career.vng.com.vn/tim-kiem-viec-lam",
-            VNG_CAREERS.fetch_policy,
+            HTML_POLICY,
         )
 
     assert captured.value.code is FetchErrorCode.REDIRECT_BLOCKED
@@ -142,7 +156,7 @@ def test_redirect_limit_is_enforced() -> None:
     transport = SequenceTransport(
         (_response(status=302, payload=b"", headers={"location": "/tim-kiem-viec-lam"}),)
     )
-    policy = replace(VNG_CAREERS.fetch_policy, redirect_limit=0)
+    policy = replace(HTML_POLICY, redirect_limit=0)
 
     with pytest.raises(FetchError) as captured:
         _fetcher(transport).fetch("https://career.vng.com.vn/tim-kiem-viec-lam", policy)
@@ -157,7 +171,7 @@ def test_successful_redirect_chain_is_preserved_without_response_body() -> None:
             _response(content_type="text/html", payload=b"<html></html>"),
         )
     )
-    policy = replace(VNG_CAREERS.fetch_policy, allowed_path_prefixes=("/jobs",))
+    policy = replace(HTML_POLICY, allowed_path_prefixes=("/jobs",))
 
     result = _fetcher(transport).fetch("https://career.vng.com.vn/jobs", policy)
 
@@ -187,14 +201,14 @@ def test_content_type_encoding_and_declared_size_are_bounded(
     with pytest.raises(FetchError) as captured:
         _fetcher(transport).fetch(
             "https://boards-api.greenhouse.io/v1/boards/navervietnam/jobs",
-            NAVER_VIETNAM_GREENHOUSE.fetch_policy,
+            JSON_POLICY,
         )
 
     assert captured.value.code is expected_code
 
 
 def test_streamed_payload_size_is_bounded_even_without_content_length() -> None:
-    policy = replace(NAVER_VIETNAM_GREENHOUSE.fetch_policy, max_response_bytes=4)
+    policy = replace(JSON_POLICY, max_response_bytes=4)
     transport = SequenceTransport(
         (
             TransportResponse(
@@ -230,7 +244,7 @@ def test_http_failures_have_stable_safe_semantics(
     with pytest.raises(FetchError) as captured:
         _fetcher(transport).fetch(
             "https://boards-api.greenhouse.io/v1/boards/navervietnam/jobs",
-            NAVER_VIETNAM_GREENHOUSE.fetch_policy,
+            JSON_POLICY,
         )
 
     assert captured.value.code is expected_code
@@ -246,7 +260,7 @@ def test_timeout_is_sanitized_and_retryable() -> None:
     with pytest.raises(FetchError) as captured:
         _fetcher(transport).fetch(
             "https://career.vng.com.vn/tim-kiem-viec-lam",
-            VNG_CAREERS.fetch_policy,
+            HTML_POLICY,
         )
 
     assert captured.value.code is FetchErrorCode.NETWORK_TIMEOUT
@@ -265,7 +279,7 @@ def test_path_outside_approved_prefix_fails_before_dns() -> None:
     with pytest.raises(FetchError) as captured:
         SafeHttpFetcher(resolver=resolver).fetch(
             "https://career.vng.com.vn/admin",
-            VNG_CAREERS.fetch_policy,
+            HTML_POLICY,
         )
 
     assert captured.value.code is FetchErrorCode.POLICY_BLOCKED
@@ -278,13 +292,13 @@ def test_source_throttle_is_applied_between_requests() -> None:
     fetcher = _fetcher(transport, fake_time=fake_time)
     url = "https://career.vng.com.vn/tim-kiem-viec-lam"
 
-    fetcher.fetch(url, VNG_CAREERS.fetch_policy)
-    fetcher.fetch(url, VNG_CAREERS.fetch_policy)
+    fetcher.fetch(url, HTML_POLICY)
+    fetcher.fetch(url, HTML_POLICY)
 
     assert fake_time.sleeps == [10.0]
     assert len(transport.requests) == 2
 
 
 def test_fetch_policy_stays_concurrency_one() -> None:
-    policy: FetchPolicy = VNG_CAREERS.fetch_policy
+    policy: FetchPolicy = HTML_POLICY
     assert policy.concurrency == 1

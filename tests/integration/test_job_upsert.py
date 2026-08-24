@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
 
@@ -34,10 +34,62 @@ from devradar.ingestion.models import (
     Source,
     SourceApprovalStatus,
 )
-from devradar.ingestion.source_registry import MOMO_CAREERS, VNG_CAREERS, SourceConfig
+from devradar.ingestion.source_registry import (
+    DiscoveryMode,
+    FetchPolicy,
+    IdentityStrategy,
+    PolicyReview,
+    PolicyScope,
+    SourceConfig,
+)
 from devradar.platform.database import DATABASE_URL_ENV
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _fixture_config(*, key: str, name: str, origin: str, host: str) -> SourceConfig:
+    reviewed = date(2026, 8, 24)
+    return SourceConfig(
+        source_key=key,
+        name=name,
+        approval_status=SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL,
+        base_url=origin,
+        adapter_key="source_recipe",
+        discovery_mode=DiscoveryMode.SERVER_RENDERED_HTML,
+        identity_strategy=IdentityStrategy.EXTERNAL_ID,
+        external_id_field="external_id",
+        expected_pagination="mapped_or_single_page",
+        fetch_policy=FetchPolicy(
+            allowed_hosts=(host,),
+            allowed_path_prefixes=("/",),
+            content_types=("text/html",),
+            timeout_seconds=20,
+            redirect_limit=3,
+            max_response_bytes=2_000_000,
+            requests_per_minute=2,
+        ),
+        policy_review=PolicyReview(
+            scope=PolicyScope.PERMISSION_REQUIRED,
+            robots_reviewed_at=reviewed,
+            terms_reviewed_at=reviewed,
+            next_review_at=date(2026, 11, 24),
+        ),
+        config_version="fixture-v1",
+    )
+
+
+VNG_CAREERS = _fixture_config(
+    key="primary-recipe",
+    name="Primary recipe",
+    origin="https://career.vng.com.vn",
+    host="career.vng.com.vn",
+)
+MOMO_CAREERS = _fixture_config(
+    key="secondary-recipe",
+    name="Secondary recipe",
+    origin="https://momo.careers",
+    host="momo.careers",
+)
 
 
 def _migrated_engine(url: str, monkeypatch: pytest.MonkeyPatch) -> Engine:
@@ -51,7 +103,7 @@ def _source(config: SourceConfig, now: datetime) -> Source:
         name=config.name,
         base_url=config.base_url,
         adapter_key=config.adapter_key,
-        approval_status=SourceApprovalStatus.APPROVED,
+        approval_status=SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL,
         rate_limit_policy={"concurrency": 1},
         allowed_hosts=list(config.fetch_policy.allowed_hosts),
         terms_reviewed_at=now,

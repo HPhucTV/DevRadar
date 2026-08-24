@@ -15,12 +15,6 @@ from sqlalchemy.orm import Session
 from devradar.alerts.models import AlertDelivery, AlertRule
 from devradar.auth.models import AuthSession, User
 from devradar.catalog.models import Job, JobChange, JobChangeType, JobLevel, JobStatus
-from devradar.custom_sources.models import (
-    CustomParserMode,
-    CustomScheduleKind,
-    CustomSourceProfile,
-    CustomSourceStatus,
-)
 from devradar.ingestion.models import (
     CoverageStatus,
     CrawlRunStatus,
@@ -104,27 +98,33 @@ def _seed_complete_legacy_graph(session: Session) -> dict[str, object]:
         last_seen_at=now,
         expires_at=now + timedelta(hours=8),
     )
-    custom_profile = CustomSourceProfile(
-        source_id=source.id,
-        owner_user_id=user.id,
-        name="Legacy profile",
-        status=CustomSourceStatus.ENABLED,
-        base_url="https://example.test/jobs",
-        allowed_hosts=["example.test"],
-        allowed_path_prefixes=["/jobs"],
-        parser_mode=CustomParserMode.AUTO,
-        field_mapping={},
-        schedule_kind=CustomScheduleKind.INTERVAL,
-        interval_minutes=360,
-        timezone="Asia/Ho_Chi_Minh",
-        item_budget=500,
-        byte_budget=2_000_000,
-        requests_per_minute=2,
-        permission_acknowledged_at=now,
-    )
     crawl_run_id = uuid4()
-    session.add_all([auth_session, custom_profile])
+    session.add(auth_session)
     session.flush()
+    session.execute(
+        text(
+            "INSERT INTO custom_source_profiles ("
+            "id, source_id, owner_user_id, name, status, base_url, allowed_hosts, "
+            "allowed_path_prefixes, parser_mode, field_mapping, schedule_kind, "
+            "interval_minutes, timezone, item_budget, byte_budget, requests_per_minute, "
+            "permission_acknowledged_at"
+            ") VALUES ("
+            ":id, :source_id, :owner_user_id, :name, 'enabled', :base_url, "
+            "CAST(:allowed_hosts AS jsonb), CAST(:allowed_paths AS jsonb), 'auto', "
+            "'{}'::jsonb, 'interval', 360, 'Asia/Ho_Chi_Minh', 500, 2000000, 2, :now"
+            ")"
+        ),
+        {
+            "id": uuid4(),
+            "source_id": source.id,
+            "owner_user_id": user.id,
+            "name": "Legacy profile",
+            "base_url": "https://example.test/jobs",
+            "allowed_hosts": '["example.test"]',
+            "allowed_paths": '["/jobs"]',
+            "now": now,
+        },
+    )
     session.execute(
         text(
             "INSERT INTO crawl_runs ("

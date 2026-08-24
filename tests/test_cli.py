@@ -12,13 +12,13 @@ from devradar.cli import main
 from devradar.platform.database import DATABASE_URL_ENV
 
 
-def test_cli_database_configuration_error_is_sanitized(
+def test_source_recipe_worker_database_configuration_error_is_sanitized(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.delenv(DATABASE_URL_ENV, raising=False)
 
-    exit_code = main(["crawl", "--source", "vng-careers", "--max-items", "1"])
+    exit_code = main(["source-recipe-worker", "--once"])
 
     captured = capsys.readouterr()
     assert exit_code == 1
@@ -30,48 +30,6 @@ def test_cli_database_configuration_error_is_sanitized(
         }
     }
     assert DATABASE_URL_ENV not in captured.err
-
-
-def test_cli_rejects_non_registry_source_before_database_or_network(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv(DATABASE_URL_ENV, raising=False)
-
-    with pytest.raises(SystemExit) as captured:
-        main(["crawl", "--source", "geocomply-lever"])
-
-    assert captured.value.code == 2
-
-
-def test_work_one_reports_empty_queue_without_network(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    monkeypatch.setattr(cli, "get_database_url", lambda: "sqlite://")
-    monkeypatch.setattr(cli, "work_one_pending_run", lambda session, *, deadline: None)
-
-    exit_code = main(["work-one", "--deadline-minutes", "5"])
-
-    captured = capsys.readouterr()
-    assert exit_code == 0
-    assert json.loads(captured.out) == {"processed": False}
-    assert captured.err == ""
-
-
-def test_custom_source_worker_can_poll_once_without_network(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    monkeypatch.setattr(cli, "get_database_url", lambda: "sqlite://")
-    monkeypatch.setenv("DEVRADAR_CUSTOM_SOURCES_LOCAL_ENABLED", "true")
-    monkeypatch.setattr(cli, "work_one_custom_source", lambda session, *, deadline: None)
-
-    exit_code = main(["custom-source-worker", "--once"])
-
-    captured = capsys.readouterr()
-    assert exit_code == 0
-    assert json.loads(captured.out) == {"lastStatus": None, "processed": 0}
-    assert captured.err == ""
 
 
 def test_source_recipe_worker_can_poll_once_without_network(

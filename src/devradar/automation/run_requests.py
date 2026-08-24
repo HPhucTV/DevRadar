@@ -1,4 +1,4 @@
-"""Idempotent local-operator CrawlRun request queue."""
+"""Idempotent owner-bound Source Recipe crawl requests."""
 
 from __future__ import annotations
 
@@ -13,22 +13,11 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from devradar.custom_sources.models import CustomSourceProfile, CustomSourceStatus
-from devradar.custom_sources.scheduler import custom_profile_config_version
-from devradar.ingestion.models import (
-    CoverageStatus,
-    CrawlRun,
-    CrawlRunStatus,
-    CrawlTriggerType,
-    Source,
-    SourceApprovalStatus,
-)
-from devradar.ingestion.source_registry import V1_SOURCE_CONFIGS, SourceConfig
+from devradar.ingestion.models import CoverageStatus, CrawlRun, CrawlRunStatus, CrawlTriggerType
 from devradar.source_recipes.catalog import resolve_terms_notice
 from devradar.source_recipes.models import SourceRecipe
 from devradar.source_recipes.scheduler import source_recipe_is_runnable
 
-LOCAL_OPERATOR_PRINCIPAL = "local-operator"
 _IDEMPOTENCY_KEY_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$")
 
 
@@ -53,228 +42,13 @@ def _request_hash(source_id: UUID) -> str:
     return sha256(payload).hexdigest()
 
 
-def _trigger_key(idempotency_key: str) -> str:
-    return f"api:{sha256(idempotency_key.encode()).hexdigest()}"
-
-
-def matching_source_config(source: Source) -> SourceConfig | None:
-    return next(
-        (
-            config
-            for config in V1_SOURCE_CONFIGS
-            if config.name == source.name
-            and config.base_url == source.base_url
-            and config.adapter_key == source.adapter_key
-        ),
-        None,
-    )
-
-
-def _existing_request(session: Session, trigger_key: str) -> CrawlRun | None:
-    return session.scalar(
-        select(CrawlRun).where(
-            CrawlRun.requested_by == LOCAL_OPERATOR_PRINCIPAL,
-            CrawlRun.trigger_key == trigger_key,
-        )
-    )
-
-
-def _resolve_existing(
-    existing: CrawlRun,
-    *,
-    request_hash: str,
-) -> RequestedRun:
+def _resolve_existing(existing: CrawlRun, *, request_hash: str) -> RequestedRun:
     if existing.request_hash != request_hash:
         raise RunRequestError(
             "idempotency_conflict",
             "Idempotency key was already used for a different request.",
         )
     return RequestedRun(existing, reused=True)
-
-
-def request_crawl_run(
-    session: Session,
-    *,
-    source_id: UUID,
-    idempotency_key: str,
-    requested_at: datetime | None = None,
-) -> RequestedRun:
-    """Create one pending run or return the matching prior request."""
-
-    if session.in_transaction():
-        raise RunRequestError(
-            "transaction_already_active",
-            "Run request requires a fresh transaction boundary.",
-        )
-    if not _IDEMPOTENCY_KEY_PATTERN.fullmatch(idempotency_key):
-        raise RunRequestError(
-            "invalid_idempotency_key",
-            "Idempotency key must be 8..128 safe ASCII characters.",
-        )
-    now = requested_at or datetime.now(UTC)
-    if now.tzinfo is None or now.utcoffset() is None:
-        raise RunRequestError("invalid_request_time", "Requested time must include a UTC offset.")
-    trigger_key = _trigger_key(idempotency_key)
-    request_hash = _request_hash(source_id)
-
-    existing = _existing_request(session, trigger_key)
-    if existing is not None:
-        result = _resolve_existing(existing, request_hash=request_hash)
-        session.rollback()
-        return result
-
-    source = session.get(Source, source_id, with_for_update=True)
-    if source is None:
-        session.rollback()
-        raise RunRequestError("source_not_found", "Source was not found.")
-    config = matching_source_config(source)
-    if source.approval_status is not SourceApprovalStatus.APPROVED or config is None:
-        session.rollback()
-        raise RunRequestError(
-            "source_not_approved",
-            "Source is not an approved active registry entry.",
-        )
-    active = session.scalar(
-        select(CrawlRun).where(
-            CrawlRun.source_id == source_id,
-            CrawlRun.status.in_((CrawlRunStatus.PENDING, CrawlRunStatus.RUNNING)),
-        )
-    )
-    if active is not None:
-        session.rollback()
-        raise RunRequestError(
-            "source_run_active",
-            "Source already has a pending or running crawl run.",
-        )
-
-    crawl_run = CrawlRun(
-        source_id=source_id,
-        trigger_type=CrawlTriggerType.MANUAL,
-        trigger_key=trigger_key,
-        requested_at=now,
-        requested_by=LOCAL_OPERATOR_PRINCIPAL,
-        request_hash=request_hash,
-        status=CrawlRunStatus.PENDING,
-        coverage_status=CoverageStatus.UNKNOWN,
-        adapter_version="pending",
-        config_version=config.config_version,
-    )
-    session.add(crawl_run)
-    try:
-        session.commit()
-    except IntegrityError:
-        session.rollback()
-        existing = _existing_request(session, trigger_key)
-        if existing is not None:
-            result = _resolve_existing(existing, request_hash=request_hash)
-            session.rollback()
-            return result
-        active = session.scalar(
-            select(CrawlRun).where(
-                CrawlRun.source_id == source_id,
-                CrawlRun.status.in_((CrawlRunStatus.PENDING, CrawlRunStatus.RUNNING)),
-            )
-        )
-        session.rollback()
-        if active is not None:
-            raise RunRequestError(
-                "source_run_active",
-                "Source already has a pending or running crawl run.",
-            ) from None
-        raise
-    return RequestedRun(crawl_run, reused=False)
-
-
-def request_custom_crawl_run(
-    session: Session,
-    *,
-    source_id: UUID,
-    owner_user_id: UUID,
-    idempotency_key: str,
-    requested_at: datetime | None = None,
-) -> RequestedRun:
-    """Enqueue one owner-scoped custom run without accepting a URL override."""
-
-    if session.in_transaction():
-        session.rollback()
-    if not _IDEMPOTENCY_KEY_PATTERN.fullmatch(idempotency_key):
-        raise RunRequestError(
-            "invalid_idempotency_key",
-            "Idempotency key must be 8..128 safe ASCII characters.",
-        )
-    now = requested_at or datetime.now(UTC)
-    if now.tzinfo is None or now.utcoffset() is None:
-        raise RunRequestError("invalid_request_time", "Requested time must include a UTC offset.")
-    requester = f"custom-owner:{owner_user_id}"
-    trigger_key = (
-        f"custom-api:{sha256(f'{requester}:{source_id}:{idempotency_key}'.encode()).hexdigest()}"
-    )
-    request_hash = _request_hash(source_id)
-    existing = session.scalar(
-        select(CrawlRun).where(
-            CrawlRun.requested_by == requester,
-            CrawlRun.trigger_key == trigger_key,
-        )
-    )
-    if existing is not None:
-        result = _resolve_existing(existing, request_hash=request_hash)
-        session.rollback()
-        return result
-    profile = session.scalar(
-        select(CustomSourceProfile).where(
-            CustomSourceProfile.source_id == source_id,
-            CustomSourceProfile.owner_user_id == owner_user_id,
-        )
-    )
-    if profile is None:
-        session.rollback()
-        raise RunRequestError("profile_not_found", "Custom source profile was not found.")
-    if profile.status not in {CustomSourceStatus.ENABLED, CustomSourceStatus.DEGRADED}:
-        session.rollback()
-        raise RunRequestError(
-            "profile_not_schedulable",
-            "Custom source profile is not enabled for crawling.",
-        )
-    active = session.scalar(
-        select(CrawlRun).where(
-            CrawlRun.source_id == source_id,
-            CrawlRun.status.in_((CrawlRunStatus.PENDING, CrawlRunStatus.RUNNING)),
-        )
-    )
-    if active is not None:
-        session.rollback()
-        raise RunRequestError(
-            "source_run_active", "Source already has a pending or running crawl run."
-        )
-    crawl_run = CrawlRun(
-        source_id=source_id,
-        trigger_type=CrawlTriggerType.MANUAL,
-        trigger_key=trigger_key,
-        requested_at=now,
-        requested_by=requester,
-        request_hash=request_hash,
-        status=CrawlRunStatus.PENDING,
-        coverage_status=CoverageStatus.UNKNOWN,
-        adapter_version="pending",
-        config_version=custom_profile_config_version(profile),
-    )
-    session.add(crawl_run)
-    try:
-        session.commit()
-    except IntegrityError:
-        session.rollback()
-        existing = session.scalar(
-            select(CrawlRun).where(
-                CrawlRun.requested_by == requester,
-                CrawlRun.trigger_key == trigger_key,
-            )
-        )
-        if existing is not None:
-            result = _resolve_existing(existing, request_hash=request_hash)
-            session.rollback()
-            return result
-        raise
-    return RequestedRun(crawl_run, reused=False)
 
 
 def request_source_recipe_run(
@@ -306,7 +80,7 @@ def request_source_recipe_run(
     )
     if recipe is None:
         session.rollback()
-        raise RunRequestError("recipe_not_found", "Source recipe was not found.")
+        raise RunRequestError("recipe_not_found", "Source Recipe was not found.")
     current_notice = resolve_terms_notice(recipe.listing_url)
     if current_notice.version != recipe.terms_notice_version:
         session.rollback()
@@ -322,10 +96,10 @@ def request_source_recipe_run(
         )
     if recipe.cooldown_until is not None and recipe.cooldown_until.astimezone(UTC) > utc_now:
         session.rollback()
-        raise RunRequestError("recipe_cooldown_active", "Source recipe is cooling down.")
+        raise RunRequestError("recipe_cooldown_active", "Source Recipe is cooling down.")
     if not source_recipe_is_runnable(recipe, now=utc_now) or recipe.source_id is None:
         session.rollback()
-        raise RunRequestError("recipe_not_enabled", "Source recipe is not enabled.")
+        raise RunRequestError("recipe_not_enabled", "Source Recipe is not enabled.")
 
     requester = f"recipe:{owner_user_id}"
     trigger_key = (

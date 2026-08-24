@@ -307,7 +307,7 @@ def test_authenticated_owner_scope_and_csrf_protect_alert_mutation(
 
 
 @pytest.mark.postgresql
-def test_owner_session_cannot_enqueue_crawl_run(
+def test_owner_session_cannot_read_runs_and_generic_enqueue_is_removed(
     auth_api: tuple[TestClient, str],
 ) -> None:
     client, database_url = auth_api
@@ -340,8 +340,8 @@ def test_owner_session_cannot_enqueue_crawl_run(
         },
         json={"sourceId": "00000000-0000-0000-0000-000000000001"},
     )
-    assert response.status_code == 403
-    assert response.json()["error"]["code"] == "operator_required"
+    assert response.status_code == 405
+    assert response.json()["error"]["code"] == "http_error"
     owner_runs = client.get("/api/v1/crawl-runs")
     assert owner_runs.status_code == 403
     assert owner_runs.json()["error"]["code"] == "operator_required"

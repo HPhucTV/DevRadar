@@ -15,7 +15,7 @@ from devradar.auth.models import User
 from devradar.catalog.models import Job, JobChange, JobStatus
 from devradar.ingestion.contracts import FetchResult
 from devradar.ingestion.models import CrawlRun, RawJobSnapshot, Source, SourceApprovalStatus
-from devradar.ingestion.runner import RunReport, run_custom_source
+from devradar.ingestion.runner import RunReport, run_source_recipe
 from devradar.platform.database import DATABASE_URL_ENV
 from devradar.source_recipes.adapter import RecipeAdapter, recipe_source_config
 from devradar.source_recipes.models import (
@@ -155,7 +155,7 @@ def test_recipe_ingestion_is_idempotent_and_partial_runs_cannot_remove_jobs(
                     config=config,
                     http_fetch=lambda url, policy: responses[url],
                 )
-                return run_custom_source(
+                return run_source_recipe(
                     session,
                     config=config,
                     adapter=adapter,

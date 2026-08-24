@@ -41,15 +41,15 @@ test("route grids reflow before content creates document overflow", async () => 
   const css = await source("src/app/globals.css");
 
   assert.match(css, /@media\(max-width:960px\)/);
-  assert.match(css, /\.dashboard-grid,\.detail-grid,\.analytics-grid,\.cv-layout,\.custom-source-layout\{grid-template-columns:1fr\}/);
-  assert.match(css, /\.analytics-grid>\*,\.dashboard-grid>\*,\.detail-grid>\*,\.cv-layout>\*,\.custom-source-layout>\*\{min-width:0\}/);
+  assert.match(css, /\.dashboard-grid,\.detail-grid,\.analytics-grid,\.cv-layout\{grid-template-columns:1fr\}/);
+  assert.match(css, /\.analytics-grid>\*,\.dashboard-grid>\*,\.detail-grid>\*,\.cv-layout>\*\{min-width:0\}/);
   assert.match(css, /\.skill-row,\.trend-row\{flex-wrap:wrap\}/);
   assert.match(css, /\.description-text,\.policy-list\{max-width:75ch\}/);
   assert.match(css, /@media\(max-width:420px\)/);
   assert.match(css, /\.kpi-grid,\.metric-grid,\.health-grid\{grid-template-columns:1fr\}/);
   assert.ok(
-    css.lastIndexOf("@media(max-width:960px)") > css.indexOf(".custom-source-layout{"),
-    "the custom-source base rule must precede its responsive override",
+    css.lastIndexOf("@media(max-width:960px)") > css.indexOf(".source-recipe-layout{"),
+    "the source-recipe base rule must precede its responsive override",
   );
 });
 

@@ -37,6 +37,14 @@ test("source recipe BFF rejects arbitrary fetch and code fields", async () => {
   assert.match(runs, /Object\.keys\(body\)\.length/);
 });
 
+test("generic crawl-run BFF is read-only after the recipe hard cut", async () => {
+  const runs = await source("src/app/api/devradar/crawl-runs/route.ts");
+
+  assert.match(runs, /export async function GET/);
+  assert.doesNotMatch(runs, /export async function POST/);
+  assert.doesNotMatch(runs, /sourceId|Idempotency-Key/);
+});
+
 test("typed source recipe client validates screenshot bounds and stores no browser secrets", async () => {
   const client = await source("src/lib/source-recipes.ts");
   const proxy = await source("src/lib/backend-proxy.ts");
