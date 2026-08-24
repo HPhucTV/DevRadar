@@ -11,6 +11,7 @@ DeploymentClass = Literal["LOCALHOST_SERVICE", "PROTECTED", "PUBLIC"]
 DEPLOYMENT_CLASS_ENV = "DEVRADAR_DEPLOYMENT_CLASS"
 SECRET_SOURCE_ENV = "DEVRADAR_SECRET_SOURCE"
 CUSTOM_SOURCES_LOCAL_ENABLED_ENV = "DEVRADAR_CUSTOM_SOURCES_LOCAL_ENABLED"
+SOURCE_RECIPES_LOCAL_ENABLED_ENV = "DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED"
 LOCAL_NO_LOGIN_ENABLED_ENV = "DEVRADAR_LOCAL_NO_LOGIN_ENABLED"
 LOCAL_DATABASE_MARKER = "devradar_local_only"
 
@@ -35,6 +36,13 @@ def custom_sources_local_enabled() -> bool:
     return enabled and _deployment_class() in {"LOCALHOST_SERVICE", "PROTECTED"}
 
 
+def source_recipes_local_enabled() -> bool:
+    """Return true only for an explicit localhost-only source recipe deployment."""
+
+    enabled = os.environ.get(SOURCE_RECIPES_LOCAL_ENABLED_ENV, "false").strip().casefold() == "true"
+    return enabled and _deployment_class() == "LOCALHOST_SERVICE"
+
+
 def local_no_login_enabled() -> bool:
     """Return whether the explicit localhost-only identity mode is enabled."""
 
@@ -43,6 +51,11 @@ def local_no_login_enabled() -> bool:
 
 def validate_security_configuration(database_url: str | None = None) -> DeploymentClass:
     deployment = _deployment_class()
+    if (
+        os.environ.get(SOURCE_RECIPES_LOCAL_ENABLED_ENV, "false").strip().casefold() == "true"
+        and deployment != "LOCALHOST_SERVICE"
+    ):
+        raise SecurityConfigurationError("source_recipes_non_local_forbidden")
     if local_no_login_enabled() and deployment != "LOCALHOST_SERVICE":
         raise SecurityConfigurationError("local_no_login_forbidden")
     if local_no_login_enabled() and auth_enabled():

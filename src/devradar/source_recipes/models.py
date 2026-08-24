@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime, time
+from dataclasses import dataclass
+from datetime import date, datetime, time
 from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import (
     CheckConstraint,
@@ -31,6 +33,12 @@ from devradar.platform.database import Base
 
 def _enum_values(enum_class: type[StrEnum]) -> list[str]:
     return [member.value for member in enum_class]
+
+
+class SourceRecipeError(ValueError):
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
 
 
 class TermsNotice(StrEnum):
@@ -61,6 +69,172 @@ class RecipeScheduleKind(StrEnum):
     EVERY_6_HOURS = "every_6_hours"
     DAILY = "daily"
     WEEKLY = "weekly"
+
+
+@dataclass(frozen=True, slots=True)
+class SourceRecipeDraft:
+    name: str
+    listing_url: str
+    origin: str
+    allowed_hosts: tuple[str, ...]
+    allowed_path_prefixes: tuple[str, ...]
+    terms_notice: TermsNotice
+    terms_notice_version: str
+    terms_evidence_url: str | None
+    terms_reviewed_on: date | None
+    terms_acknowledged: bool
+    seniority_filter: tuple[str, ...]
+    schedule_kind: RecipeScheduleKind
+    schedule_local_time: time | None
+    schedule_weekday: int | None
+    timezone: str
+    item_budget: int
+    page_budget: int
+    request_budget: int
+    byte_budget: int
+    time_budget_seconds: int
+    requests_per_minute: int
+    status: RecipeStatus = RecipeStatus.DRAFT
+
+    @classmethod
+    def from_input(
+        cls,
+        *,
+        name: str,
+        listing_url: str,
+        seniority_filter: list[str] | tuple[str, ...],
+        acknowledged_notice_version: str | None,
+        allowed_hosts: list[str] | tuple[str, ...] | None = None,
+        allowed_path_prefixes: list[str] | tuple[str, ...] | None = None,
+        schedule_kind: RecipeScheduleKind = RecipeScheduleKind.MANUAL,
+        schedule_local_time: time | None = None,
+        schedule_weekday: int | None = None,
+        timezone: str = "Asia/Ho_Chi_Minh",
+        item_budget: int = 500,
+        page_budget: int = 20,
+        request_budget: int = 100,
+        byte_budget: int = 2_000_000,
+        time_budget_seconds: int = 600,
+        requests_per_minute: int = 2,
+    ) -> SourceRecipeDraft:
+        from devradar.catalog.models import JobLevel
+        from devradar.source_recipes.catalog import resolve_terms_notice
+        from devradar.source_recipes.policy import (
+            normalize_allowed_host,
+            normalize_listing_url,
+            normalize_path_prefix,
+        )
+
+        normalized_name = name.strip()
+        if not normalized_name or len(normalized_name) > 200:
+            raise SourceRecipeError("recipe_name_invalid")
+        normalized_url = normalize_listing_url(listing_url)
+
+        hosts: list[str] = []
+        for value in allowed_hosts or (normalized_url.host,):
+            host = normalize_allowed_host(value)
+            if host not in hosts:
+                hosts.append(host)
+        if len(hosts) > 3 or normalized_url.host not in hosts:
+            raise SourceRecipeError("allowed_hosts_invalid")
+
+        path_prefixes: list[str] = []
+        for value in allowed_path_prefixes or (normalized_url.path_prefix,):
+            prefix = normalize_path_prefix(value)
+            if prefix not in path_prefixes:
+                path_prefixes.append(prefix)
+        if not path_prefixes or len(path_prefixes) > 10:
+            raise SourceRecipeError("allowed_path_prefixes_invalid")
+
+        selected = [
+            value.value if isinstance(value, JobLevel) else str(value).strip().casefold()
+            for value in seniority_filter
+        ]
+        if not selected or "all" in selected and (len(selected) != 1 or selected[0] != "all"):
+            raise SourceRecipeError("seniority_filter_invalid")
+        normalized_seniority: tuple[str, ...]
+        if selected == ["all"]:
+            normalized_seniority = ("all",)
+        else:
+            try:
+                selected_levels = {JobLevel(value) for value in selected}
+            except ValueError as error:
+                raise SourceRecipeError("seniority_filter_invalid") from error
+            normalized_seniority = tuple(
+                level.value for level in JobLevel if level in selected_levels
+            )
+
+        try:
+            normalized_schedule = RecipeScheduleKind(schedule_kind)
+        except ValueError as error:
+            raise SourceRecipeError("recipe_schedule_invalid") from error
+        if normalized_schedule in {
+            RecipeScheduleKind.MANUAL,
+            RecipeScheduleKind.EVERY_6_HOURS,
+        }:
+            if schedule_local_time is not None or schedule_weekday is not None:
+                raise SourceRecipeError("recipe_schedule_invalid")
+        elif normalized_schedule is RecipeScheduleKind.DAILY:
+            if schedule_weekday is not None:
+                raise SourceRecipeError("recipe_schedule_invalid")
+            schedule_local_time = schedule_local_time or time(9, 0)
+        else:
+            schedule_local_time = schedule_local_time or time(9, 0)
+            schedule_weekday = 0 if schedule_weekday is None else schedule_weekday
+            if not isinstance(schedule_weekday, int) or not 0 <= schedule_weekday <= 6:
+                raise SourceRecipeError("recipe_schedule_invalid")
+
+        normalized_timezone = timezone.strip()
+        try:
+            ZoneInfo(normalized_timezone)
+        except (ValueError, ZoneInfoNotFoundError) as error:
+            raise SourceRecipeError("recipe_timezone_invalid") from error
+        if len(normalized_timezone) > 64:
+            raise SourceRecipeError("recipe_timezone_invalid")
+
+        for budget_value, minimum, maximum in (
+            (item_budget, 1, 10_000),
+            (page_budget, 1, 100),
+            (request_budget, 1, 500),
+            (byte_budget, 1, 10_000_000),
+            (time_budget_seconds, 1, 3_600),
+            (requests_per_minute, 1, 60),
+        ):
+            if not isinstance(budget_value, int) or not minimum <= budget_value <= maximum:
+                raise SourceRecipeError("recipe_budget_invalid")
+
+        notice = resolve_terms_notice(normalized_url.url)
+        if (
+            acknowledged_notice_version is not None
+            and acknowledged_notice_version != notice.version
+        ):
+            raise SourceRecipeError("terms_notice_acknowledgement_stale")
+        terms_acknowledged = (
+            not notice.acknowledgement_required or acknowledged_notice_version == notice.version
+        )
+        return cls(
+            name=normalized_name,
+            listing_url=normalized_url.url,
+            origin=normalized_url.origin,
+            allowed_hosts=tuple(hosts),
+            allowed_path_prefixes=tuple(path_prefixes),
+            terms_notice=notice.notice,
+            terms_notice_version=notice.version,
+            terms_evidence_url=notice.evidence_url,
+            terms_reviewed_on=notice.reviewed_on,
+            terms_acknowledged=terms_acknowledged,
+            seniority_filter=normalized_seniority,
+            schedule_kind=normalized_schedule,
+            schedule_local_time=schedule_local_time,
+            schedule_weekday=schedule_weekday,
+            timezone=normalized_timezone,
+            item_budget=item_budget,
+            page_budget=page_budget,
+            request_budget=request_budget,
+            byte_budget=byte_budget,
+            time_budget_seconds=time_budget_seconds,
+            requests_per_minute=requests_per_minute,
+        )
 
 
 class SourceRecipe(Base):

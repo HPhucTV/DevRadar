@@ -59,6 +59,48 @@ def test_public_deployment_rejects_local_custom_sources(
         validate_security_configuration()
 
 
+def test_source_recipes_flag_is_explicit_and_localhost_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_recipes_local_enabled = security_config.source_recipes_local_enabled
+    monkeypatch.setenv("DEVRADAR_DEPLOYMENT_CLASS", "LOCALHOST_SERVICE")
+    monkeypatch.delenv("DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED", raising=False)
+    assert source_recipes_local_enabled() is False
+
+    monkeypatch.setenv("DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED", " TRUE ")
+    assert source_recipes_local_enabled() is True
+
+    monkeypatch.setenv("DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED", "yes")
+    assert source_recipes_local_enabled() is False
+
+    monkeypatch.setenv("DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED", "true")
+    monkeypatch.setenv("DEVRADAR_DEPLOYMENT_CLASS", "PROTECTED")
+    assert source_recipes_local_enabled() is False
+
+
+@pytest.mark.parametrize("deployment", ["PROTECTED", "PUBLIC"])
+def test_source_recipes_are_rejected_outside_localhost(
+    monkeypatch: pytest.MonkeyPatch,
+    deployment: str,
+) -> None:
+    monkeypatch.setenv("DEVRADAR_DEPLOYMENT_CLASS", deployment)
+    monkeypatch.setenv("DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED", "true")
+
+    with pytest.raises(SecurityConfigurationError, match="source_recipes_non_local_forbidden"):
+        validate_security_configuration()
+
+
+def test_legacy_custom_flag_never_enables_source_recipes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_recipes_local_enabled = security_config.source_recipes_local_enabled
+    monkeypatch.setenv("DEVRADAR_DEPLOYMENT_CLASS", "LOCALHOST_SERVICE")
+    monkeypatch.setenv("DEVRADAR_CUSTOM_SOURCES_LOCAL_ENABLED", "true")
+    monkeypatch.delenv("DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED", raising=False)
+
+    assert source_recipes_local_enabled() is False
+
+
 def test_local_no_login_flag_is_explicit(monkeypatch: pytest.MonkeyPatch) -> None:
     assert hasattr(security_config, "local_no_login_enabled")
     local_no_login_enabled = security_config.local_no_login_enabled
