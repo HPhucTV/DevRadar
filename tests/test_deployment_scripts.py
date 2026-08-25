@@ -43,8 +43,48 @@ def test_launcher_creates_env_once_and_restores_process_environment() -> None:
         assert assignment in launcher
 
 
+def test_launcher_ensures_docker_engine_before_compose() -> None:
+    launcher = _read(LAUNCHER)
+
+    ensure_call = "Ensure-DockerEngine -TimeoutSeconds $DockerReadyTimeoutSeconds"
+    compose_probe = "& docker compose version"
+    assert "[ValidateRange(1, 900)]" in launcher
+    assert "$DockerReadyTimeoutSeconds = 180" in launcher
+    assert "function Test-DockerEngine" in launcher
+    assert "& docker info" in launcher
+    assert ensure_call in launcher
+    assert launcher.index(ensure_call) < launcher.index(compose_probe)
+
+
+def test_launcher_discovers_starts_and_boundedly_waits_for_docker_desktop() -> None:
+    launcher = _read(LAUNCHER)
+
+    for contract in (
+        "function Find-DockerDesktop",
+        'Join-Path $env:ProgramFiles "Docker\\Docker\\Docker Desktop.exe"',
+        'Join-Path $env:LOCALAPPDATA "Docker\\Docker Desktop.exe"',
+        'Get-Process -Name "Docker Desktop"',
+        "Start-Process -FilePath $dockerDesktopPath",
+        "function Wait-DockerEngine",
+        "Start-Sleep -Seconds $sleepSeconds",
+        'throw "Docker Desktop did not become ready within $TimeoutSeconds seconds."',
+    ):
+        assert contract in launcher
+
+    lowered = launcher.casefold()
+    for forbidden in (
+        "start-service",
+        "stop-process",
+        "--volumes",
+        "crawl --",
+        "enable source",
+    ):
+        assert forbidden not in lowered
+
+
 def test_launcher_builds_migrates_starts_smokes_then_opens_dashboard() -> None:
     launcher = _read(LAUNCHER)
+    dashboard_open = 'Start-Process "http://127.0.0.1:3000"'
 
     assert "--profile crawler build api web crawler" in launcher
     assert "up -d database --wait" in launcher
@@ -52,9 +92,9 @@ def test_launcher_builds_migrates_starts_smokes_then_opens_dashboard() -> None:
     assert "--profile crawler up -d api web crawler --wait" in launcher
     assert "scripts\\smoke.ps1" in launcher
     assert "scripts\\web-smoke.ps1" in launcher
-    assert 'Start-Process "http://127.0.0.1:3000"' in launcher
-    assert launcher.index("scripts\\smoke.ps1") < launcher.index("Start-Process")
-    assert launcher.index("scripts\\web-smoke.ps1") < launcher.index("Start-Process")
+    assert dashboard_open in launcher
+    assert launcher.index("scripts\\smoke.ps1") < launcher.index(dashboard_open)
+    assert launcher.index("scripts\\web-smoke.ps1") < launcher.index(dashboard_open)
     assert "--volumes" not in launcher
     assert "crawl now" not in launcher.casefold()
     assert "enable source" not in launcher.casefold()
