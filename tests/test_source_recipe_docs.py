@@ -133,6 +133,8 @@ def test_local_document_import_contract_is_published_without_remote_access_claim
     roadmap = DOCS["roadmap"]
 
     assert "POST /api/v1/source-recipes/{recipeId}/document-imports" in api
+    for code in ("document_import_in_progress", "document_import_failed"):
+        assert code in api
     for term in (
         "HTML",
         "JSON",
@@ -141,6 +143,7 @@ def test_local_document_import_contract_is_published_without_remote_access_claim
         "500",
         "64 KiB",
         "coverage=incomplete",
+        "2048",
     ):
         assert term in ingestion
     for term in (

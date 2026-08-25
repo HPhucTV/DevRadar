@@ -1,6 +1,6 @@
 # V6-021 — Local document import
 
-**Status:** `Done` — controlled local acceptance và full local gates pass
+**Status:** `Done` — controlled local acceptance, remediation review và full local gates pass
 
 **Boundary:** single-operator `LOCALHOST_SERVICE`; import file thủ công, không phải remote crawler access
 
@@ -43,17 +43,26 @@ Run remote thất bại trước import (`24cbc8cd-e44b-43c9-9144-29061f0310ab`)
 
 ## Verification
 
-- PostgreSQL full suite: `457 passed in 223.60s`.
+- PostgreSQL full suite sau remediation: `474 passed in 229.34s`; Source Recipe suite riêng `172`
+  passed và focused active-idempotency/boundary integration `2` passed.
 - Ruff lint pass; Ruff format check `339 files already formatted`; mypy `145 source files`; `pip check`
   không có broken requirement.
 - Web: `72` tests, ESLint, TypeScript và Next.js production build pass.
 - Docker Compose crawler profile config, API/web/crawler image build, Alembic migration, API health và
   `/sources` web smoke pass; API/web/database healthy, crawler worker chạy bằng sandboxed service riêng.
+  Request multipart quá BFF budget được route đang chạy trả `413` trước backend.
 - `secret_scan=pass`; `npm audit` có `0` vulnerability. Pinned Trivy full HIGH/CRITICAL report có API
   `19`, crawler `34`, web `31`; tất cả đều `unfixed`, `fixed=0`, nên fixable-finding gate pass.
-- Documentation contract: `6 passed`.
+- Independent final review: `0 Critical / 0 Important`; documentation/OpenAPI/import contract focused
+  suite `40` passed.
 - Fixture/output, `.npm-cache/` và `TASK_BOARD.md` không được stage; không có secret/file upload payload
   trong repository.
+
+Remediation khóa thêm các boundary sau: toàn bộ tệp bounded được quét marker CAPTCHA/login/paywall;
+deep JSON được map thành safe error; distinct candidate vượt item budget, duplicate identity và field vượt
+storage bound được xử lý trước khi tạo run; partial/failed run không được trả như success; active replay
+trả `document_import_in_progress`, còn cùng key với payload khác trả `idempotency_conflict`. BFF cap request
+stream trước khi parse multipart.
 
 ## Boundary chưa được chứng minh
 

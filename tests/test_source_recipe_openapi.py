@@ -64,3 +64,4 @@ def test_source_recipe_openapi_publishes_only_bounded_resource_contracts() -> No
     assert idempotency["required"] is True
     assert idempotency["schema"]["minLength"] == 8
     assert idempotency["schema"]["maxLength"] == 128
+    assert {"404", "409", "413", "415", "422"} <= set(import_operation["responses"])

@@ -161,6 +161,8 @@ Các lỗi mới dùng envelope hiện hành:
 - `document_import_challenge_detected` (`422`);
 - `document_import_no_jobs` (`422`);
 - `document_import_route_blocked` (`422`);
+- `document_import_in_progress` (`409` khi cùng request còn active);
+- `document_import_failed` (`422` khi run không hoàn tất toàn bộ);
 - `idempotency_key_required|invalid|conflict` theo mutation contract hiện có.
 
 ## 6. Dashboard

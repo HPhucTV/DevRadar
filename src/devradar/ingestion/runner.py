@@ -562,12 +562,6 @@ def _execute_source_recipe(
         existing = session.get(CrawlRun, run_id)
         if existing is None:
             raise IngestionRunError("run_not_found", "Claimed crawl run disappeared.")
-        if existing.status in (CrawlRunStatus.PENDING, CrawlRunStatus.RUNNING):
-            session.rollback()
-            raise IngestionRunError(
-                "run_already_active",
-                "An ingestion run is already active for this trigger.",
-            )
         if request_hash is not None and (
             existing.requested_by != requested_by or existing.request_hash != request_hash
         ):
@@ -575,6 +569,12 @@ def _execute_source_recipe(
             raise IngestionRunError(
                 "idempotency_conflict",
                 "Idempotency key was already used for a different request.",
+            )
+        if existing.status in (CrawlRunStatus.PENDING, CrawlRunStatus.RUNNING):
+            session.rollback()
+            raise IngestionRunError(
+                "run_already_active",
+                "An ingestion run is already active for this trigger.",
             )
         report = _report(existing, config.source_key, reused=True)
         session.rollback()

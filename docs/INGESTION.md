@@ -86,12 +86,17 @@ Khi remote preview/crawl bị access denial nhưng operator đã lưu trang hợ
 import nhận đúng một tệp UTF-8 HTML, JSON hoặc CSV tối đa `2 MiB` và không vượt recipe byte budget. CSV
 dùng `DictReader` standard library với tối đa `500` row, `64` column và `64 KiB` mỗi cell. Archive, binary,
 NUL, invalid UTF-8, empty/malformed/challenge content và candidate không có HTTPS URL đúng recipe hostname
-bị reject trước canonical persistence.
+bị reject trước canonical persistence. Challenge/login/paywall marker được kiểm trên toàn bộ tệp đã
+bounded; distinct candidate được deduplicate theo external ID hoặc canonical URL rồi phải không vượt
+recipe item budget. External ID/title/location/level tối đa `500` ký tự, company `300` và canonical URL
+`2048`, khớp storage contract; một candidate vượt giới hạn làm toàn bộ import bị reject trước khi tạo run.
 
 Import không outbound request, không render/execute HTML/script và không lưu file gốc. Nó chỉ persist
 canonical candidate JSON cùng field provenance, media type và document SHA-256 trong `RawJobSnapshot`, rồi
 tái sử dụng source-scoped normalization, content hash, `Job` và `JobChange`. Idempotency key reuse với cùng
-request trả lại run hiện hữu; reuse với document/config khác là conflict.
+request terminal trả lại run hiện hữu; request cùng key còn active trả conflict trạng thái
+`document_import_in_progress`; reuse với document/config khác là `idempotency_conflict`. Run kết thúc
+không phải `succeeded` hoặc có item failure trả `document_import_failed`, không bị trình bày như success.
 
 Mọi imported run có `coverage=incomplete`: import không tạo `missing` hoặc `removed`, không thay đổi remote source health,
 failure/quarantine/baseline/timestamp và không thay đổi recipe preview/block/enable state.

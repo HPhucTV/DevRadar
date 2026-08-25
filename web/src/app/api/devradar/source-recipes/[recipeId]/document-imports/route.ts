@@ -4,6 +4,7 @@ import { proxyBackend } from "@/lib/backend-proxy";
 type Context = { params: Promise<{ recipeId: string }> };
 
 export const MAX_SOURCE_DOCUMENT_BYTES = 2 * 1024 * 1024;
+const MAX_SOURCE_DOCUMENT_REQUEST_BYTES = MAX_SOURCE_DOCUMENT_BYTES + 64 * 1024;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
@@ -15,13 +16,50 @@ function invalidDocumentImport(message: string, status = 422): Response {
   );
 }
 
+async function boundedMultipartRequest(request: Request): Promise<Request | Response> {
+  const contentLength = Number(request.headers.get("content-length") ?? "0");
+  if (contentLength > MAX_SOURCE_DOCUMENT_REQUEST_BYTES) {
+    return invalidDocumentImport("Source document exceeds the 2 MiB upload limit.", 413);
+  }
+  if (!request.body) return invalidDocumentImport("Upload must contain exactly one file part.");
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const next = await reader.read();
+      if (next.done) break;
+      total += next.value.byteLength;
+      if (total > MAX_SOURCE_DOCUMENT_REQUEST_BYTES) {
+        await reader.cancel();
+        return invalidDocumentImport("Source document exceeds the 2 MiB upload limit.", 413);
+      }
+      chunks.push(next.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new Request(request.url, { method: request.method, headers: request.headers, body });
+}
+
 export async function POST(request: Request, context: Context): Promise<Response> {
   const { recipeId } = await context.params;
   if (!UUID_PATTERN.test(recipeId)) return invalidDocumentImport("Recipe ID is invalid.");
 
+  const boundedRequest = await boundedMultipartRequest(request);
+  if (boundedRequest instanceof Response) return boundedRequest;
+
   let incoming: FormData;
   try {
-    incoming = await request.formData();
+    incoming = await boundedRequest.formData();
   } catch {
     return invalidDocumentImport("Upload must contain exactly one file part.");
   }

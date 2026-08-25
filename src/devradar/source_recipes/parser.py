@@ -31,6 +31,9 @@ _CHALLENGE_MARKERS = (
     "checking your browser",
     "cloudflare challenge",
     "bot detection",
+    "login required",
+    "sign in to continue",
+    "subscribe to continue",
 )
 _SPACE_PATTERN = re.compile(r"\s+")
 
@@ -473,8 +476,8 @@ def parse_recipe_document(
         text = raw.decode("utf-8")
     except UnicodeDecodeError as error:
         raise SourceRecipeError("preview_document_invalid_encoding") from error
-    folded_prefix = text[:8192].casefold()
-    if any(marker in folded_prefix for marker in _CHALLENGE_MARKERS):
+    folded_text = text.casefold()
+    if any(marker in folded_text for marker in _CHALLENGE_MARKERS):
         raise SourceRecipeError("challenge_detected")
 
     mime_type = content_type.split(";", 1)[0].strip().casefold()

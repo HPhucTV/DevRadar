@@ -35,6 +35,15 @@ test("document import BFF validates and rebuilds one bounded multipart upload", 
   assert.match(route, /fieldName !== "file"/);
   assert.match(route, /file instanceof File/);
   assert.match(route, /MAX_SOURCE_DOCUMENT_BYTES = 2 \* 1024 \* 1024/);
+  assert.match(
+    route,
+    /MAX_SOURCE_DOCUMENT_REQUEST_BYTES = MAX_SOURCE_DOCUMENT_BYTES \+ 64 \* 1024/,
+  );
+  assert.match(route, /request\.body\.getReader\(\)/);
+  assert.ok(
+    route.indexOf("request.body.getReader()") < route.indexOf("boundedRequest.formData()"),
+    "the BFF must cap the request stream before parsing multipart data",
+  );
   assert.match(route, /file\.size > MAX_SOURCE_DOCUMENT_BYTES/);
   assert.match(route, /new FormData\(\)/);
   assert.match(route, /form\.append\("file", file/);

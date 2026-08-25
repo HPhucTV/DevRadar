@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from pathlib import Path
 from uuid import uuid4
 
@@ -17,15 +19,20 @@ from devradar.ingestion.models import (
     CoverageStatus,
     CrawlRun,
     CrawlRunStatus,
+    CrawlTriggerType,
     RawJobSnapshot,
     Source,
     SourceHealthStatus,
 )
+from devradar.ingestion.runner import _create_run
 from devradar.platform.database import DATABASE_URL_ENV
+from devradar.source_recipes.adapter import recipe_source_config
 from devradar.source_recipes.catalog import resolve_terms_notice
 from devradar.source_recipes.document_import import (
+    DocumentImportAdapter,
     DocumentImportError,
     PreparedDocumentImport,
+    _document_request_hash,
     import_recipe_document,
     prepare_document_import,
 )
@@ -34,6 +41,7 @@ from devradar.source_recipes.models import (
     RecipeStatus,
     SourceRecipe,
 )
+from devradar.source_recipes.service import ensure_recipe_source
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -194,5 +202,62 @@ def test_document_import_is_idempotent_incomplete_and_health_neutral(
             assert all(
                 run.requested_by == f"document-import:{loaded_recipe.owner_user_id}" for run in runs
             )
+
+            active_prepared = _prepared(loaded_recipe)
+            source = ensure_recipe_source(session, loaded_recipe)
+            session.commit()
+            request_hash = _document_request_hash(loaded_recipe, active_prepared)
+            config = replace(
+                recipe_source_config(loaded_recipe, source),
+                config_version=request_hash,
+            )
+            active_key = "document-import-active"
+            trigger_key = (
+                "document-import:"
+                + sha256(
+                    f"{loaded_recipe.owner_user_id}:{loaded_recipe.id}:{active_key}".encode()
+                ).hexdigest()
+            )
+            _create_run(
+                session,
+                source_id=source.id,
+                config=config,
+                adapter=DocumentImportAdapter(
+                    recipe=loaded_recipe,
+                    config=config,
+                    prepared=active_prepared,
+                    imported_at=now,
+                ),
+                started_at=now,
+                trigger_type=CrawlTriggerType.MANUAL,
+                trigger_key=trigger_key,
+                requested_by=f"document-import:{loaded_recipe.owner_user_id}",
+                request_hash=request_hash,
+                scheduled_for=None,
+                retry_of_run_id=None,
+                attempt_number=1,
+            )
+
+            with pytest.raises(DocumentImportError) as in_progress:
+                import_recipe_document(
+                    session,
+                    recipe_id=loaded_recipe.id,
+                    owner_user_id=loaded_recipe.owner_user_id,
+                    idempotency_key=active_key,
+                    prepared=active_prepared,
+                    imported_at=now,
+                )
+            assert in_progress.value.code == "document_import_in_progress"
+
+            with pytest.raises(DocumentImportError) as active_conflict:
+                import_recipe_document(
+                    session,
+                    recipe_id=loaded_recipe.id,
+                    owner_user_id=loaded_recipe.owner_user_id,
+                    idempotency_key=active_key,
+                    prepared=_prepared(loaded_recipe, first_title="Changed while active"),
+                    imported_at=now,
+                )
+            assert active_conflict.value.code == "idempotency_conflict"
     finally:
         engine.dispose()

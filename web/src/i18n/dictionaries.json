@@ -423,6 +423,8 @@
         "idempotency_key_required": "Request nhập tệp thiếu khóa chống lặp. Hãy thử lại.",
         "idempotency_key_invalid": "Request nhập tệp có khóa chống lặp không hợp lệ. Hãy thử lại.",
         "idempotency_conflict": "Request này xung đột với lần nhập trước. Hãy chọn lại tệp và thử lại.",
+        "document_import_in_progress": "Tệp này đang được nhập. Hãy đợi run hiện tại hoàn tất rồi thử lại.",
+        "document_import_failed": "Lần nhập không hoàn tất đầy đủ. Hãy kiểm tra lịch sử crawl trước khi thử lại.",
         "source_document_import_invalid": "Request nhập tệp không hợp lệ. Hãy chọn đúng một tệp được hỗ trợ."
       },
       "documentImportFound": "Tìm thấy",
@@ -942,6 +944,8 @@
         "idempotency_key_required": "The import request is missing its replay-safety key. Try again.",
         "idempotency_key_invalid": "The import request has an invalid replay-safety key. Try again.",
         "idempotency_conflict": "This request conflicts with an earlier import. Select the file again and retry.",
+        "document_import_in_progress": "This file is currently being imported. Wait for the active run to finish, then retry.",
+        "document_import_failed": "The import did not complete fully. Review crawl history before retrying.",
         "source_document_import_invalid": "The import request is invalid. Choose exactly one supported file."
       },
       "documentImportFound": "Found",

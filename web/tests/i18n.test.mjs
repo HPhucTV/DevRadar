@@ -116,6 +116,8 @@ test("source document import has complete Vietnamese and English copy", async ()
     "idempotency_key_required",
     "idempotency_key_invalid",
     "idempotency_conflict",
+    "document_import_in_progress",
+    "document_import_failed",
     "source_document_import_invalid",
   ]) {
     assert.equal(

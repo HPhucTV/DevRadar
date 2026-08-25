@@ -464,3 +464,9 @@ Response `data` gồm `crawlRunId`, `jobsFound`, `jobsNew`, `jobsUpdated`, `jobs
 Import cần current notice acknowledgement, cho phép recipe đang `blocked` nhưng từ chối `retired`, không
 đổi preview/block/enable state, remote source health hoặc absence/removal lifecycle. Lỗi size/type/content/
 challenge/route/idempotency dùng safe error envelope `413|415|422|409`; feature bị tắt trả `404`.
+Distinct candidate vượt `itemBudget`, field vượt storage bound hoặc run kết thúc `partial|failed` không
+được trả như import thành công. Cùng idempotency key và request đang chạy trả
+`409 document_import_in_progress`; cùng key với document/config khác trả `409 idempotency_conflict`;
+terminal run không thành công trả `422 document_import_failed`. Các lỗi còn lại giữ code
+`document_import_too_large`, `document_import_type_unsupported`, `document_import_invalid`,
+`document_import_challenge_detected`, `document_import_no_jobs` và `document_import_route_blocked`.

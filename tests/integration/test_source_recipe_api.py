@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Iterator
 from dataclasses import replace
 from datetime import UTC, date, datetime, time, timedelta
@@ -959,6 +960,33 @@ def test_document_import_api_rejects_boundary_abuse(
             422,
             "document_import_route_blocked",
         ),
+        (
+            "document-import-field-bound",
+            (
+                "jobs.json",
+                json.dumps(
+                    {
+                        "jobs": [
+                            {
+                                "id": "valid",
+                                "title": "Valid",
+                                "company": "Example",
+                                "url": "https://example.test/jobs/valid",
+                            },
+                            {
+                                "id": "invalid",
+                                "title": "x" * 501,
+                                "company": "Example",
+                                "url": "https://example.test/jobs/invalid",
+                            },
+                        ]
+                    }
+                ).encode(),
+                "application/json",
+            ),
+            422,
+            "document_import_invalid",
+        ),
     ]
     for key, file_part, expected_status, expected_code in cases:
         response = client.post(
@@ -1014,3 +1042,8 @@ def test_document_import_api_rejects_boundary_abuse(
     )
     assert retired.status_code == 409
     assert retired.json()["error"]["code"] == "document_import_recipe_invalid"
+
+    with Session(_database_engine(database_url)) as session:
+        assert session.scalar(select(func.count()).select_from(CrawlRun)) == 0
+        assert session.scalar(select(func.count()).select_from(RawJobSnapshot)) == 0
+        assert session.scalar(select(func.count()).select_from(Job)) == 0

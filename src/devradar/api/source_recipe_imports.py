@@ -20,6 +20,7 @@ from starlette.types import Message
 from devradar.api.common import ERROR_RESPONSES, ApiModel, DataResponse, ErrorResponse
 from devradar.api.errors import ApiContractError
 from devradar.auth.dependencies import AuthContext, require_csrf
+from devradar.ingestion.models import CrawlRunStatus
 from devradar.platform.database import get_database_session
 from devradar.platform.security_config import source_recipes_local_enabled
 from devradar.source_recipes.document_import import (
@@ -229,6 +230,7 @@ def _contract_error(error: DocumentImportError) -> ApiContractError:
             "document_import_recipe_invalid",
             "document_import_acknowledgement_required",
             "idempotency_conflict",
+            "document_import_in_progress",
         }
         else status.HTTP_422_UNPROCESSABLE_CONTENT
     )
@@ -273,6 +275,8 @@ def create_source_recipe_document_import(
             prepared=prepared,
             imported_at=datetime.now(UTC),
         )
+        if report.status is not CrawlRunStatus.SUCCEEDED or report.items_failed:
+            raise DocumentImportError("document_import_failed")
     except DocumentImportError as error:
         raise _contract_error(error) from None
     unchanged = max(

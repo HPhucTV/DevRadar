@@ -175,7 +175,7 @@ def _validate_media_type(*, filename: str, declared_content_type: str, text: str
             raise DocumentImportError("document_import_type_unsupported")
         try:
             json.loads(text)
-        except ValueError as error:
+        except (RecursionError, ValueError) as error:
             raise DocumentImportError("document_import_invalid") from error
     elif media_type in {"text/html", "application/xhtml+xml"}:
         if not stripped.startswith("<"):
@@ -204,6 +204,37 @@ def _validate_candidate_routes(
             or port is not None
         ):
             raise DocumentImportError("document_import_route_blocked")
+
+
+def _validate_candidate_storage_bounds(candidates: tuple[PreviewCandidate, ...]) -> None:
+    for candidate in candidates:
+        bounded_values = (
+            (candidate.external_id, 500),
+            (candidate.job_url, 2048),
+            (candidate.title, 500),
+            (candidate.company, 300),
+            (candidate.location, 500),
+            (candidate.level_raw, 500),
+        )
+        if any(value is not None and len(value) > limit for value, limit in bounded_values):
+            raise DocumentImportError("document_import_invalid")
+
+
+def _bounded_distinct_candidates(
+    candidates: tuple[PreviewCandidate, ...], *, limit: int
+) -> tuple[PreviewCandidate, ...]:
+    distinct: list[PreviewCandidate] = []
+    seen_external_ids: set[str] = set()
+    seen_urls: set[str] = set()
+    for candidate in candidates:
+        if candidate.external_id in seen_external_ids or candidate.job_url in seen_urls:
+            continue
+        seen_external_ids.add(candidate.external_id)
+        seen_urls.add(candidate.job_url)
+        distinct.append(candidate)
+        if len(distinct) > limit:
+            raise DocumentImportError("document_import_invalid")
+    return tuple(distinct)
 
 
 def prepare_document_import(
@@ -245,10 +276,14 @@ def prepare_document_import(
         if error.code == "preview_document_too_large":
             raise DocumentImportError("document_import_too_large") from error
         raise DocumentImportError("document_import_invalid") from error
+    except RecursionError as error:
+        raise DocumentImportError("document_import_invalid") from error
 
     if not candidates:
         raise DocumentImportError("document_import_no_jobs")
     _validate_candidate_routes(candidates, recipe=recipe)
+    _validate_candidate_storage_bounds(candidates)
+    candidates = _bounded_distinct_candidates(candidates, limit=recipe.item_budget)
     return PreparedDocumentImport(
         candidates=candidates,
         document_hash=sha256(payload).hexdigest(),
@@ -347,4 +382,6 @@ def import_recipe_document(
     except IngestionRunError as error:
         if error.code == "idempotency_conflict":
             raise DocumentImportError(error.code) from None
+        if error.code == "run_already_active":
+            raise DocumentImportError("document_import_in_progress") from None
         raise
