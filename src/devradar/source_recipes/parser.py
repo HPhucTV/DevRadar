@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import re
 from collections.abc import Mapping
@@ -17,6 +19,9 @@ PARSER_VERSION = "source-recipe-parser-v1"
 _MAX_DOCUMENT_BYTES = 10_000_000
 _MAX_HTML_NODES = 50_000
 _MAX_HTML_DEPTH = 256
+_MAX_CSV_ROWS = 500
+_MAX_CSV_COLUMNS = 64
+_MAX_CSV_CELL_CHARS = 64 * 1024
 _CHALLENGE_MARKERS = (
     "captcha",
     "recaptcha",
@@ -297,6 +302,45 @@ def _parse_json_document(
     return tuple(candidates)
 
 
+def _parse_csv_document(payload: str, *, base_url: str) -> tuple[PreviewCandidate, ...]:
+    try:
+        reader = csv.DictReader(io.StringIO(payload, newline=""), strict=True)
+        fieldnames = reader.fieldnames
+        if (
+            not fieldnames
+            or len(fieldnames) > _MAX_CSV_COLUMNS
+            or any(not name or len(name) > _MAX_CSV_CELL_CHARS for name in fieldnames)
+        ):
+            raise SourceRecipeError("preview_csv_invalid")
+
+        candidates: list[PreviewCandidate] = []
+        for index, record in enumerate(reader):
+            if index >= _MAX_CSV_ROWS:
+                raise SourceRecipeError("preview_csv_invalid")
+            if any(
+                key is None
+                or value is None
+                or len(key) > _MAX_CSV_CELL_CHARS
+                or len(value) > _MAX_CSV_CELL_CHARS
+                for key, value in record.items()
+            ):
+                raise SourceRecipeError("preview_csv_invalid")
+            candidate = _candidate_from_record(
+                record,
+                base_url=base_url,
+                method="structured_csv",
+                source_path=f"csv.row[{index + 1}]",
+                confidence=0.9,
+            )
+            if candidate is not None:
+                candidates.append(candidate)
+    except SourceRecipeError:
+        raise
+    except (csv.Error, TypeError, ValueError) as error:
+        raise SourceRecipeError("preview_csv_invalid") from error
+    return tuple(candidates)
+
+
 def _classes(node: _Node) -> frozenset[str]:
     return frozenset(node.attrs.get("class", "").casefold().split())
 
@@ -434,13 +478,15 @@ def parse_recipe_document(
         raise SourceRecipeError("challenge_detected")
 
     mime_type = content_type.split(";", 1)[0].strip().casefold()
-    if mime_type in {"application/json", "application/ld+json"}:
+    if mime_type in {"application/json", "application/ld+json", "text/json"}:
         return _parse_json_document(
             text,
             base_url=base_url,
             method="structured_json",
             source_path="json",
         )
+    if mime_type == "text/csv":
+        return _parse_csv_document(text, base_url=base_url)
     if mime_type not in {"text/html", "application/xhtml+xml"}:
         raise SourceRecipeError("preview_content_type_unsupported")
 

@@ -132,3 +132,53 @@ def test_parser_never_exposes_raw_html_or_selector_fields() -> None:
     assert "<article" not in serialized
     assert "selector" not in serialized
     assert ".job-card" not in serialized
+
+
+def test_csv_parser_accepts_bounded_alias_columns() -> None:
+    parser = _parser()
+    candidates = parser.parse_recipe_document(  # type: ignore[attr-defined]
+        (
+            b"title,company_name,job_url,seniority,location\n"
+            b"Backend Intern,Example,https://example.test/jobs/1,intern,HCM\n"
+        ),
+        content_type="text/csv",
+        base_url="https://example.test/jobs",
+        mapping={},
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].title == "Backend Intern"
+    assert candidates[0].company == "Example"
+    assert candidates[0].level_raw == "intern"
+    assert {field.method for field in candidates[0].provenance} == {"structured_csv"}
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b",".join(f"column_{index}".encode() for index in range(65)) + b"\n",
+        b"title,company,url\n" + b"A" * (64 * 1024 + 1) + b",Example,/jobs/1\n",
+        b'title,company,url\n"unterminated,Example,/jobs/1\n',
+    ],
+    ids=["too-many-columns", "oversized-cell", "malformed-quote"],
+)
+def test_csv_parser_rejects_oversized_or_malformed_shapes(payload: bytes) -> None:
+    with pytest.raises(ValueError, match="preview_csv_invalid"):
+        _parser().parse_recipe_document(  # type: ignore[attr-defined]
+            payload,
+            content_type="text/csv",
+            base_url="https://example.test/jobs",
+            mapping={},
+        )
+
+
+def test_csv_parser_rejects_more_than_500_rows() -> None:
+    payload = b"title,company,url\n" + b"A,Example,/jobs/1\n" * 501
+
+    with pytest.raises(ValueError, match="preview_csv_invalid"):
+        _parser().parse_recipe_document(  # type: ignore[attr-defined]
+            payload,
+            content_type="text/csv",
+            base_url="https://example.test/jobs",
+            mapping={},
+        )
