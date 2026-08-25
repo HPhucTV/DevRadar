@@ -226,7 +226,7 @@ def test_browser_artifact_caps_nodes_and_screenshot() -> None:
         )
 
 
-def test_browser_route_validates_dns_and_proposes_unconfirmed_public_hosts() -> None:
+def test_browser_route_validates_dns_and_rejects_unconfirmed_hosts_without_resolution() -> None:
     browser = _browser()
     with pytest.raises(SourceRecipeError, match="route_policy_blocked"):
         browser.validate_browser_route(
@@ -235,10 +235,11 @@ def test_browser_route_validates_dns_and_proposes_unconfirmed_public_hosts() -> 
             resolver=lambda host, port: ("127.0.0.1",),
         )
 
+    def resolver(host: str, port: int) -> tuple[str, ...]:
+        raise AssertionError("unapproved browser hosts must not be resolved")
+
     decision = browser.validate_browser_route(
-        "https://cdn.example.test/app.js",
-        policy=_policy(),
-        resolver=lambda host, port: ("8.8.8.8",),
+        "https://cdn.example.test/app.js", policy=_policy(), resolver=resolver
     )
     assert decision.allowed is False
     assert decision.proposed_host == "cdn.example.test"
@@ -273,8 +274,31 @@ class _FakeResponse:
     headers = {"content-type": "text/html; charset=utf-8"}
 
 
+class _FakeRequest:
+    def __init__(self, url: str, *, navigation: bool) -> None:
+        self.url = url
+        self._navigation = navigation
+
+    def is_navigation_request(self) -> bool:
+        return self._navigation
+
+
+class _FakeRoute:
+    def __init__(self, request: _FakeRequest) -> None:
+        self.request = request
+        self.aborted_with: str | None = None
+        self.continued = False
+
+    def abort(self, code: str) -> None:
+        self.aborted_with = code
+
+    def continue_(self) -> None:
+        self.continued = True
+
+
 class _FakePage:
-    def __init__(self) -> None:
+    def __init__(self, context: _FakeContext) -> None:
+        self.context = context
         self.events: dict[str, object] = {}
 
     def on(self, event: str, handler: object) -> None:
@@ -284,6 +308,10 @@ class _FakePage:
         assert url == "https://example.test/jobs"
         assert wait_until == "domcontentloaded"
         assert timeout == 10_000
+        handler = self.context.route_handlers["**/*"]
+        route = _FakeRoute(_FakeRequest("https://cdn.third-party.test/app.js", navigation=False))
+        self.context.last_route = route
+        handler(route)
         return _FakeResponse()
 
     def title(self) -> str:
@@ -307,9 +335,11 @@ class _FakePage:
 
 class _FakeContext:
     def __init__(self) -> None:
-        self.page = _FakePage()
+        self.page = _FakePage(self)
         self.events: dict[str, object] = {}
         self.routes: list[str] = []
+        self.route_handlers: dict[str, Any] = {}
+        self.last_route: _FakeRoute | None = None
         self.permissions_cleared = False
 
     def clear_permissions(self) -> None:
@@ -320,6 +350,7 @@ class _FakeContext:
 
     def route(self, pattern: str, handler: object) -> None:
         self.routes.append(pattern)
+        self.route_handlers[pattern] = handler
 
     def route_web_socket(self, pattern: str, handler: object) -> None:
         self.routes.append(f"ws:{pattern}")
@@ -395,7 +426,11 @@ def test_runner_uses_fresh_restricted_context_without_browser_binary() -> None:
     assert {"download"} <= set(fake_browser.context.events)
     assert {"**/*", "ws:**/*"} <= set(fake_browser.context.routes)
     assert {"popup"} <= set(fake_browser.context.page.events)
+    assert fake_browser.context.last_route is not None
+    assert fake_browser.context.last_route.aborted_with == "blockedbyclient"
+    assert fake_browser.context.last_route.continued is False
     assert capture.artifact.screenshot == b"webp"
+    assert capture.artifact.proposed_hosts == ()
     assert len(capture.artifact.to_public_payload().elements) == 5
 
 

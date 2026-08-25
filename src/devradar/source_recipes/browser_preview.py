@@ -225,12 +225,15 @@ def validate_browser_route(
     ):
         raise SourceRecipeError("route_policy_blocked")
     try:
-        validate_public_addresses(resolver(host, 443))
         validate_fetch_path(parsed.path or "/")
-    except (FetchError, OSError) as error:
+    except FetchError as error:
         raise SourceRecipeError("route_policy_blocked") from error
     if host not in policy.allowed_hosts:
         return BrowserRouteDecision(allowed=False, proposed_host=host)
+    try:
+        validate_public_addresses(resolver(host, 443))
+    except (FetchError, OSError) as error:
+        raise SourceRecipeError("route_policy_blocked") from error
     if not _path_is_allowed(parsed.path, policy.allowed_path_prefixes):
         return BrowserRouteDecision(allowed=False)
     return BrowserRouteDecision(allowed=True)
@@ -514,7 +517,6 @@ class BrowserPreviewRunner:
             raise SourceRecipeError("route_policy_blocked")
         timeout_ms = policy.timeout_seconds * 1_000
         monitor = _BrowserSecurityMonitor()
-        proposed_hosts: set[str] = set()
         try:
             with self._factory()() as playwright, ExitStack() as resources:
                 # Chromium remaps these hostnames to already-validated IP literals before
@@ -547,14 +549,15 @@ class BrowserPreviewRunner:
                             resolver=pinned_resolver,
                         )
                     except SourceRecipeError:
-                        monitor.blocked_code = "route_policy_blocked"
+                        if route.request.is_navigation_request():
+                            monitor.blocked_code = "route_policy_blocked"
                         route.abort("blockedbyclient")
                         return
                     if decision.allowed:
                         route.continue_()
                     else:
-                        if decision.proposed_host is not None:
-                            proposed_hosts.add(decision.proposed_host)
+                        if route.request.is_navigation_request():
+                            monitor.blocked_code = "route_policy_blocked"
                         route.abort("blockedbyclient")
 
                 context.route("**/*", route_request)
@@ -599,7 +602,7 @@ class BrowserPreviewRunner:
                     raw_nodes=raw_nodes,
                     screenshot=screenshot,
                     screenshot_media_type="image/webp",
-                    proposed_hosts=tuple(proposed_hosts),
+                    proposed_hosts=(),
                 )
                 return RenderedBrowserPreview(
                     final_url=getattr(response, "url", url),
