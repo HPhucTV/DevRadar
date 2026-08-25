@@ -4,7 +4,7 @@
 
 **Goal:** Cho phép người dùng Windows double-click `start-devradar.cmd` để launcher tự mở/chờ Docker Desktop khi engine chưa ready rồi khởi động toàn bộ DevRadar.
 
-**Architecture:** Giữ root CMD và PowerShell launcher hiện tại. Bổ sung bốn PowerShell function nội bộ cho engine probe, Docker Desktop discovery, bounded wait và preflight orchestration; sau preflight, flow Compose/migration/smoke không đổi. Không thêm dependency, service, installer hoặc public configuration.
+**Architecture:** Giữ root CMD và PowerShell launcher hiện tại. Bổ sung bounded native-process probe, local Docker Desktop context validation, discovery, wait và preflight orchestration; mọi lệnh Docker/Compose pin context `desktop-linux`. Sau preflight, flow Compose/migration/smoke không đổi. Không thêm dependency, service, installer hoặc public configuration.
 
 **Tech Stack:** Windows PowerShell 5.1, Docker Desktop/Docker Compose, Python pytest contract tests, Markdown operations documentation.
 
@@ -37,11 +37,11 @@ def test_launcher_ensures_docker_engine_before_compose() -> None:
     launcher = _read(LAUNCHER)
 
     ensure_call = "Ensure-DockerEngine -TimeoutSeconds $DockerReadyTimeoutSeconds"
-    compose_probe = "& docker compose version"
+    compose_probe = "& $dockerExecutable --context $DockerContext compose version"
     assert "[ValidateRange(1, 900)]" in launcher
     assert "$DockerReadyTimeoutSeconds = 180" in launcher
     assert "function Test-DockerEngine" in launcher
-    assert "& docker info" in launcher
+    assert "Invoke-DockerCommand" in launcher
     assert ensure_call in launcher
     assert launcher.index(ensure_call) < launcher.index(compose_probe)
 
@@ -56,7 +56,7 @@ def test_launcher_discovers_starts_and_boundedly_waits_for_docker_desktop() -> N
         'Get-Process -Name "Docker Desktop"',
         "Start-Process -FilePath $dockerDesktopPath",
         "function Wait-DockerEngine",
-        "Start-Sleep -Seconds $sleepSeconds",
+        "Start-Sleep -Milliseconds $sleepMilliseconds",
         'throw "Docker Desktop did not become ready within $TimeoutSeconds seconds."',
     ):
         assert contract in launcher
@@ -84,6 +84,12 @@ Expected: `2 failed`; first failure reports missing `ValidateRange`/`Ensure-Dock
 
 Không sửa assertions để khớp code cũ: failure phải chứng minh auto-start behavior chưa tồn tại.
 
+- [ ] **Step 3: Add review-driven safety regressions before the hardened implementation**
+
+Thêm ba RED tests cho: mọi Compose command pin exact local `desktop-linux`; behavioral bounded-process test
+terminate child PowerShell bị treo; và `Test-DockerDesktopContext` reject fake remote endpoint. Chạy riêng ba
+test và xác minh `3 failed` vì context/functions chưa tồn tại, sau đó mới làm Task 2.
+
 ## Task 2: Implement the minimal PowerShell preflight
 
 **Files:**
@@ -91,100 +97,23 @@ Không sửa assertions để khớp code cũ: failure phải chứng minh auto-
 - Modify: `scripts/start-devradar.ps1:1-67`
 - Test: `tests/test_deployment_scripts.py`
 
-- [ ] **Step 1: Add the timeout parameter and four internal functions**
+- [ ] **Step 1: Add the timeout parameter and bounded local-Docker preflight**
 
-Thay `param()` và chèn functions trước `$ErrorActionPreference = "Stop"`:
+Thay `param()` và chèn các function nội bộ trước `$ErrorActionPreference = "Stop"`:
 
-```powershell
-[CmdletBinding()]
-param(
-    [ValidateRange(1, 900)]
-    [int]$DockerReadyTimeoutSeconds = 180
-)
+- khóa `$DockerContext = "desktop-linux"` và exact endpoint
+  `npipe:////./pipe/dockerDesktopLinuxEngine`;
+- `Invoke-BoundedProcess` dùng `System.Diagnostics.Process`, redirect output, `WaitForExit(timeout)` và
+  terminate process khi hết phần deadline;
+- `Invoke-DockerCommand` chỉ resolve Docker `Application`, không chạy alias/function tùy ý;
+- `Test-DockerDesktopContext` inspect context bằng bounded probe, trả `false` khi context chưa xuất hiện và
+  throw khi endpoint khác local named pipe;
+- `Test-DockerEngine` gọi bounded `docker --context desktop-linux info`;
+- `Find-DockerDesktop`, `Wait-DockerEngine` và `Ensure-DockerEngine` giữ discovery/process guard nhưng dùng
+  một absolute UTC deadline cho cả context probe, engine probe và sleep; không có final unbounded probe.
 
-function Test-DockerEngine {
-    & docker info --format "{{.ServerVersion}}" *> $null
-    return $LASTEXITCODE -eq 0
-}
-
-function Find-DockerDesktop {
-    $candidates = @()
-    if (-not [string]::IsNullOrWhiteSpace($env:ProgramFiles)) {
-        $candidates += Join-Path $env:ProgramFiles "Docker\Docker\Docker Desktop.exe"
-    }
-    if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
-        $candidates += Join-Path $env:LOCALAPPDATA "Docker\Docker Desktop.exe"
-    }
-
-    foreach ($candidate in $candidates) {
-        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
-            return $candidate
-        }
-    }
-    return $null
-}
-
-function Wait-DockerEngine {
-    param(
-        [Parameter(Mandatory = $true)]
-        [int]$TimeoutSeconds
-    )
-
-    $stopwatch = [Diagnostics.Stopwatch]::StartNew()
-    while ($stopwatch.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
-        if (Test-DockerEngine) {
-            Write-Output "Docker Desktop is ready."
-            return
-        }
-
-        $elapsedSeconds = [int][Math]::Floor($stopwatch.Elapsed.TotalSeconds)
-        Write-Output "Waiting for Docker Desktop... $elapsedSeconds/$TimeoutSeconds seconds"
-        $remainingSeconds = $TimeoutSeconds - $elapsedSeconds
-        $sleepSeconds = [Math]::Min(5, [Math]::Max(1, $remainingSeconds))
-        Start-Sleep -Seconds $sleepSeconds
-    }
-
-    if (Test-DockerEngine) {
-        Write-Output "Docker Desktop is ready."
-        return
-    }
-    throw "Docker Desktop did not become ready within $TimeoutSeconds seconds."
-}
-
-function Ensure-DockerEngine {
-    param(
-        [Parameter(Mandatory = $true)]
-        [int]$TimeoutSeconds
-    )
-
-    if ($null -eq (Get-Command docker -ErrorAction SilentlyContinue)) {
-        throw "Docker CLI was not found. Install Docker Desktop, then run start-devradar.cmd again."
-    }
-    if (Test-DockerEngine) {
-        Write-Output "Docker Desktop is already ready."
-        return
-    }
-
-    $desktopProcesses = @(Get-Process -Name "Docker Desktop" -ErrorAction SilentlyContinue)
-    if ($desktopProcesses.Count -eq 0) {
-        $dockerDesktopPath = Find-DockerDesktop
-        if ([string]::IsNullOrWhiteSpace($dockerDesktopPath)) {
-            throw "Docker Desktop was not found in a supported install location. Install or open Docker Desktop, then run start-devradar.cmd again."
-        }
-        Write-Output "Opening Docker Desktop..."
-        Start-Process -FilePath $dockerDesktopPath
-    }
-    else {
-        Write-Output "Docker Desktop is running; waiting for its engine..."
-    }
-
-    Wait-DockerEngine -TimeoutSeconds $TimeoutSeconds
-}
-
-$ErrorActionPreference = "Stop"
-```
-
-Functions không nhận URL, secret hoặc arbitrary command. `Start-Process` chỉ nhận exact local executable đã qua `Test-Path -PathType Leaf`.
+Functions không nhận URL, secret hoặc arbitrary command. `Start-Process` chỉ nhận exact local executable đã
+qua `Test-Path -PathType Leaf`. Remote/current Docker context không được chạm build, database hoặc migration.
 
 - [ ] **Step 2: Replace the old Docker preflight and preserve Compose validation**
 
@@ -199,11 +128,16 @@ bằng:
 
 ```powershell
 Ensure-DockerEngine -TimeoutSeconds $DockerReadyTimeoutSeconds
+$dockerExecutable = (
+    Get-Command docker -CommandType Application -ErrorAction Stop |
+        Select-Object -First 1
+).Source
 Write-Output "Starting DevRadar..."
-& docker compose version
+& $dockerExecutable --context $DockerContext compose version
 ```
 
-Giữ nguyên check `$LASTEXITCODE`, `.env` create-once, environment restoration, Compose commands, smoke và dashboard open.
+Giữ nguyên check `$LASTEXITCODE`, `.env` create-once, environment restoration, smoke và dashboard open; đổi
+mọi Compose invocation còn lại sang exact `$dockerExecutable --context $DockerContext compose ...`.
 
 - [ ] **Step 3: Preserve the actionable exception message**
 
@@ -226,7 +160,7 @@ Run:
 .venv\Scripts\python -m pytest tests\test_deployment_scripts.py -q
 ```
 
-Expected: toàn bộ launcher/deployment tests pass, gồm hai test mới.
+Expected: toàn bộ launcher/deployment tests pass, gồm original preflight tests và ba safety regressions.
 
 - [ ] **Step 5: Parse the actual PowerShell file**
 

@@ -31,9 +31,12 @@ def test_readme_documents_one_click_local_recipe_workflow_without_stale_metrics(
     assert "tự mở Docker Desktop" in readme
     assert "180 giây" in readme
     assert "không tự cài" in readme
+    assert "`desktop-linux`" in readme
     assert "Docker Desktop" in operations
     assert "180 giây" in operations
     assert "mở thủ công" in operations
+    assert "Docker context từ xa" in operations
+    assert "probe bị treo" in operations
     for stale in ("3,339", "1,003", "0.9583"):
         assert stale not in readme
 

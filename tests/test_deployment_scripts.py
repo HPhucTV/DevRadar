@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import shutil
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,6 +15,46 @@ WEB_SMOKE = ROOT / "scripts" / "web-smoke.ps1"
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def _run_launcher_functions(
+    function_names: tuple[str, ...], body: str, *, timeout: float = 10
+) -> subprocess.CompletedProcess[str]:
+    powershell = shutil.which("powershell.exe") or shutil.which("pwsh")
+    assert powershell is not None, "PowerShell is required by the launcher contract"
+    launcher_path = str(LAUNCHER).replace("'", "''")
+    names = ", ".join(f'"{name}"' for name in function_names)
+    script = f"""
+$tokens = $null
+$errors = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseFile(
+    '{launcher_path}',
+    [ref]$tokens,
+    [ref]$errors
+)
+if ($errors.Count -ne 0) {{ throw 'Launcher parse failed.' }}
+$functionNames = @({names})
+foreach ($functionName in $functionNames) {{
+    $definition = $ast.Find(
+        {{
+            param($node)
+            $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+                $node.Name -eq $functionName
+        }},
+        $true
+    )
+    if ($null -eq $definition) {{ throw "Missing function: $functionName" }}
+    Invoke-Expression $definition.Extent.Text
+}}
+{body}
+"""
+    return subprocess.run(
+        [powershell, "-NoLogo", "-NoProfile", "-Command", script],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=timeout,
+    )
 
 
 def test_one_click_cmd_calls_bounded_powershell_launcher() -> None:
@@ -29,7 +72,7 @@ def test_launcher_creates_env_once_and_restores_process_environment() -> None:
     launcher = _read(LAUNCHER)
 
     assert "Get-Command docker" in launcher
-    assert "docker compose version" in launcher
+    assert "$dockerExecutable --context $DockerContext compose version" in launcher
     assert "Test-Path -LiteralPath $environmentFile" in launcher
     assert "Copy-Item -LiteralPath $environmentExample" in launcher
     assert "finally" in launcher
@@ -47,11 +90,11 @@ def test_launcher_ensures_docker_engine_before_compose() -> None:
     launcher = _read(LAUNCHER)
 
     ensure_call = "Ensure-DockerEngine -TimeoutSeconds $DockerReadyTimeoutSeconds"
-    compose_probe = "& docker compose version"
+    compose_probe = "& $dockerExecutable --context $DockerContext compose version"
     assert "[ValidateRange(1, 900)]" in launcher
     assert "$DockerReadyTimeoutSeconds = 180" in launcher
     assert "function Test-DockerEngine" in launcher
-    assert "& docker info" in launcher
+    assert "Invoke-DockerCommand" in launcher
     assert ensure_call in launcher
     assert launcher.index(ensure_call) < launcher.index(compose_probe)
 
@@ -66,7 +109,7 @@ def test_launcher_discovers_starts_and_boundedly_waits_for_docker_desktop() -> N
         'Get-Process -Name "Docker Desktop"',
         "Start-Process -FilePath $dockerDesktopPath",
         "function Wait-DockerEngine",
-        "Start-Sleep -Seconds $sleepSeconds",
+        "Start-Sleep -Milliseconds $sleepMilliseconds",
         'throw "Docker Desktop did not become ready within $TimeoutSeconds seconds."',
     ):
         assert contract in launcher
@@ -80,6 +123,66 @@ def test_launcher_discovers_starts_and_boundedly_waits_for_docker_desktop() -> N
         "enable source",
     ):
         assert forbidden not in lowered
+
+
+def test_launcher_pins_every_docker_command_to_local_desktop_context() -> None:
+    launcher = _read(LAUNCHER)
+
+    assert '$DockerContext = "desktop-linux"' in launcher
+    assert '$DockerDesktopEndpoint = "npipe:////./pipe/dockerDesktopLinuxEngine"' in launcher
+    assert "context inspect $DockerContext --format" in launcher
+    assert "{{.Endpoints.docker.Host}}" in launcher
+    assert "function Test-DockerDesktopContext" in launcher
+    assert "does not point to local Docker Desktop" in launcher
+    assert launcher.count("& $dockerExecutable --context $DockerContext compose") == 5
+    assert "& docker compose" not in launcher
+
+
+def test_bounded_process_terminates_a_hung_probe() -> None:
+    completed = _run_launcher_functions(
+        ("Invoke-BoundedProcess",),
+        """
+$childPowerShell = (Get-Process -Id $PID).Path
+$result = Invoke-BoundedProcess `
+    -FilePath $childPowerShell `
+    -Arguments '-NoLogo -NoProfile -Command "Start-Sleep -Seconds 5"' `
+    -TimeoutMilliseconds 200
+$result | ConvertTo-Json -Compress
+""",
+        timeout=4,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    payload = json.loads(completed.stdout.strip())
+    assert payload["Completed"] is False
+
+
+def test_desktop_context_rejects_a_remote_endpoint() -> None:
+    completed = _run_launcher_functions(
+        ("Test-DockerDesktopContext",),
+        """
+$script:DockerContext = "desktop-linux"
+$script:DockerDesktopEndpoint = "npipe:////./pipe/dockerDesktopLinuxEngine"
+function Invoke-DockerCommand {
+    [pscustomobject]@{
+        Completed = $true
+        ExitCode = 0
+        StandardOutput = "tcp://remote.example:2376"
+        StandardError = ""
+    }
+}
+try {
+    [void](Test-DockerDesktopContext -TimeoutMilliseconds 100)
+    throw "Remote endpoint was accepted."
+}
+catch {
+    Write-Output $_.Exception.Message
+}
+""",
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "does not point to local Docker Desktop" in completed.stdout
 
 
 def test_launcher_builds_migrates_starts_smokes_then_opens_dashboard() -> None:

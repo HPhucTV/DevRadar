@@ -304,6 +304,11 @@ chưa ready, nó tự mở Docker Desktop từ install location được hỗ tr
 180 giây trước khi báo lỗi. Missing CLI/install location hoặc timeout đều trả exit code khác `0`; CMD giữ
 cửa sổ mở để operator có thể đọc lỗi, mở thủ công Docker Desktop rồi chạy lại.
 
+Mọi lệnh `info` và Compose đều pin `--context desktop-linux`; launcher xác minh endpoint đúng local named
+pipe `npipe:////./pipe/dockerDesktopLinuxEngine` trước khi chạm runtime. Docker context từ xa hoặc context
+cùng tên nhưng endpoint khác bị fail-closed. Mỗi context/info probe dùng phần deadline còn lại và process
+probe bị treo sẽ bị terminate, nên tổng preflight không chờ vô hạn ngoài mốc 180 giây.
+
 Sau preflight, launcher giữ `.env` nếu đã có, build API/web/crawler, migrate, bật localhost no-login +
 Source Recipe worker, chạy API/web `/sources`/privacy smoke rồi mới mở dashboard. Nó không tự cài Docker,
 auto-enable/auto-crawl recipe hoặc xóa volume. Manual Compose commands trong README/AGENTS là fallback.

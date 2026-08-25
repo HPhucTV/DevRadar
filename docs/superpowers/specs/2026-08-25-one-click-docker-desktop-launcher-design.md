@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-25
 
-**Status:** Approved for planning
+**Status:** Approved
 
 **Scope:** Windows localhost launcher only
 
@@ -21,11 +21,12 @@ dependency mới.
 Khi double-click `start-devradar.cmd`, launcher phải:
 
 1. kiểm tra Docker CLI tồn tại;
-2. gọi `docker info` để xác định engine đã sẵn sàng hay chưa;
-3. nếu engine chưa sẵn sàng, tìm Docker Desktop tại các đường dẫn cài đặt Windows được hỗ trợ;
-4. mở Docker Desktop nếu process chưa chạy, hoặc chỉ chờ nếu process đã chạy;
-5. poll `docker info` với khoảng chờ ngắn và timeout tổng cộng 180 giây;
-6. sau khi engine sẵn sàng, tiếp tục nguyên flow build → database → migration → API/web/crawler → smoke
+2. pin Docker context `desktop-linux` và xác minh endpoint đúng local Docker Desktop named pipe;
+3. gọi bounded `docker info` để xác định engine đã sẵn sàng hay chưa;
+4. nếu engine chưa sẵn sàng, tìm Docker Desktop tại các đường dẫn cài đặt Windows được hỗ trợ;
+5. mở Docker Desktop nếu process chưa chạy, hoặc chỉ chờ nếu process đã chạy;
+6. poll context/engine với khoảng chờ ngắn, terminate probe bị treo và giữ deadline tổng cộng 180 giây;
+7. sau khi engine sẵn sàng, tiếp tục nguyên flow build → database → migration → API/web/crawler → smoke
    → mở dashboard.
 
 ## Supported discovery boundary
@@ -33,6 +34,11 @@ Khi double-click `start-devradar.cmd`, launcher phải:
 Launcher chỉ kiểm tra các vị trí cài đặt local rõ ràng, bắt đầu từ đường dẫn Docker Desktop chuẩn dưới
 `Program Files`, sau đó là vị trí per-user dưới `LOCALAPPDATA` nếu tồn tại. Không quét toàn ổ đĩa, không
 đọc shortcut tùy ý và không sửa `PATH` hoặc registry.
+
+Context `desktop-linux` chỉ hợp lệ khi endpoint bằng
+`npipe:////./pipe/dockerDesktopLinuxEngine`. Launcher truyền context này rõ ràng cho mọi lệnh `info` và
+Compose; current context, `DOCKER_CONTEXT` hoặc `DOCKER_HOST` không được phép chuyển startup flow sang
+daemon từ xa. Context cùng tên nhưng endpoint khác phải fail-closed trước build hoặc migration.
 
 Nếu Docker CLI không tồn tại hoặc không tìm được Docker Desktop, launcher dừng với thông báo cụ thể:
 cài Docker Desktop hoặc mở thủ công rồi chạy lại. Nếu engine không ready trong 180 giây, launcher dừng
@@ -45,6 +51,7 @@ xử lý lỗi; launcher không ép ẩn cửa sổ của nó.
 
 - Nếu `docker info` đã pass, launcher không mở thêm Docker Desktop và không chờ thừa.
 - Nếu process Docker Desktop đã tồn tại nhưng engine chưa ready, launcher không tạo process trùng.
+- Mỗi Docker CLI probe bị giới hạn bằng phần deadline còn lại và process bị terminate khi vượt giới hạn.
 - `.env` chỉ được copy từ `.env.example` khi chưa tồn tại.
 - Các process environment flag localhost được khôi phục trong `finally` như hiện tại.
 - Không yêu cầu quyền administrator, không gọi `Start-Service`, không thay Docker configuration.
@@ -64,13 +71,16 @@ thành công vẫn là dashboard `http://127.0.0.1:3000` được mở sau API/w
 Mở rộng `tests/test_deployment_scripts.py` theo TDD để khóa các contract sau:
 
 - `docker info` được kiểm tra trước bất kỳ lệnh `docker compose` nào;
+- mọi Docker command pin context local và remote endpoint bị reject;
 - có discovery `Docker Desktop.exe`, process guard, `Start-Process`, bounded poll và timeout 180 giây;
+- behavioral PowerShell test chứng minh hung process bị terminate trong deadline;
 - nhánh engine-ready không launch Docker Desktop;
 - không dùng Windows service/admin, không xóa volume và không tự crawl;
 - lỗi vẫn truyền exit code khác 0 về CMD để cửa sổ được pause.
 
-Static launcher contract phù hợp convention hiện tại; verification runtime bổ sung bằng actual PowerShell
-parse, launcher test suite và one-click smoke trên Docker Desktop thật.
+Static contract khóa call order/safety boundary; behavioral PowerShell tests kiểm timeout và remote-context
+rejection. Verification runtime bổ sung bằng actual PowerShell parse, launcher test suite và one-click
+smoke trên Docker Desktop thật.
 
 ### Runtime acceptance
 
@@ -104,6 +114,8 @@ cải tiến vận hành có thể đảo ngược, không thay architecture ho�
 - Người dùng đã cài Docker Desktop có thể double-click duy nhất `start-devradar.cmd` khi engine đang tắt
   hoặc đang khởi động và launcher sẽ tự mở/chờ engine trong bounded timeout.
 - Engine ready đi thẳng vào current startup flow mà không launch process trùng.
+- Mọi Docker/Compose command dùng local `desktop-linux`; remote endpoint fail trước khi thay đổi runtime.
+- Hung context/info probe không thể làm preflight vượt qua bounded deadline theo kiểu chờ vô hạn.
 - Missing CLI, missing Desktop và timeout đều có thông báo actionable cùng exit code khác 0.
 - Automated launcher/docs tests, PowerShell parse, Compose config, API smoke và web smoke pass.
 - README không tuyên bố auto-install Docker hoặc hỗ trợ platform chưa kiểm chứng.

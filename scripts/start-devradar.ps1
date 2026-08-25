@@ -4,9 +4,121 @@ param(
     [int]$DockerReadyTimeoutSeconds = 180
 )
 
+$DockerContext = "desktop-linux"
+$DockerDesktopEndpoint = "npipe:////./pipe/dockerDesktopLinuxEngine"
+
+function Invoke-BoundedProcess {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+        [Parameter(Mandatory = $true)]
+        [string]$Arguments,
+        [Parameter(Mandatory = $true)]
+        [ValidateRange(1, 900000)]
+        [int]$TimeoutMilliseconds
+    )
+
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.FileName = $FilePath
+    $startInfo.Arguments = $Arguments
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $startInfo
+    try {
+        if (-not $process.Start()) {
+            throw "Failed to start Docker CLI."
+        }
+        $standardOutputTask = $process.StandardOutput.ReadToEndAsync()
+        $standardErrorTask = $process.StandardError.ReadToEndAsync()
+
+        if (-not $process.WaitForExit($TimeoutMilliseconds)) {
+            try {
+                $process.Kill()
+            }
+            catch [System.InvalidOperationException] {
+                # The process exited between the timeout and the kill request.
+            }
+            $process.WaitForExit()
+            return [pscustomobject]@{
+                Completed = $false
+                ExitCode = $null
+                StandardOutput = ""
+                StandardError = ""
+            }
+        }
+
+        $process.WaitForExit()
+        return [pscustomobject]@{
+            Completed = $true
+            ExitCode = $process.ExitCode
+            StandardOutput = $standardOutputTask.Result
+            StandardError = $standardErrorTask.Result
+        }
+    }
+    finally {
+        $process.Dispose()
+    }
+}
+
+function Invoke-DockerCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Arguments,
+        [Parameter(Mandatory = $true)]
+        [int]$TimeoutMilliseconds
+    )
+
+    $dockerApplication = Get-Command docker -CommandType Application -ErrorAction Stop |
+        Select-Object -First 1
+    return Invoke-BoundedProcess `
+        -FilePath $dockerApplication.Source `
+        -Arguments $Arguments `
+        -TimeoutMilliseconds $TimeoutMilliseconds
+}
+
+function Test-DockerDesktopContext {
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$TimeoutMilliseconds
+    )
+
+    $arguments = "context inspect $DockerContext --format `"{{.Endpoints.docker.Host}}`""
+    $result = Invoke-DockerCommand `
+        -Arguments $arguments `
+        -TimeoutMilliseconds $TimeoutMilliseconds
+    if (-not $result.Completed -or $result.ExitCode -ne 0) {
+        return $false
+    }
+
+    $endpoint = $result.StandardOutput.Trim()
+    if ([string]::IsNullOrWhiteSpace($endpoint)) {
+        return $false
+    }
+    if (-not [string]::Equals(
+            $endpoint,
+            $DockerDesktopEndpoint,
+            [System.StringComparison]::OrdinalIgnoreCase
+        )) {
+        throw "Docker context '$DockerContext' does not point to local Docker Desktop. Reset Docker Desktop context, then run start-devradar.cmd again."
+    }
+    return $true
+}
+
 function Test-DockerEngine {
-    & docker info --format "{{.ServerVersion}}" *> $null
-    return $LASTEXITCODE -eq 0
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$TimeoutMilliseconds
+    )
+
+    $arguments = "--context $DockerContext info --format `"{{.ServerVersion}}`""
+    $result = Invoke-DockerCommand `
+        -Arguments $arguments `
+        -TimeoutMilliseconds $TimeoutMilliseconds
+    return $result.Completed -and $result.ExitCode -eq 0
 }
 
 function Find-DockerDesktop {
@@ -29,26 +141,48 @@ function Find-DockerDesktop {
 function Wait-DockerEngine {
     param(
         [Parameter(Mandatory = $true)]
+        [DateTime]$DeadlineUtc,
+        [Parameter(Mandatory = $true)]
         [int]$TimeoutSeconds
     )
 
-    $stopwatch = [Diagnostics.Stopwatch]::StartNew()
-    while ($stopwatch.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
-        if (Test-DockerEngine) {
-            Write-Output "Docker Desktop is ready."
-            return
+    while ([DateTime]::UtcNow -lt $DeadlineUtc) {
+        $remainingMilliseconds = [int][Math]::Floor(
+            ($DeadlineUtc - [DateTime]::UtcNow).TotalMilliseconds
+        )
+        if ($remainingMilliseconds -le 0) {
+            break
         }
 
-        $elapsedSeconds = [int][Math]::Floor($stopwatch.Elapsed.TotalSeconds)
-        Write-Output "Waiting for Docker Desktop... $elapsedSeconds/$TimeoutSeconds seconds"
-        $remainingSeconds = $TimeoutSeconds - $elapsedSeconds
-        $sleepSeconds = [Math]::Min(5, [Math]::Max(1, $remainingSeconds))
-        Start-Sleep -Seconds $sleepSeconds
-    }
+        $probeTimeoutMilliseconds = [Math]::Min(5000, $remainingMilliseconds)
+        if (Test-DockerDesktopContext -TimeoutMilliseconds $probeTimeoutMilliseconds) {
+            $remainingMilliseconds = [int][Math]::Floor(
+                ($DeadlineUtc - [DateTime]::UtcNow).TotalMilliseconds
+            )
+            if (
+                $remainingMilliseconds -gt 0 -and
+                (Test-DockerEngine -TimeoutMilliseconds (
+                        [Math]::Min(5000, $remainingMilliseconds)
+                    ))
+            ) {
+                Write-Output "Docker Desktop is ready."
+                return
+            }
+        }
 
-    if (Test-DockerEngine) {
-        Write-Output "Docker Desktop is ready."
-        return
+        $remainingMilliseconds = [int][Math]::Floor(
+            ($DeadlineUtc - [DateTime]::UtcNow).TotalMilliseconds
+        )
+        if ($remainingMilliseconds -le 0) {
+            break
+        }
+        $elapsedSeconds = [Math]::Max(
+            0,
+            $TimeoutSeconds - [int][Math]::Ceiling($remainingMilliseconds / 1000)
+        )
+        Write-Output "Waiting for Docker Desktop... $elapsedSeconds/$TimeoutSeconds seconds"
+        $sleepMilliseconds = [Math]::Min(5000, $remainingMilliseconds)
+        Start-Sleep -Milliseconds $sleepMilliseconds
     }
     throw "Docker Desktop did not become ready within $TimeoutSeconds seconds."
 }
@@ -62,9 +196,25 @@ function Ensure-DockerEngine {
     if ($null -eq (Get-Command docker -ErrorAction SilentlyContinue)) {
         throw "Docker CLI was not found. Install Docker Desktop, then run start-devradar.cmd again."
     }
-    if (Test-DockerEngine) {
-        Write-Output "Docker Desktop is already ready."
-        return
+
+    $deadlineUtc = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    $initialTimeoutMilliseconds = [Math]::Min(5000, $TimeoutSeconds * 1000)
+    if (Test-DockerDesktopContext -TimeoutMilliseconds $initialTimeoutMilliseconds) {
+        $remainingMilliseconds = [int][Math]::Floor(
+            ($deadlineUtc - [DateTime]::UtcNow).TotalMilliseconds
+        )
+        if (
+            $remainingMilliseconds -gt 0 -and
+            (Test-DockerEngine -TimeoutMilliseconds (
+                    [Math]::Min(5000, $remainingMilliseconds)
+                ))
+        ) {
+            Write-Output "Docker Desktop is already ready."
+            return
+        }
+    }
+    if ([DateTime]::UtcNow -ge $deadlineUtc) {
+        throw "Docker Desktop did not become ready within $TimeoutSeconds seconds."
     }
 
     $desktopProcesses = @(Get-Process -Name "Docker Desktop" -ErrorAction SilentlyContinue)
@@ -80,7 +230,7 @@ function Ensure-DockerEngine {
         Write-Output "Docker Desktop is running; waiting for its engine..."
     }
 
-    Wait-DockerEngine -TimeoutSeconds $TimeoutSeconds
+    Wait-DockerEngine -DeadlineUtc $deadlineUtc -TimeoutSeconds $TimeoutSeconds
 }
 
 $ErrorActionPreference = "Stop"
@@ -103,8 +253,12 @@ foreach ($name in $managedEnvironment) {
 Push-Location $repositoryRoot
 try {
     Ensure-DockerEngine -TimeoutSeconds $DockerReadyTimeoutSeconds
+    $dockerExecutable = (
+        Get-Command docker -CommandType Application -ErrorAction Stop |
+            Select-Object -First 1
+    ).Source
     Write-Output "Starting DevRadar..."
-    & docker compose version
+    & $dockerExecutable --context $DockerContext compose version
     if ($LASTEXITCODE -ne 0) {
         throw "Docker Compose is unavailable."
     }
@@ -118,16 +272,16 @@ try {
     $env:DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED = "true"
     $env:DEVRADAR_OPERATOR_WRITE_ENABLED = "true"
 
-    & docker compose --env-file .env --profile crawler build api web crawler
+    & $dockerExecutable --context $DockerContext compose --env-file .env --profile crawler build api web crawler
     if ($LASTEXITCODE -ne 0) { throw "DevRadar image build failed." }
 
-    & docker compose --env-file .env up -d database --wait
+    & $dockerExecutable --context $DockerContext compose --env-file .env up -d database --wait
     if ($LASTEXITCODE -ne 0) { throw "DevRadar database startup failed." }
 
-    & docker compose --env-file .env run --rm api python -m alembic upgrade head
+    & $dockerExecutable --context $DockerContext compose --env-file .env run --rm api python -m alembic upgrade head
     if ($LASTEXITCODE -ne 0) { throw "DevRadar migration failed." }
 
-    & docker compose --env-file .env --profile crawler up -d api web crawler --wait
+    & $dockerExecutable --context $DockerContext compose --env-file .env --profile crawler up -d api web crawler --wait
     if ($LASTEXITCODE -ne 0) { throw "DevRadar services did not become ready." }
 
     & (Join-Path $repositoryRoot "scripts\smoke.ps1") -BaseUrl "http://127.0.0.1:8000"

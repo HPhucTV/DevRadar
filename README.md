@@ -92,6 +92,10 @@ Nếu Docker engine chưa sẵn sàng, launcher tự mở Docker Desktop và ch�
 không tự cài hoặc cập nhật Docker, không vượt màn hình license/login/update; khi timeout, cửa sổ giữ lại
 thông báo để bạn mở Docker Desktop thủ công rồi chạy lại.
 
+Launcher chỉ dùng Docker Desktop Linux context `desktop-linux` và kiểm tra endpoint named pipe local trước
+khi build hoặc migrate. Nếu context bị đổi sang daemon khác, launcher dừng an toàn; mỗi lần kiểm tra Docker
+CLI đều bị giới hạn bởi thời gian còn lại trong timeout 180 giây.
+
 Sau khi Docker ready, launcher chỉ tạo `.env` từ `.env.example` khi file chưa tồn tại, build ba image,
 migrate PostgreSQL, bật API/web/crawler worker trong localhost no-login mode, chạy smoke rồi mở dashboard.
 Nó không tự enable hoặc crawl URL và không xóa volume. Workflow nằm tại
