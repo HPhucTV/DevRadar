@@ -166,9 +166,7 @@ def derive_candidate_route_proposal(
         uncovered = [
             path
             for path in paths
-            if not any(
-                _path_is_within_prefix(path, prefix) for prefix in allowed_path_prefixes
-            )
+            if not any(_path_is_within_prefix(path, prefix) for prefix in allowed_path_prefixes)
         ]
         if not uncovered:
             continue

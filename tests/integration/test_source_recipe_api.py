@@ -276,9 +276,7 @@ def test_exact_route_confirmation_resets_preview_and_keeps_listing_boundary(
     source_recipe_api: tuple[TestClient, str, str],
 ) -> None:
     client, database_url, csrf = source_recipe_api
-    listing_url = (
-        "https://boards-api.greenhouse.io/v1/boards/navervietnam/jobs?content=true"
-    )
+    listing_url = "https://boards-api.greenhouse.io/v1/boards/navervietnam/jobs?content=true"
     created = client.post(
         "/api/v1/source-recipes",
         json=_payload(listing_url=listing_url),

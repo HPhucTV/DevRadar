@@ -234,9 +234,7 @@ def _finish_preview(
     preview.candidate_jobs = candidate_jobs[:5]
     preview.warnings = warnings[:50]
     preview.error_code = error_code
-    artifact_map = (
-        browser_artifact.to_private_element_map() if browser_artifact is not None else {}
-    )
+    artifact_map = browser_artifact.to_private_element_map() if browser_artifact is not None else {}
     preview.element_map = {
         **artifact_map,
         "proposed_hosts": list(proposed_hosts),

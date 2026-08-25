@@ -156,9 +156,7 @@ def test_structured_preview_proposes_cross_host_detail_route_without_fetching_it
     engine = create_engine(fresh_postgresql_url)
     preview = _preview_module()
     now = datetime.now(UTC)
-    listing_url = (
-        "https://boards-api.greenhouse.io/v1/boards/navervietnam/jobs?content=true"
-    )
+    listing_url = "https://boards-api.greenhouse.io/v1/boards/navervietnam/jobs?content=true"
     payload = json.dumps(
         {
             "jobs": [
@@ -166,9 +164,7 @@ def test_structured_preview_proposes_cross_host_detail_route_without_fetching_it
                     "id": str(index),
                     "title": f"Engineer {index}",
                     "company": "NAVER Vietnam",
-                    "absolute_url": (
-                        f"https://boards.greenhouse.io/navervietnam/jobs/{index}"
-                    ),
+                    "absolute_url": (f"https://boards.greenhouse.io/navervietnam/jobs/{index}"),
                 }
                 for index in range(101, 104)
             ]
@@ -204,9 +200,7 @@ def test_structured_preview_proposes_cross_host_detail_route_without_fetching_it
             assert len(finished.candidate_jobs) == 3
             assert fetched_urls == [listing_url]
             assert finished.element_map["proposed_hosts"] == ["boards.greenhouse.io"]
-            assert finished.element_map["proposed_path_prefixes"] == [
-                "/navervietnam/jobs"
-            ]
+            assert finished.element_map["proposed_path_prefixes"] == ["/navervietnam/jobs"]
     finally:
         engine.dispose()
 
