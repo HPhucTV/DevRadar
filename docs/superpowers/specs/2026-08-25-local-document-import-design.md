@@ -133,6 +133,8 @@ policy của remote crawler.
 - parse và seniority filter chạy trước khi mở transaction ghi canonical data;
 - first successful import tạo hoặc tái sử dụng `Source` `owner_authorized_local` của recipe;
 - import không đổi `SourceRecipe.status`, `block_reason`, remote preview hash/ID hoặc enable gate;
+- import không đổi remote `Source.health_status`, failure counter, quarantine hoặc remote crawl
+  timestamps/baseline;
 - `CrawlRun.trigger=manual`; adapter/parser version phân biệt `source-recipe-document-import-v1`;
 - mỗi candidate tạo `RawJobSnapshot` chứa canonical candidate JSON, field provenance, import document
   SHA-256 và media type; file upload gốc không được persist;
@@ -185,6 +187,7 @@ Không thay đổi visual mapping hoặc remote preview controls trong slice nà
 | Raw content | disclosure via log/response/storage | no raw file retention/log/echo; candidate snapshot only |
 | Recipe lifecycle | upload used to enable blocked crawler | import never changes preview/enable state |
 | Absence lifecycle | partial file removes unseen jobs | coverage always `incomplete` |
+| Source health | manual partial file degrades remote crawler health | import skips remote health/timestamp evaluation |
 
 ## 8. Verification
 
@@ -195,6 +198,7 @@ TDD coverage bắt buộc:
 - valid HTML/JSON/CSV import tạo provenance chain `CrawlRun → RawJobSnapshot → Job`;
 - same file re-import không tạo thêm job/change; changed candidate tạo đúng update/change;
 - import không đổi blocked recipe hoặc remote preview/enable gate;
+- import không đổi remote source health/quarantine/baseline/timestamps;
 - incomplete import không tạo `missing`/`removed`;
 - oversized, binary, invalid UTF-8, archive, malformed CSV/JSON/HTML, challenge page, cross-host URL,
   stale acknowledgement, retired recipe và duplicate idempotency-key conflict bị chặn;

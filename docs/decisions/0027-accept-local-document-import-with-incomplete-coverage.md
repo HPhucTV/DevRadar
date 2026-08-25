@@ -1,8 +1,8 @@
-# ADR-027: Đề xuất local document import với incomplete coverage
+# ADR-027: Chấp nhận local document import với incomplete coverage
 
 ## Status
 
-Proposed
+Accepted
 
 ## Date
 
@@ -15,7 +15,7 @@ client của DevRadar. ADR-026 yêu cầu dừng remote preview/crawl trước `
 hoặc anti-bot và không cho phép URL/header/cookie/proxy override. Operator vẫn cần đưa dữ liệu họ đã mở
 và lưu cục bộ vào pipeline mà không biến DevRadar thành fetch proxy.
 
-## Proposed decision
+## Decision
 
 Cho phép local document import gắn với persisted `SourceRecipe`:
 
@@ -27,6 +27,7 @@ Cho phép local document import gắn với persisted `SourceRecipe`:
   SHA-256 của document;
 - import tái sử dụng canonical ingestion/idempotency nhưng coverage luôn `incomplete`;
 - import không thay đổi recipe preview/block/enable lifecycle và không thể bật remote crawler;
+- import không thay đổi remote source health/quarantine/baseline/crawl timestamps;
 - browser preview abort unapproved subresource mà không false-block toàn trang; unapproved navigation,
   redirect và SSRF signal vẫn hard stop.
 
@@ -54,5 +55,5 @@ Vẫn bị access denial, trùng remote recipe crawler và mở lại SSRF/per-r
   completeness/removal detection từ file import.
 - Một file chỉ cung cấp field hiện diện trong file; detail không được tải bổ sung.
 - HTML/CSV/JSON là untrusted input nên cần strict size/complexity/type bounds và negative tests.
-- ADR chỉ chuyển `Accepted` sau khi product owner review written spec; chưa cho phép implementation khi
-  còn `Proposed`.
+- File import không cấp bằng chứng rằng remote crawler truy cập được source; remote enable gate trong
+  ADR-026 tiếp tục độc lập.

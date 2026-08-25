@@ -43,7 +43,7 @@ Proposed → Accepted → Superseded | Deprecated
 | [ADR-024](0024-accept-local-custom-source-profiles-without-bypass.md) | Superseded | Custom source profile được ADR-026 thay thế |
 | [ADR-025](0025-accept-explicit-local-no-login-mode.md) | Accepted | Explicit localhost no-login single-operator mode; protected/public vẫn dùng session auth |
 | [ADR-026](0026-accept-owner-overridden-source-recipes.md) | Accepted | No-code SourceRecipe owner-local; terms notice có thể xác nhận, technical barriers fail-closed |
-| [ADR-027](0027-propose-local-document-import-with-incomplete-coverage.md) | Proposed | Bounded HTML/JSON/CSV import không fetch; coverage luôn incomplete và không đổi remote enable gate |
+| [ADR-027](0027-accept-local-document-import-with-incomplete-coverage.md) | Accepted | Bounded HTML/JSON/CSV import không fetch; coverage luôn incomplete và không đổi remote enable gate |
 
 ## Candidate technology chưa được chấp nhận
 
