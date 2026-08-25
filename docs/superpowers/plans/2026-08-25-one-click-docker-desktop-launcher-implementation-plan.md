@@ -36,9 +36,7 @@ Thêm ngay sau `test_launcher_creates_env_once_and_restores_process_environment`
 def test_launcher_ensures_docker_engine_before_compose() -> None:
     launcher = _read(LAUNCHER)
 
-    ensure_call = (
-        "Ensure-DockerEngine -TimeoutSeconds $DockerReadyTimeoutSeconds"
-    )
+    ensure_call = "Ensure-DockerEngine -TimeoutSeconds $DockerReadyTimeoutSeconds"
     compose_probe = "& docker compose version"
     assert "[ValidateRange(1, 900)]" in launcher
     assert "$DockerReadyTimeoutSeconds = 180" in launcher
