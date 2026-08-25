@@ -854,7 +854,368 @@ git add README.md AGENTS.md start-devradar.cmd scripts docs compose.yaml .env.ex
 git commit -m "docs: ship one-click source recipe workflow"
 ```
 
-## Task 12: Run full local, live-source and remote verification
+## Task 12: Confirm candidate detail routes before outbound access
+
+**Files:**
+
+- Modify: `src/devradar/source_recipes/policy.py`, `preview.py`, `service.py`
+- Modify: `src/devradar/api/source_recipes.py`
+- Modify: `web/src/lib/source-recipes.ts`, `web/src/components/source-recipe-panel.tsx`
+- Modify: `web/src/i18n/dictionaries.json`, `web/src/app/globals.css`
+- Modify: `docs/API.md`, `docs/DOMAIN_MODEL.md`, `docs/INGESTION.md`
+- Test: `tests/test_source_recipe_policy.py`, `tests/test_source_recipe_preview.py`
+- Test: `tests/integration/test_source_recipe_api.py`, `test_source_recipe_preview_queue.py`
+- Test: `tests/test_source_recipe_openapi.py`, `tests/test_source_recipe_docs.py`
+- Test: `web/tests/source-recipes.test.mjs`, `web/tests/i18n.test.mjs`, `web/tests/ui-redesign.test.mjs`
+
+- [ ] **Step 1: Write failing proposal and public-contract tests**
+
+Add a policy test proving only canonical candidate URLs create proposals; browser subresources are not
+inputs to this helper. The helper must derive a stable segment-boundary path and preserve the listing
+boundary:
+
+```python
+def test_candidate_route_proposal_derives_cross_host_common_path() -> None:
+    proposal = derive_candidate_route_proposal(
+        (
+            "https://boards.greenhouse.io/navervietnam/jobs/101",
+            "https://boards.greenhouse.io/navervietnam/jobs/102",
+            "https://boards.greenhouse.io/navervietnam/jobs/103",
+        ),
+        allowed_hosts=("boards-api.greenhouse.io",),
+        allowed_path_prefixes=("/v1/boards/navervietnam/jobs",),
+    )
+    assert proposal.hosts == ("boards.greenhouse.io",)
+    assert proposal.path_prefixes == ("/navervietnam/jobs",)
+
+
+def test_candidate_route_proposal_rejects_a_fourth_total_host() -> None:
+    with pytest.raises(SourceRecipeError, match="preview_proposed_hosts_too_many"):
+        derive_candidate_route_proposal(
+            (
+                "https://third.test/jobs/1",
+                "https://fourth.test/jobs/2",
+            ),
+            allowed_hosts=("listing.test", "detail.test"),
+            allowed_path_prefixes=("/jobs",),
+        )
+```
+
+Extend OpenAPI/response tests to require additive `proposedHosts: string[]` and
+`proposedPathPrefixes: string[]`. Add an integration test where a successful structured preview has a
+cross-host detail URL, does not call the detail fetcher and returns both proposal fields.
+
+Run:
+
+```powershell
+$env:DEVRADAR_TEST_DATABASE_URL = 'postgresql+psycopg://devradar:devradar_local_only@127.0.0.1:55432/postgres'
+& 'C:\Users\PC\Documents\Duy\DevRadar\.venv\Scripts\python.exe' -m pytest tests/test_source_recipe_policy.py tests/test_source_recipe_preview.py tests/test_source_recipe_openapi.py tests/integration/test_source_recipe_preview_queue.py -q
+Remove-Item Env:\DEVRADAR_TEST_DATABASE_URL
+```
+
+Expected: FAIL because candidate-derived proposal/path fields do not exist and structured previews do
+not persist proposal metadata.
+
+- [ ] **Step 2: Implement deterministic candidate route proposals**
+
+Import `posixpath`, `Iterable` and `dataclass`, then add one focused value type and helper in
+`policy.py`:
+
+```python
+@dataclass(frozen=True, slots=True)
+class CandidateRouteProposal:
+    hosts: tuple[str, ...]
+    path_prefixes: tuple[str, ...]
+
+
+def derive_candidate_route_proposal(
+    candidate_urls: Iterable[str],
+    *,
+    allowed_hosts: tuple[str, ...],
+    allowed_path_prefixes: tuple[str, ...],
+) -> CandidateRouteProposal:
+    grouped_paths: dict[str, list[str]] = {}
+    for candidate_url in candidate_urls:
+        normalized = normalize_listing_url(candidate_url)
+        grouped_paths.setdefault(normalized.host, []).append(normalized.path_prefix)
+
+    hosts = tuple(sorted(host for host in grouped_paths if host not in allowed_hosts))
+    if len(set(allowed_hosts).union(hosts)) > 3:
+        raise SourceRecipeError("preview_proposed_hosts_too_many")
+
+    path_prefixes: set[str] = set()
+    for paths in grouped_paths.values():
+        uncovered = [
+            path
+            for path in paths
+            if not any(
+                path == prefix or path.startswith(f"{prefix.rstrip('/')}/")
+                for prefix in allowed_path_prefixes
+            )
+        ]
+        if not uncovered:
+            continue
+        common = normalize_path_prefix(posixpath.commonpath(uncovered))
+        if common == "/":
+            raise SourceRecipeError("preview_proposed_path_too_broad")
+        path_prefixes.add(common)
+    normalized_paths = tuple(sorted(path_prefixes))
+    if len(set(allowed_path_prefixes).union(normalized_paths)) > 10:
+        raise SourceRecipeError("preview_proposed_paths_too_many")
+    return CandidateRouteProposal(hosts=hosts, path_prefixes=normalized_paths)
+```
+
+For each already-canonical candidate URL, reuse HTTPS/user-info/port/fragment validation, group paths
+by normalized host and calculate `posixpath.commonpath` at a complete path-segment boundary. Remove
+already-allowed hosts/paths, sort/deduplicate output and reject when the union exceeds three hosts or
+ten path prefixes. Do not inspect or approve browser network-resource hosts.
+
+In `preview.py`, derive the proposal from the final validated 3–5 candidate `job_url` values before
+`_finish_preview`. Persist these private metadata keys even when no browser artifact exists:
+
+```python
+preview.element_map = {
+    **artifact_map,
+    "proposed_hosts": list(route_proposal.hosts),
+    "proposed_path_prefixes": list(route_proposal.path_prefixes),
+}
+```
+
+`SourceRecipePreviewData` exposes only validated string lists. The preview remains `succeeded` so the
+owner can inspect jobs, but it is not enableable until the proposal is confirmed and a fresh preview
+succeeds with no proposal.
+
+- [ ] **Step 3: Write failing exact-confirmation and enable-gate tests**
+
+Add API integration cases for all boundary transitions:
+
+```python
+@pytest.mark.postgresql
+def test_exact_route_confirmation_resets_preview_and_keeps_listing_boundary(
+    source_recipe_api: tuple[TestClient, str, str],
+) -> None:
+    client, database_url, csrf = source_recipe_api
+    created = client.post(
+        "/api/v1/source-recipes",
+        json=_payload(
+            listing_url=(
+                "https://boards-api.greenhouse.io/v1/boards/navervietnam/jobs?content=true"
+            )
+        ),
+        headers=_csrf(csrf),
+    )
+    recipe_id = created.json()["data"]["id"]
+    now = datetime.now(UTC)
+    with Session(_database_engine(database_url)) as session:
+        recipe = session.get(SourceRecipe, UUID(recipe_id))
+        assert recipe is not None
+        preview = SourceRecipePreview(
+            recipe_id=recipe.id,
+            status=PreviewStatus.SUCCEEDED,
+            config_hash=recipe_config_hash(recipe),
+            candidate_jobs=[{"title": str(index)} for index in range(3)],
+            warnings=[],
+            element_map={
+                "proposed_hosts": ["boards.greenhouse.io"],
+                "proposed_path_prefixes": ["/navervietnam/jobs"],
+            },
+            requested_at=now,
+            started_at=now,
+            finished_at=now,
+            expires_at=now + timedelta(hours=24),
+        )
+        session.add(preview)
+        session.flush()
+        recipe.status = RecipeStatus.PREVIEW_READY
+        recipe.latest_successful_preview_id = preview.id
+        recipe.latest_successful_preview_hash = "a" * 64
+        session.commit()
+
+    premature = client.patch(
+        f"/api/v1/source-recipes/{recipe_id}",
+        json={"status": "enabled"},
+        headers=_csrf(csrf),
+    )
+    assert premature.status_code == 409
+    assert premature.json()["error"]["code"] == "preview_hosts_confirmation_required"
+
+    response = client.patch(
+        f"/api/v1/source-recipes/{recipe_id}",
+        json={
+            "allowedHosts": ["boards-api.greenhouse.io", "boards.greenhouse.io"],
+            "allowedPathPrefixes": [
+                "/v1/boards/navervietnam/jobs",
+                "/navervietnam/jobs",
+            ],
+        },
+        headers=_csrf(csrf),
+    )
+    assert response.status_code == 200
+    assert response.json()["data"]["status"] == "draft"
+    assert response.json()["data"]["allowedHosts"] == [
+        "boards-api.greenhouse.io",
+        "boards.greenhouse.io",
+    ]
+```
+
+Send stale, missing, replacement, superset and fourth-host payloads against freshly seeded previews and
+assert `409` with `preview_hosts_confirmation_invalid`. Also prove create cannot seed extra hosts/paths:
+omitted fields use only the normalized listing host and path; supplied extra boundaries are rejected
+instead of becoming an arbitrary egress configuration.
+
+Run the exact cases and verify RED before production edits.
+
+- [ ] **Step 4: Enforce exact current-preview confirmation**
+
+Add a service function that locks the recipe and its `latest_successful_preview_id`, validates exact
+set-union equality and performs one atomic update:
+
+```python
+def validated_route_proposal(
+    preview: SourceRecipePreview,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    element_map = preview.element_map
+    if not isinstance(element_map, dict):
+        raise SourceRecipeError("preview_hosts_confirmation_invalid")
+    raw_hosts = element_map.get("proposed_hosts", [])
+    raw_paths = element_map.get("proposed_path_prefixes", [])
+    if not isinstance(raw_hosts, list) or not isinstance(raw_paths, list):
+        raise SourceRecipeError("preview_hosts_confirmation_invalid")
+    try:
+        hosts = tuple(normalize_allowed_host(value) for value in raw_hosts)
+        paths = tuple(normalize_path_prefix(value) for value in raw_paths)
+    except (AttributeError, TypeError, SourceRecipeError) as error:
+        raise SourceRecipeError("preview_hosts_confirmation_invalid") from error
+    if len(hosts) != len(set(hosts)) or len(paths) != len(set(paths)):
+        raise SourceRecipeError("preview_hosts_confirmation_invalid")
+    return hosts, paths
+
+
+def confirm_preview_routes(
+    session: Session,
+    *,
+    recipe_id: UUID,
+    allowed_hosts: Sequence[str],
+    allowed_path_prefixes: Sequence[str],
+    now: datetime,
+) -> SourceRecipe:
+    recipe = session.get(SourceRecipe, recipe_id, with_for_update=True)
+    if recipe is None or recipe.latest_successful_preview_id is None:
+        session.rollback()
+        raise SourceRecipeError("preview_hosts_confirmation_invalid")
+    preview = session.get(
+        SourceRecipePreview,
+        recipe.latest_successful_preview_id,
+        with_for_update=True,
+    )
+    if preview is None or preview.status is not PreviewStatus.SUCCEEDED:
+        session.rollback()
+        raise SourceRecipeError("preview_hosts_confirmation_invalid")
+    proposed_hosts, proposed_paths = validated_route_proposal(preview)
+    normalized_hosts = tuple(normalize_allowed_host(value) for value in allowed_hosts)
+    normalized_paths = tuple(normalize_path_prefix(value) for value in allowed_path_prefixes)
+    expected_hosts = tuple(dict.fromkeys((*recipe.allowed_hosts, *proposed_hosts)))
+    expected_paths = tuple(dict.fromkeys((*recipe.allowed_path_prefixes, *proposed_paths)))
+    if normalized_hosts != expected_hosts or normalized_paths != expected_paths:
+        session.rollback()
+        raise SourceRecipeError("preview_hosts_confirmation_invalid")
+    if len(normalized_hosts) > 3 or len(normalized_paths) > 10:
+        session.rollback()
+        raise SourceRecipeError("preview_hosts_confirmation_invalid")
+    recipe.allowed_hosts = list(normalized_hosts)
+    recipe.allowed_path_prefixes = list(normalized_paths)
+    recipe.status = RecipeStatus.DRAFT
+    recipe.latest_successful_preview_id = None
+    recipe.latest_successful_preview_hash = None
+    recipe.block_reason = None
+    recipe.cooldown_until = None
+    recipe.next_run_at = None
+    recipe.updated_at = now.astimezone(UTC)
+    session.commit()
+    return recipe
+```
+
+Required behavior: keep every saved boundary value; add every and only current proposal value; reject
+missing/stale/tampered/superset/replacement input; re-run normalization; set status `draft`; clear
+latest preview ID/hash, block/cooldown and schedule; do not create/update `Source`; commit once. Reuse
+the existing PATCH wire fields so no endpoint or arbitrary host textbox is added.
+
+When PATCH requests `status=enabled`, reject with `preview_hosts_confirmation_required` if current
+successful preview contains any proposal. Once exact confirmation resets the recipe, a new proposal-free
+preview is required by the existing `preview_ready` transition.
+
+Run:
+
+```powershell
+$env:DEVRADAR_TEST_DATABASE_URL = 'postgresql+psycopg://devradar:devradar_local_only@127.0.0.1:55432/postgres'
+& 'C:\Users\PC\Documents\Duy\DevRadar\.venv\Scripts\python.exe' -m pytest tests/test_source_recipe_policy.py tests/test_source_recipe_preview.py tests/integration/test_source_recipe_api.py tests/integration/test_source_recipe_preview_queue.py tests/test_source_recipe_openapi.py -q
+Remove-Item Env:\DEVRADAR_TEST_DATABASE_URL
+```
+
+Expected: PASS with no network call in default tests.
+
+- [ ] **Step 5: Write failing UI confirmation-flow tests**
+
+Require VI/EN copy and source-panel behavior for a preview with proposals: display normalized host/path,
+hide the enable button behind the confirmation requirement, expose one confirmation button, send only
+the exact union from the selected recipe + preview, then queue a new preview after PATCH succeeds.
+Assert there is no free-form host/path input, credential, proxy, cookie, script or bypass control.
+
+Run:
+
+```powershell
+Set-Location web
+node --test tests/source-recipes.test.mjs tests/i18n.test.mjs tests/ui-redesign.test.mjs
+Set-Location ..
+```
+
+Expected: FAIL because the panel currently ignores `proposedHosts`.
+
+- [ ] **Step 6: Implement the bounded UI flow and synchronize docs**
+
+Extend the typed preview contract with `proposedPathPrefixes`. Add a `confirmPreviewRoutes` client
+function that reuses `updateSourceRecipe`; it sends no value not present in the selected recipe or
+preview. In `SourceRecipePanel`, render a compact warning card and:
+
+```typescript
+const hasRouteProposal =
+  preview.proposedHosts.length > 0 || preview.proposedPathPrefixes.length > 0;
+
+async function confirmRoutes(): Promise<void> {
+  const patched = await updateSourceRecipe(selected.id, {
+    allowedHosts: [...new Set([...selected.allowedHosts, ...preview.proposedHosts])],
+    allowedPathPrefixes: [
+      ...new Set([...selected.allowedPathPrefixes, ...preview.proposedPathPrefixes]),
+    ],
+  });
+  if (patched.kind === "success") await queuePreviewFor(patched.value.data);
+}
+```
+
+Disable enable while `hasRouteProposal`; keep the mapper and proposal confirmations separate. Add
+accessible status text/focus treatment at desktop and 320px. Update VI/EN dictionaries and active API,
+domain and ingestion docs with the exact errors and reset/re-preview lifecycle.
+
+Run web tests, lint, typecheck and build; run the focused Python/docs suite again. Commit backend,
+frontend and docs together because they form one wire contract:
+
+```powershell
+git add src/devradar/source_recipes src/devradar/api/source_recipes.py web/src docs/API.md docs/DOMAIN_MODEL.md docs/INGESTION.md tests web/tests
+git diff --cached --check
+git commit -m "feat: confirm source recipe detail hosts"
+```
+
+- [ ] **Step 7: Prove the Greenhouse generic flow and no-Firecrawl boundary**
+
+Through the running UI, create the unknown-origin recipe for
+`https://boards-api.greenhouse.io/v1/boards/navervietnam/jobs?content=true`, acknowledge exact notice,
+preview five candidates, confirm only `boards.greenhouse.io` plus the derived path, re-preview, enable,
+Crawl now, inspect Job/RawJobSnapshot/CrawlRun provenance, select `every_6_hours`, then pause. No static
+adapter, Firecrawl dependency/API call, credential/proxy/bypass or arbitrary host input is allowed.
+
+Record safe IDs/counts/statuses only; retire the acceptance recipe and clear its schedule afterward.
+
+## Task 13: Run full local, live-source and remote verification
 
 **Files:**
 
@@ -934,7 +1295,7 @@ git commit -m "docs: close no-code source recipe rollout"
 
 - [ ] **Step 7: Request code review, merge, push and verify CI**
 
-Invoke `superpowers:requesting-code-review`, resolve only verified findings, then use `superpowers:finishing-a-development-branch`. The user already authorized merge/push after the phase; merge the approved branch to `main`, rerun Task 12 Steps 1–2 on merged HEAD, then:
+Invoke `superpowers:requesting-code-review`, resolve only verified findings, then use `superpowers:finishing-a-development-branch`. The user already authorized merge/push after the phase; merge the approved branch to `main`, rerun Task 13 Steps 1–2 on merged HEAD, then:
 
 ```powershell
 git -c http.sslBackend=schannel push origin main
@@ -948,9 +1309,9 @@ Wait for the GitHub Actions run for exact pushed SHA. Report each required job's
 
 ## Plan self-review checklist
 
-- Spec coverage: owner override/terms notice (Tasks 1–2), transactional no-backup purge (Task 1), preview/parser (Task 3), visual mapper (Task 4), API/BFF (Task 5), generic runtime/filter/pagination (Task 6), schedule/worker (Task 7), dashboard intelligence visibility/privacy (Task 8), UI (Task 9), full legacy removal (Task 10), one-click/docs/poster (Task 11), ten-source/full/remote gates (Task 12).
+- Spec coverage: owner override/terms notice (Tasks 1–2), transactional no-backup purge (Task 1), preview/parser (Task 3), visual mapper (Task 4), API/BFF (Task 5), generic runtime/filter/pagination (Task 6), schedule/worker (Task 7), dashboard intelligence visibility/privacy (Task 8), UI (Task 9), full legacy removal (Task 10), one-click/docs/poster (Task 11), exact proposed-host/path confirmation and Greenhouse flow (Task 12), ten-source/full/remote gates (Task 13).
 - Type consistency: `SourceRecipe`, `SourceRecipePreview`, `TermsNotice`, `RecipeStatus`, `PreviewStatus`, `RecipeScheduleKind`, `items_filtered_out`, `source_recipes_local_enabled` and endpoint names are stable across all tasks.
 - Safety consistency: terms notice is owner-overridable; technical access barriers, SSRF and redirect escape are never overridable. No credential, proxy, cookie, arbitrary header, arbitrary script, per-run URL or CAPTCHA solver is introduced.
 - Migration consistency: first revision purges and adds new schema while leaving an empty compatibility table; second revision drops that empty table. Both ship together, so there is no released dual-run state. Downgrade cannot restore data and docs say so.
-- Lean check: no Redis, Prefect, external AI, microservice, object storage, public recipe exposure, scripting language or source-specific adapter. Existing PostgreSQL queue, Playwright dependency, ingestion pipeline and design tokens are reused.
+- Lean check: no Redis, Prefect, Firecrawl, external AI, microservice, object storage, public recipe exposure, scripting language or source-specific adapter. Existing PostgreSQL queue, Playwright dependency, ingestion pipeline and design tokens are reused.
 - Verification consistency: default tests remain network/browser-binary-free; PostgreSQL, Playwright, live preview, Compose and security gates run explicitly at acceptance.
