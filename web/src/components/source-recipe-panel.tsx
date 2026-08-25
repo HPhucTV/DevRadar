@@ -170,11 +170,11 @@ export function SourceRecipePanel() {
       const nextPreview = result.value.data;
       setPreview(nextPreview);
       if (PREVIEW_TERMINAL.has(nextPreview.status)) {
-        setPreviewPoll(null);
-        setBusy(null);
         const refreshed = await listSourceRecipes();
         if (!active) return;
         if (refreshed.kind === "success") setRecipes(refreshed.value.data);
+        setPreviewPoll(null);
+        setBusy(null);
         setNotice(() => (messages: Dictionary) =>
           nextPreview.status === "succeeded"
             ? messages.sourceRecipes.previewReady

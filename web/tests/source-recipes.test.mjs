@@ -130,3 +130,18 @@ test("preview route proposals require one exact confirmation before enable", asy
   assert.match(panel, /disabled=\{busy !== null \|\| !canEnable \|\| hasRouteProposal\}/);
   assert.doesNotMatch(panel, /name=["']allowedHosts|name=["']allowedPathPrefixes/);
 });
+
+test("terminal preview refresh completes before polling effect cleanup", async () => {
+  const panel = await source("src/components/source-recipe-panel.tsx");
+  const terminalBranch = panel.indexOf("if (PREVIEW_TERMINAL.has(nextPreview.status))");
+  const refreshRecipes = panel.indexOf("const refreshed = await listSourceRecipes();", terminalBranch);
+  const clearPoll = panel.indexOf("setPreviewPoll(null);", terminalBranch);
+
+  assert.ok(terminalBranch >= 0);
+  assert.ok(refreshRecipes >= 0);
+  assert.ok(clearPoll >= 0);
+  assert.ok(
+    refreshRecipes < clearPoll,
+    "clearing previewPoll first cancels the effect and discards the refreshed recipe status",
+  );
+});
