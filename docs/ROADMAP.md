@@ -456,8 +456,10 @@ Playwright fallback, fixed schedule/manual run và PostgreSQL provenance. Techni
 owner acknowledgement không phải legal certification và không cho phép bypass.
 
 One-click Windows launcher build/migrate/start API/web/crawler worker, smoke rồi mở `/sources`; nó không
-auto-enable/auto-crawl hoặc xóa volume. Task giữ `In Progress` cho tới full PostgreSQL/web/Compose/security,
-browser workflow, ten-catalog bounded live matrix và remote CI trên exact merged SHA. V6-004/V6-005/
+auto-enable/auto-crawl hoặc xóa volume. Local acceptance đã có Greenhouse generic route confirmation →
+`14` Job có provenance, browser desktop/320px, ten-catalog bounded live matrix, `404` PostgreSQL tests,
+`66` web tests, Compose/secret/supply-chain gates và no-bypass negative state. Task giữ `In Progress` tới
+independent review, merge, rerun trên merged HEAD và remote CI terminal success cho exact pushed SHA. V6-004/V6-005/
 V6-007/V6-014 provider/public gates không đổi và V6 không được đóng bởi local capability này.
 
 ## 9. Quy tắc cập nhật roadmap
