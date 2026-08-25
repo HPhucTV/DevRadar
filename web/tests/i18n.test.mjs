@@ -78,6 +78,59 @@ test("source route confirmation has complete Vietnamese and English copy", async
   }
 });
 
+test("source document import has complete Vietnamese and English copy", async () => {
+  const messages = JSON.parse(await source("src/i18n/dictionaries.json"));
+  for (const key of [
+    "documentImportEyebrow",
+    "documentImportTitle",
+    "documentImportBody",
+    "documentImportFile",
+    "documentImportHelp",
+    "documentImportAction",
+    "documentImporting",
+    "documentImportComplete",
+    "documentImportFileRequired",
+    "documentImportFailed",
+    "documentImportFound",
+    "documentImportNew",
+    "documentImportUpdated",
+    "documentImportUnchanged",
+    "documentImportFiltered",
+  ]) {
+    assert.equal(typeof messages.vi.sourceRecipes[key], "string", `missing vi.sourceRecipes.${key}`);
+    assert.equal(typeof messages.en.sourceRecipes[key], "string", `missing en.sourceRecipes.${key}`);
+  }
+  assert.match(messages.vi.sourceRecipes.documentImportTitle, /tệp/i);
+  assert.match(messages.en.sourceRecipes.documentImportTitle, /file/i);
+  for (const code of [
+    "document_import_disabled",
+    "document_import_recipe_invalid",
+    "document_import_acknowledgement_required",
+    "document_import_too_large",
+    "document_import_multipart_invalid",
+    "document_import_type_unsupported",
+    "document_import_invalid",
+    "document_import_challenge_detected",
+    "document_import_no_jobs",
+    "document_import_route_blocked",
+    "idempotency_key_required",
+    "idempotency_key_invalid",
+    "idempotency_conflict",
+    "source_document_import_invalid",
+  ]) {
+    assert.equal(
+      typeof messages.vi.sourceRecipes.documentImportErrors[code],
+      "string",
+      `missing vi.sourceRecipes.documentImportErrors.${code}`,
+    );
+    assert.equal(
+      typeof messages.en.sourceRecipes.documentImportErrors[code],
+      "string",
+      `missing en.sourceRecipes.documentImportErrors.${code}`,
+    );
+  }
+});
+
 test("job detail and analytics localize enum and date presentation", async () => {
   const detail = await source("src/app/(dashboard)/jobs/[jobId]/page.tsx");
   const analytics = await source("src/app/(dashboard)/analytics/page.tsx");

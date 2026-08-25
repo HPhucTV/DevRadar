@@ -18,6 +18,7 @@ import {
   createSourceRecipe,
   getSourceCatalog,
   getSourcePreview,
+  importSourceDocument,
   listSourceCrawls,
   listSourceRecipes,
   requestSourceCrawl,
@@ -29,6 +30,7 @@ import {
   type SourceCatalogEntry,
   type SourceRecipe,
   type SourceRecipeCrawlRun,
+  type SourceRecipeDocumentImport,
   type SourceRecipeInput,
   type SourceRecipeMappingInput,
   type SourceRecipePreview,
@@ -51,6 +53,9 @@ const MAPPING_STEPS = [
 type MappingField = (typeof MAPPING_STEPS)[number];
 type Notice = (dictionary: Dictionary, locale: Locale) => string;
 type FormState = SourceRecipeInput;
+type SourceRecipeCopy = Dictionary["sourceRecipes"] & {
+  documentImportErrors: Record<string, string>;
+};
 
 const DEFAULT_FORM: FormState = {
   name: "",
@@ -73,6 +78,16 @@ const DEFAULT_MAPPING: SourceRecipeMappingInput = {
 
 function failure(message: string): ApiFailure {
   return { kind: "error", status: 422, code: "source_recipe_invalid", message };
+}
+
+function localizeDocumentImportFailure(
+  error: ApiFailure,
+  copy: SourceRecipeCopy,
+): ApiFailure {
+  return {
+    ...error,
+    message: copy.documentImportErrors[error.code] ?? copy.documentImportFailed,
+  };
 }
 
 function toForm(recipe: SourceRecipe): FormState {
@@ -119,6 +134,9 @@ export function SourceRecipePanel() {
   const [preview, setPreview] = useState<SourceRecipePreview | null>(null);
   const [previewPoll, setPreviewPoll] = useState<{ recipeId: string; previewId: string; startedAt: number } | null>(null);
   const [runs, setRuns] = useState<SourceRecipeCrawlRun[]>([]);
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [documentImportResult, setDocumentImportResult] =
+    useState<SourceRecipeDocumentImport | null>(null);
   const [mapping, setMapping] = useState<SourceRecipeMappingInput>(DEFAULT_MAPPING);
   const [mappingStep, setMappingStep] = useState(0);
   const [imageSize, setImageSize] = useState({ width: 1, height: 1 });
@@ -136,6 +154,11 @@ export function SourceRecipePanel() {
   );
   const canEnable = selected?.status === "preview_ready" || selected?.status === "paused";
   const canCrawl = selected?.status === "enabled";
+  const documentImportDisabled =
+    !selected ||
+    selected.status === "retired" ||
+    (selected.termsAcknowledgementRequired && !selected.termsAcknowledged && !acknowledged) ||
+    busy !== null;
 
   useEffect(() => {
     let active = true;
@@ -206,6 +229,8 @@ export function SourceRecipePanel() {
     setAcknowledged(recipe.termsAcknowledged);
     setPreview(null);
     setRuns([]);
+    setDocumentFile(null);
+    setDocumentImportResult(null);
     setMapping(DEFAULT_MAPPING);
     setMappingStep(0);
     setError(null);
@@ -218,6 +243,8 @@ export function SourceRecipePanel() {
     setAcknowledged(false);
     setPreview(null);
     setRuns([]);
+    setDocumentFile(null);
+    setDocumentImportResult(null);
     setMapping(DEFAULT_MAPPING);
     setMappingStep(0);
     setError(null);
@@ -325,6 +352,48 @@ export function SourceRecipePanel() {
       setRecipes((current) => current.map((item) => (item.id === recipe.id ? recipe : item)));
     }
     await queuePreviewFor(recipe);
+  }
+
+  async function importDocument(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selected || documentImportDisabled) return;
+    if (!documentFile) {
+      setError(failure(copy.documentImportFileRequired));
+      return;
+    }
+
+    const formElement = event.currentTarget;
+    setBusy("document-import");
+    setError(null);
+    setNotice(null);
+    setDocumentImportResult(null);
+    let recipe = selected;
+
+    if (recipe.termsAcknowledgementRequired && !recipe.termsAcknowledged) {
+      const acknowledgement = await updateSourceRecipe(recipe.id, {
+        acknowledgedNoticeVersion: recipe.termsNoticeVersion,
+      });
+      if (acknowledgement.kind === "error") {
+        setError(localizeDocumentImportFailure(acknowledgement, copy));
+        setBusy(null);
+        return;
+      }
+      recipe = acknowledgement.value.data;
+      setRecipes((current) =>
+        current.map((item) => (item.id === recipe.id ? recipe : item)),
+      );
+      setAcknowledged(recipe.termsAcknowledged);
+    }
+
+    const result = await importSourceDocument(recipe.id, documentFile);
+    if (result.kind === "error") {
+      setError(localizeDocumentImportFailure(result, copy));
+    } else {
+      setDocumentImportResult(result.value.data);
+      setDocumentFile(null);
+      formElement.reset();
+    }
+    setBusy(null);
   }
 
   async function confirmRoutes() {
@@ -501,6 +570,8 @@ export function SourceRecipePanel() {
           </form>
 
           {selected ? <section className={`terms-notice terms-${selected.termsNotice}`}><div><strong>{copy.termsTitle}</strong><span>{(copy.termsLabels as Record<string, string>)[selected.termsNotice]}</span></div><p>{copy.termsBody}</p>{selected.termsEvidenceUrl ? <a href={selected.termsEvidenceUrl} rel="noreferrer" target="_blank">{copy.termsEvidence}</a> : <span className="field-help">{copy.noTermsEvidence}</span>}{selected.termsAcknowledgementRequired && !selected.termsAcknowledged ? <label className="terms-acknowledgement"><input checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} type="checkbox" />{copy.acknowledgement}</label> : <span className="badge badge-success">{copy.acknowledged}</span>}</section> : null}
+
+          {selected ? <section aria-labelledby="document-import-title" className="document-import-card"><div><p className="eyebrow">{copy.documentImportEyebrow}</p><h3 id="document-import-title">{copy.documentImportTitle}</h3><p>{copy.documentImportBody}</p></div><form aria-busy={busy === "document-import"} className="document-import-form" onSubmit={importDocument}><label htmlFor="source-recipe-document">{copy.documentImportFile}</label><input accept=".html,.htm,.json,.csv" aria-describedby="source-recipe-document-help" disabled={documentImportDisabled} id="source-recipe-document" key={selected.id} onChange={(event) => setDocumentFile(event.target.files?.[0] ?? null)} type="file" /><p className="field-help" id="source-recipe-document-help">{copy.documentImportHelp}</p><button className="button-primary" disabled={documentImportDisabled || documentFile === null} type="submit">{busy === "document-import" ? copy.documentImporting : copy.documentImportAction}</button></form><div aria-atomic="true" aria-live="polite" className="document-import-live">{documentImportResult ? <div className="document-import-result"><div><strong>{copy.documentImportComplete}</strong><span className="badge badge-info">{statusLabels[documentImportResult.coverage] ?? documentImportResult.coverage}</span></div><dl className="document-import-metrics"><div><dt>{copy.documentImportFound}</dt><dd>{formatNumber(documentImportResult.jobsFound, locale)}</dd></div><div><dt>{copy.documentImportNew}</dt><dd>{formatNumber(documentImportResult.jobsNew, locale)}</dd></div><div><dt>{copy.documentImportUpdated}</dt><dd>{formatNumber(documentImportResult.jobsUpdated, locale)}</dd></div><div><dt>{copy.documentImportUnchanged}</dt><dd>{formatNumber(documentImportResult.jobsUnchanged, locale)}</dd></div><div><dt>{copy.documentImportFiltered}</dt><dd>{formatNumber(documentImportResult.itemsFilteredOut, locale)}</dd></div></dl></div> : null}</div></section> : null}
 
           {selected?.status === "blocked" ? <div className="api-state api-state--error safe-block-state" role="alert"><strong>{copy.blocked}</strong><p>{copy.blockedBody}</p><small>{selected.blockReason ?? copy.blockedUnknown}</small></div> : null}
           {selected?.cooldownUntil ? <p className="cooldown-state" role="status">{interpolate(copy.cooldownUntil, { date: formatDate(selected.cooldownUntil, locale) })}</p> : null}

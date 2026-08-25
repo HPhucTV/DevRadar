@@ -81,6 +81,7 @@ test("sources route owns the complete recipe contract", async () => {
     "POST /api/devradar/source-recipes/{recipeId}/previews/{previewId}/mapping",
     "GET /api/devradar/source-recipes/{recipeId}/crawl-runs",
     "POST /api/devradar/source-recipes/{recipeId}/crawl-runs",
+    "POST /api/devradar/source-recipes/{recipeId}/document-imports",
   ]);
 });
 

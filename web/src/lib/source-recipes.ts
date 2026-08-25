@@ -3,6 +3,8 @@ import { sessionFetch } from "@/lib/session-request";
 
 export const MAX_SCREENSHOT_DATA_URL_LENGTH = 2_100_000;
 const SCREENSHOT_PATTERN = /^data:image\/(?:webp|png);base64,[A-Za-z0-9+/]*={0,2}$/;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const DOCUMENT_HASH_PREFIX_PATTERN = /^[0-9a-f]{12}$/i;
 
 export type SourceRecipeStatus =
   | "draft"
@@ -108,6 +110,17 @@ export type SourceRecipeCrawlRun = {
   status: string;
   coverageStatus: string;
   requestedAt: string;
+};
+
+export type SourceRecipeDocumentImport = {
+  crawlRunId: string;
+  jobsFound: number;
+  jobsNew: number;
+  jobsUpdated: number;
+  jobsUnchanged: number;
+  itemsFilteredOut: number;
+  coverage: "incomplete";
+  documentHashPrefix: string;
 };
 
 export type SourceRecipeMappingInput = {
@@ -228,6 +241,27 @@ function isRun(value: unknown): value is SourceRecipeCrawlRun {
   );
 }
 
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function isDocumentImport(value: unknown): value is SourceRecipeDocumentImport {
+  return (
+    isRecord(value) &&
+    Object.keys(value).length === 8 &&
+    typeof value.crawlRunId === "string" &&
+    UUID_PATTERN.test(value.crawlRunId) &&
+    isNonNegativeInteger(value.jobsFound) &&
+    isNonNegativeInteger(value.jobsNew) &&
+    isNonNegativeInteger(value.jobsUpdated) &&
+    isNonNegativeInteger(value.jobsUnchanged) &&
+    isNonNegativeInteger(value.itemsFilteredOut) &&
+    value.coverage === "incomplete" &&
+    typeof value.documentHashPrefix === "string" &&
+    DOCUMENT_HASH_PREFIX_PATTERN.test(value.documentHashPrefix)
+  );
+}
+
 function isData<T>(value: unknown, predicate: (item: unknown) => item is T): value is DataEnvelope<T> {
   return isRecord(value) && predicate(value.data);
 }
@@ -262,7 +296,7 @@ async function request<T>(
       ...init,
       headers: {
         accept: "application/json",
-        ...(init.body ? { "content-type": "application/json" } : {}),
+        ...(typeof init.body === "string" ? { "content-type": "application/json" } : {}),
         ...(init.headers ?? {}),
       },
     });
@@ -401,5 +435,20 @@ export function listSourceCrawls(
     { method: "GET" },
     (value): value is ListEnvelope<SourceRecipeCrawlRun> => isList(value, isRun),
     "Source crawl history could not be loaded.",
+  );
+}
+
+export function importSourceDocument(
+  recipeId: string,
+  file: File,
+): Promise<ApiResult<DataEnvelope<SourceRecipeDocumentImport>>> {
+  const form = new FormData();
+  form.append("file", file, file.name || "jobs-document");
+  return request(
+    `/api/devradar/source-recipes/${encodeURIComponent(recipeId)}/document-imports`,
+    { method: "POST", body: form },
+    (value): value is DataEnvelope<SourceRecipeDocumentImport> =>
+      isData(value, isDocumentImport),
+    "Source document could not be imported.",
   );
 }
