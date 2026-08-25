@@ -81,16 +81,20 @@ flowchart LR
 
 ### Chạy một lần nhấp trên Windows
 
-Yêu cầu duy nhất cho product runtime là Docker Desktop với Docker Compose đang hoạt động. Clone repository,
-sau đó double-click:
+Yêu cầu duy nhất cho product runtime là Docker Desktop đã được cài đặt; không cần mở ứng dụng trước.
+Clone repository, sau đó double-click:
 
 ```text
 start-devradar.cmd
 ```
 
-Launcher chỉ tạo `.env` từ `.env.example` khi file chưa tồn tại, build ba image, migrate PostgreSQL, bật
-API/web/crawler worker trong localhost no-login mode, chạy smoke rồi mở dashboard. Nó không tự enable hoặc
-crawl bất kỳ URL nào và không xóa volume. Mở trực tiếp workflow tại
+Nếu Docker engine chưa sẵn sàng, launcher tự mở Docker Desktop và chờ tối đa 180 giây. Launcher
+không tự cài hoặc cập nhật Docker, không vượt màn hình license/login/update; khi timeout, cửa sổ giữ lại
+thông báo để bạn mở Docker Desktop thủ công rồi chạy lại.
+
+Sau khi Docker ready, launcher chỉ tạo `.env` từ `.env.example` khi file chưa tồn tại, build ba image,
+migrate PostgreSQL, bật API/web/crawler worker trong localhost no-login mode, chạy smoke rồi mở dashboard.
+Nó không tự enable hoặc crawl URL và không xóa volume. Workflow nằm tại
 `http://127.0.0.1:3000/sources`.
 
 ### Chạy thủ công cho development

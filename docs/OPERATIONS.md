@@ -299,9 +299,14 @@ Product one-click path hiện hành trên Windows:
 .\start-devradar.cmd
 ```
 
-Launcher yêu cầu Docker Compose, giữ `.env` nếu đã có, build API/web/crawler, migrate, bật localhost
-no-login + Source Recipe worker, chạy API/web `/sources`/privacy smoke rồi mới mở dashboard. Nó không
-auto-enable/auto-crawl recipe và không xóa volume. Manual Compose commands trong README/AGENTS là fallback.
+Docker Desktop phải được cài đặt nhưng không cần chạy sẵn. Launcher kiểm tra `docker info`; nếu engine
+chưa ready, nó tự mở Docker Desktop từ install location được hỗ trợ, không tạo process trùng và chờ tối đa
+180 giây trước khi báo lỗi. Missing CLI/install location hoặc timeout đều trả exit code khác `0`; CMD giữ
+cửa sổ mở để operator có thể đọc lỗi, mở thủ công Docker Desktop rồi chạy lại.
+
+Sau preflight, launcher giữ `.env` nếu đã có, build API/web/crawler, migrate, bật localhost no-login +
+Source Recipe worker, chạy API/web `/sources`/privacy smoke rồi mới mở dashboard. Nó không tự cài Docker,
+auto-enable/auto-crawl recipe hoặc xóa volume. Manual Compose commands trong README/AGENTS là fallback.
 
 - clean setup từ documented prerequisites;
 - migration chạy trên PostgreSQL mới;

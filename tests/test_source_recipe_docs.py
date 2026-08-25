@@ -23,10 +23,17 @@ DOCS = {
 
 def test_readme_documents_one_click_local_recipe_workflow_without_stale_metrics() -> None:
     readme = DOCS["readme"]
+    operations = DOCS["operations"]
 
     assert "start-devradar.cmd" in readme
     assert "http://127.0.0.1:3000/sources" in readme
     assert "Source Recipe" in readme
+    assert "tự mở Docker Desktop" in readme
+    assert "180 giây" in readme
+    assert "không tự cài" in readme
+    assert "Docker Desktop" in operations
+    assert "180 giây" in operations
+    assert "mở thủ công" in operations
     for stale in ("3,339", "1,003", "0.9583"):
         assert stale not in readme
 
