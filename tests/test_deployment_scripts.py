@@ -134,6 +134,7 @@ def test_launcher_pins_every_docker_command_to_local_desktop_context() -> None:
     assert "{{.Endpoints.docker.Host}}" in launcher
     assert "function Test-DockerDesktopContext" in launcher
     assert "does not point to local Docker Desktop" in launcher
+    assert launcher.count("Get-Command docker -CommandType Application") == 3
     assert launcher.count("& $dockerExecutable --context $DockerContext compose") == 5
     assert "& docker compose" not in launcher
 

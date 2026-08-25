@@ -193,7 +193,10 @@ function Ensure-DockerEngine {
         [int]$TimeoutSeconds
     )
 
-    if ($null -eq (Get-Command docker -ErrorAction SilentlyContinue)) {
+    if ($null -eq (
+            Get-Command docker -CommandType Application -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+        )) {
         throw "Docker CLI was not found. Install Docker Desktop, then run start-devradar.cmd again."
     }
 
