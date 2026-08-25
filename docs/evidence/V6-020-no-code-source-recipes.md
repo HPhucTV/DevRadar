@@ -1,6 +1,6 @@
 # V6-020 — No-code Source Recipes
 
-**Status:** `Ready for review` — local acceptance/gates complete; merge và remote CI pending
+**Status:** `Ready to merge` — independent re-review pass; merge và remote CI pending
 
 **Boundary:** single-operator `LOCALHOST_SERVICE`; không phải public deployment evidence
 
@@ -99,9 +99,34 @@ retry/vượt access control chỉ để biến chúng thành success.
 Firecrawl tiếp tục defer: AGPL/self-host topology thêm Redis/RabbitMQ/workers và không thay thế
 SSRF/provenance/idempotency boundary hiện hành. Không có Firecrawl dependency, API key hoặc service.
 
+## Independent review remediation — 2026-08-25
+
+Review không có Critical và nêu năm Important. Remediation hiện hành:
+
+1. raw/encoded/double-encoded dot-segment, separator, backslash và ambiguous path bị chặn trước prefix
+   check hoặc request tiếp theo;
+2. browser pre-resolve toàn bộ allowed host, pin một validated public IP bằng Chromium resolver rules,
+   fail hostname ngoài allow-list và tắt system proxy; IPv4/IPv6/mixed-family unit tests pass;
+3. catalog notice drift được trình bày bằng metadata current và có exact-version re-ack path kể cả khi
+   notice mới thường không cần acknowledgement;
+4. manual/scheduled run bind full recipe config hash; reuse cùng idempotency key sau config change trả
+   conflict;
+5. stale-config, notice-drift, paused hoặc retired pending run kết thúc `cancelled`, không poison active-run
+   uniqueness và không vào adapter/health/removal path.
+
+Independent re-review trả `0 Critical / 0 Important`. Fresh remediation evidence: `136 passed, 286
+deselected` cho SourceRecipe suite và `422 passed in 218.10s` cho full PostgreSQL suite; Ruff lint/format,
+mypy `141 source files` và `pip check` pass. Web `npm run check` pass `66` tests, ESLint, TypeScript và Next.js
+production build. Compose config cùng API/crawler/web build pass; secret scan và supply-chain gate pass với
+Trivy full counts API `19`, crawler `34`, web `31`, tất cả `unfixed` và `fixed=0`.
+
+Playwright `1.62.0` actual bundled-Chromium smoke với DNS pinning + no-proxy tải
+`https://example.com/`, tạo `4` element, screenshot `8,928` bytes và rendered HTML `559` bytes. Cache browser
+local ban đầu thiếu headless-shell ICU data; `playwright install --force chromium` khôi phục exact revision
+`1234` trước smoke, không có production code workaround.
+
 ## Gate còn mở trước khi đánh dấu Done
 
-- independent code review và xử lý finding được xác minh;
 - merge vào `main`, rerun local gates trên merged HEAD;
 - push exact merged SHA và required GitHub Actions đạt terminal success.
 

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import UTC, datetime, timedelta
+from dataclasses import replace
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from uuid import UUID
 
@@ -24,12 +25,14 @@ from devradar.ingestion.models import CrawlRun, RawJobSnapshot, Source
 from devradar.main import app
 from devradar.platform.database import DATABASE_URL_ENV, _database_engine
 from devradar.source_recipes.browser_preview import build_browser_artifact
+from devradar.source_recipes.catalog import resolve_terms_notice
 from devradar.source_recipes.models import (
     PreviewStatus,
     RecipeScheduleKind,
     RecipeStatus,
     SourceRecipe,
     SourceRecipePreview,
+    TermsNotice,
 )
 from devradar.source_recipes.service import recipe_config_hash
 
@@ -269,6 +272,82 @@ def test_create_acknowledge_and_queue_preview_without_canonical_rows(
         assert session.scalar(select(func.count()).select_from(RawJobSnapshot)) == 0
         assert session.scalar(select(func.count()).select_from(Job)) == 0
         assert session.scalar(select(func.count()).select_from(JobChange)) == 0
+
+
+@pytest.mark.postgresql
+def test_terms_notice_drift_can_be_reviewed_and_reacknowledged(
+    source_recipe_api: tuple[TestClient, str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import devradar.api.source_recipes as api_module
+
+    client, database_url, csrf = source_recipe_api
+    listing_url = "https://example.test/jobs?role=backend"
+    created = client.post(
+        "/api/v1/source-recipes",
+        json=_payload(listing_url=listing_url),
+        headers=_csrf(csrf),
+    )
+    recipe_id = created.json()["data"]["id"]
+    _seed_successful_preview(
+        database_url,
+        recipe_id=recipe_id,
+        proposed_hosts=[],
+        proposed_path_prefixes=[],
+    )
+    enabled = client.patch(
+        f"/api/v1/source-recipes/{recipe_id}",
+        json={"status": "enabled"},
+        headers=_csrf(csrf),
+    )
+    assert enabled.status_code == 200
+
+    previous = resolve_terms_notice(listing_url)
+    current = replace(
+        previous,
+        notice=TermsNotice.NO_SPECIFIC_RESTRICTION_FOUND,
+        version="f" * 64,
+        evidence_url="https://example.test/current-terms",
+        reviewed_on=date(2026, 8, 25),
+        acknowledgement_required=False,
+    )
+    monkeypatch.setattr(api_module, "resolve_terms_notice", lambda value: current)
+
+    refreshed = client.get(f"/api/v1/source-recipes/{recipe_id}")
+    assert refreshed.status_code == 200
+    assert refreshed.json()["data"]["termsNoticeVersion"] == current.version
+    assert refreshed.json()["data"]["termsEvidenceUrl"] == current.evidence_url
+    assert refreshed.json()["data"]["termsAcknowledgementRequired"] is True
+    assert refreshed.json()["data"]["termsAcknowledged"] is False
+
+    stale = client.patch(
+        f"/api/v1/source-recipes/{recipe_id}",
+        json={"acknowledgedNoticeVersion": previous.version},
+        headers=_csrf(csrf),
+    )
+    assert stale.status_code == 409
+    assert stale.json()["error"]["code"] == "terms_notice_acknowledgement_stale"
+
+    acknowledged = client.patch(
+        f"/api/v1/source-recipes/{recipe_id}",
+        json={"acknowledgedNoticeVersion": current.version},
+        headers=_csrf(csrf),
+    )
+    assert acknowledged.status_code == 200
+    assert acknowledged.json()["data"]["status"] == "enabled"
+    assert acknowledged.json()["data"]["termsAcknowledgementRequired"] is False
+    assert acknowledged.json()["data"]["termsAcknowledged"] is True
+    with Session(_database_engine(database_url)) as session:
+        recipe = session.get(SourceRecipe, UUID(recipe_id))
+        source = session.get(Source, recipe.source_id) if recipe is not None else None
+        assert recipe is not None and source is not None
+        assert recipe.terms_notice_version == current.version
+        assert recipe.terms_evidence_url == current.evidence_url
+        assert current.reviewed_on is not None
+        assert recipe.terms_reviewed_at == datetime.combine(
+            current.reviewed_on, time.min, tzinfo=UTC
+        )
+        assert source.terms_reviewed_at == recipe.terms_reviewed_at
 
 
 @pytest.mark.postgresql

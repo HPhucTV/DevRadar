@@ -30,6 +30,7 @@ from devradar.source_recipes.browser_preview import BrowserPreviewRunner
 from devradar.source_recipes.models import (
     RecipeStatus,
     SourceRecipe,
+    SourceRecipeError,
     SourceRecipePreview,
 )
 from devradar.source_recipes.preview import (
@@ -83,52 +84,65 @@ def _claim_next_pending_source_recipe_run(
             "transaction_already_active",
             "Source Recipe worker requires a fresh transaction boundary.",
         )
-    crawl_run = session.scalar(
-        select(CrawlRun)
-        .join(SourceRecipe, SourceRecipe.source_id == CrawlRun.source_id)
-        .where(
-            CrawlRun.status == CrawlRunStatus.PENDING,
-            CrawlRun.trigger_type.in_((CrawlTriggerType.MANUAL, CrawlTriggerType.SCHEDULED)),
-            SourceRecipe.status == RecipeStatus.ENABLED,
+    claimed_at = started_at.astimezone(UTC)
+    while True:
+        crawl_run = session.scalar(
+            select(CrawlRun)
+            .join(SourceRecipe, SourceRecipe.source_id == CrawlRun.source_id)
+            .where(
+                CrawlRun.status == CrawlRunStatus.PENDING,
+                CrawlRun.trigger_type.in_((CrawlTriggerType.MANUAL, CrawlTriggerType.SCHEDULED)),
+            )
+            .order_by(
+                CrawlRun.requested_at.asc().nulls_first(),
+                CrawlRun.scheduled_for.asc().nulls_first(),
+                CrawlRun.id.asc(),
+            )
+            .limit(1)
+            .with_for_update(skip_locked=True)
         )
-        .order_by(
-            CrawlRun.requested_at.asc().nulls_first(),
-            CrawlRun.scheduled_for.asc().nulls_first(),
-            CrawlRun.id.asc(),
+        if crawl_run is None:
+            session.rollback()
+            return None
+        recipe = session.scalar(
+            select(SourceRecipe).where(SourceRecipe.source_id == crawl_run.source_id)
         )
-        .limit(1)
-        .with_for_update(skip_locked=True)
-    )
-    if crawl_run is None:
-        session.rollback()
-        return None
-    recipe = session.scalar(
-        select(SourceRecipe).where(SourceRecipe.source_id == crawl_run.source_id)
-    )
-    source = session.get(Source, crawl_run.source_id)
-    if recipe is None or source is None or not source_recipe_is_runnable(recipe, now=started_at):
-        session.rollback()
-        raise IngestionRunError(
-            "source_recipe_not_runnable",
-            "Pending Source Recipe run no longer matches an enabled recipe.",
-        )
-    config = recipe_source_config(recipe, source)
-    if crawl_run.config_version != config.config_version:
-        session.rollback()
-        raise IngestionRunError(
-            "source_recipe_config_mismatch",
-            "Pending Source Recipe run configuration changed before execution.",
-        )
-    crawl_run.status = CrawlRunStatus.RUNNING
-    crawl_run.started_at = started_at.astimezone(UTC)
-    crawl_run.adapter_version = RecipeAdapter.adapter_version
-    claimed = ClaimedSourceRecipeRun(crawl_run.id, recipe, config)
-    session.flush()
-    session.expunge(crawl_run)
-    session.expunge(recipe)
-    session.expunge(source)
-    session.commit()
-    return claimed
+        source = session.get(Source, crawl_run.source_id)
+        cancellation_code: str | None = None
+        config: SourceConfig | None = None
+        if (
+            recipe is None
+            or source is None
+            or not source_recipe_is_runnable(recipe, now=claimed_at)
+        ):
+            cancellation_code = "source_recipe_not_runnable"
+        else:
+            try:
+                config = recipe_source_config(recipe, source)
+            except SourceRecipeError:
+                cancellation_code = "source_recipe_config_mismatch"
+            if config is not None and crawl_run.config_version != config.config_version:
+                cancellation_code = "source_recipe_config_mismatch"
+        if cancellation_code is not None:
+            crawl_run.status = CrawlRunStatus.CANCELLED
+            crawl_run.started_at = claimed_at
+            crawl_run.finished_at = claimed_at
+            crawl_run.error_code = cancellation_code
+            crawl_run.error_summary = "Pending Source Recipe run was invalidated before execution."
+            session.commit()
+            continue
+        if recipe is None or source is None or config is None:
+            raise AssertionError("Validated Source Recipe claim lost required state")
+        crawl_run.status = CrawlRunStatus.RUNNING
+        crawl_run.started_at = claimed_at
+        crawl_run.adapter_version = RecipeAdapter.adapter_version
+        claimed = ClaimedSourceRecipeRun(crawl_run.id, recipe, config)
+        session.flush()
+        session.expunge(crawl_run)
+        session.expunge(recipe)
+        session.expunge(source)
+        session.commit()
+        return claimed
 
 
 def work_one_source_recipe(

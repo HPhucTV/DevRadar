@@ -9,7 +9,7 @@ import pytest
 import devradar.source_recipes.adapter as recipe_adapter_module
 from devradar.ingestion.contracts import FetchResult, RawSnapshot, RunContext
 from devradar.ingestion.models import Source, SourceApprovalStatus
-from devradar.source_recipes.adapter import RecipeAdapter, recipe_source_config
+from devradar.source_recipes.adapter import RecipeAdapter, RecipeAdapterError, recipe_source_config
 from devradar.source_recipes.models import (
     RecipeScheduleKind,
     RecipeStatus,
@@ -210,6 +210,42 @@ def test_recipe_adapter_marks_pagination_loop_and_budget_as_incomplete() -> None
             )
         )
         assert adapter.discovery_summary.coverage_complete is False
+
+
+@pytest.mark.parametrize(
+    "next_url",
+    [
+        "https://example.test/jobs/../admin",
+        "https://example.test/jobs/%2e%2e/admin",
+        "https://example.test/jobs/%2f..%2fadmin",
+    ],
+)
+def test_recipe_adapter_blocks_ambiguous_pagination_before_fetch(next_url: str) -> None:
+    recipe = _recipe()
+    config = recipe_source_config(recipe, _source(recipe))
+    requested: list[str] = []
+
+    def fetch(url: str, policy: object) -> FetchResult:
+        assert policy == config.fetch_policy
+        requested.append(url)
+        return _document(
+            _page([("1", "Backend Intern", "Intern")], next_url=next_url),
+            url=url,
+        )
+
+    adapter = RecipeAdapter(recipe=recipe, config=config, http_fetch=fetch)
+    with pytest.raises(RecipeAdapterError) as captured:
+        adapter.discover(
+            RunContext(
+                run_id=uuid4(),
+                source=config,
+                deadline=datetime.now(UTC) + timedelta(minutes=5),
+                correlation_id="fixture",
+            )
+        )
+
+    assert captured.value.code == "route_policy_blocked"
+    assert requested == [recipe.listing_url]
 
 
 def test_recipe_time_budget_stops_pagination_without_waiting(

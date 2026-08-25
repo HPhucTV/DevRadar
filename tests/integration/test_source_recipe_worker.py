@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
@@ -12,6 +13,7 @@ from alembic.config import Config
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 
+import devradar.source_recipes.scheduler as source_recipe_scheduler
 from devradar.auth.models import User
 from devradar.automation.run_requests import RunRequestError, request_source_recipe_run
 from devradar.automation.worker import work_one_source_recipe
@@ -38,6 +40,7 @@ from devradar.source_recipes.models import (
 )
 from devradar.source_recipes.preview import request_preview
 from devradar.source_recipes.scheduler import claim_due_source_recipe
+from devradar.source_recipes.service import recipe_config_hash
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PREVIEW_FIXTURE = PROJECT_ROOT / "tests" / "fixtures" / "source_recipes" / "jobs_json.html"
@@ -132,7 +135,7 @@ def test_due_recipe_is_enqueued_once_with_stable_slot(
             crawl_run = session.scalar(select(CrawlRun))
             assert crawl_run is not None
             assert crawl_run.trigger_type is CrawlTriggerType.SCHEDULED
-            assert crawl_run.config_version == "a" * 64
+            assert crawl_run.config_version == recipe_config_hash(recipe)
     finally:
         engine.dispose()
 
@@ -177,6 +180,171 @@ def test_manual_recipe_request_is_owner_bound_and_idempotent(
             assert second.reused is True
             assert first.crawl_run.id == second.crawl_run.id
             assert first.crawl_run.requested_by == f"recipe:{recipe.owner_user_id}"
+            assert first.crawl_run.config_version == recipe_config_hash(recipe)
+            recipe.seniority_filter = ["senior"]
+            session.commit()
+            with pytest.raises(RunRequestError) as changed_request:
+                request_source_recipe_run(
+                    session,
+                    recipe_id=recipe.id,
+                    owner_user_id=recipe.owner_user_id,
+                    idempotency_key="recipe-run-123",
+                    requested_at=now + timedelta(seconds=2),
+                )
+            assert changed_request.value.code == "idempotency_conflict"
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.postgresql
+def test_worker_cancels_pending_run_when_recipe_config_changes(
+    fresh_postgresql_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(DATABASE_URL_ENV, fresh_postgresql_url)
+    monkeypatch.setenv("DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED", "true")
+    monkeypatch.setenv("DEVRADAR_DEPLOYMENT_CLASS", "LOCALHOST_SERVICE")
+    command.upgrade(Config(str(PROJECT_ROOT / "alembic.ini")), "head")
+    engine = create_engine(fresh_postgresql_url)
+    now = datetime.now(UTC)
+    try:
+        with Session(engine, expire_on_commit=False) as session:
+            recipe = _enabled_recipe(session, now=now)
+            recipe.schedule_kind = RecipeScheduleKind.MANUAL
+            recipe.next_run_at = None
+            session.commit()
+            queued = request_source_recipe_run(
+                session,
+                recipe_id=recipe.id,
+                owner_user_id=recipe.owner_user_id,
+                idempotency_key="recipe-config-old",
+                requested_at=now,
+            )
+            old_config_hash = queued.crawl_run.config_version
+            recipe.seniority_filter = ["senior"]
+            session.commit()
+
+            def unexpected_factory(recipe: SourceRecipe, config: SourceConfig) -> JobSourceAdapter:
+                pytest.fail("stale pending run reached the adapter")
+
+            result = work_one_source_recipe(
+                session,
+                deadline=now + timedelta(minutes=5),
+                adapter_factory=unexpected_factory,
+                clock=lambda: now,
+            )
+
+            assert result is None
+            session.rollback()
+            stale_run = session.get(CrawlRun, queued.crawl_run.id)
+            refreshed = session.get(SourceRecipe, recipe.id)
+            assert stale_run is not None and refreshed is not None
+            assert stale_run.status is CrawlRunStatus.CANCELLED
+            assert stale_run.error_code == "source_recipe_config_mismatch"
+            assert stale_run.started_at == stale_run.finished_at == now
+            assert old_config_hash != recipe_config_hash(refreshed)
+            replacement = request_source_recipe_run(
+                session,
+                recipe_id=recipe.id,
+                owner_user_id=recipe.owner_user_id,
+                idempotency_key="recipe-config-new",
+                requested_at=now + timedelta(seconds=1),
+            )
+            assert replacement.reused is False
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.postgresql
+@pytest.mark.parametrize("status", [RecipeStatus.PAUSED, RecipeStatus.RETIRED])
+def test_worker_cancels_pending_run_when_recipe_is_no_longer_enabled(
+    fresh_postgresql_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+    status: RecipeStatus,
+) -> None:
+    monkeypatch.setenv(DATABASE_URL_ENV, fresh_postgresql_url)
+    monkeypatch.setenv("DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED", "true")
+    monkeypatch.setenv("DEVRADAR_DEPLOYMENT_CLASS", "LOCALHOST_SERVICE")
+    command.upgrade(Config(str(PROJECT_ROOT / "alembic.ini")), "head")
+    engine = create_engine(fresh_postgresql_url)
+    now = datetime.now(UTC)
+    try:
+        with Session(engine, expire_on_commit=False) as session:
+            recipe = _enabled_recipe(session, now=now)
+            recipe.schedule_kind = RecipeScheduleKind.MANUAL
+            recipe.next_run_at = None
+            session.commit()
+            queued = request_source_recipe_run(
+                session,
+                recipe_id=recipe.id,
+                owner_user_id=recipe.owner_user_id,
+                idempotency_key=f"recipe-status-{status.value}",
+                requested_at=now,
+            )
+            recipe.status = status
+            session.commit()
+
+            assert (
+                work_one_source_recipe(
+                    session,
+                    deadline=now + timedelta(minutes=5),
+                    clock=lambda: now,
+                )
+                is None
+            )
+            session.rollback()
+            stale_run = session.get(CrawlRun, queued.crawl_run.id)
+            assert stale_run is not None
+            assert stale_run.status is CrawlRunStatus.CANCELLED
+            assert stale_run.error_code == "source_recipe_not_runnable"
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.postgresql
+def test_worker_cancels_pending_run_when_terms_notice_drifts(
+    fresh_postgresql_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(DATABASE_URL_ENV, fresh_postgresql_url)
+    monkeypatch.setenv("DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED", "true")
+    monkeypatch.setenv("DEVRADAR_DEPLOYMENT_CLASS", "LOCALHOST_SERVICE")
+    command.upgrade(Config(str(PROJECT_ROOT / "alembic.ini")), "head")
+    engine = create_engine(fresh_postgresql_url)
+    now = datetime.now(UTC)
+    try:
+        with Session(engine, expire_on_commit=False) as session:
+            recipe = _enabled_recipe(session, now=now)
+            recipe.schedule_kind = RecipeScheduleKind.MANUAL
+            recipe.next_run_at = None
+            session.commit()
+            queued = request_source_recipe_run(
+                session,
+                recipe_id=recipe.id,
+                owner_user_id=recipe.owner_user_id,
+                idempotency_key="recipe-notice-drift",
+                requested_at=now,
+            )
+            current = resolve_terms_notice(recipe.listing_url)
+            monkeypatch.setattr(
+                source_recipe_scheduler,
+                "resolve_terms_notice",
+                lambda value: replace(current, version="f" * 64),
+            )
+
+            assert (
+                work_one_source_recipe(
+                    session,
+                    deadline=now + timedelta(minutes=5),
+                    clock=lambda: now,
+                )
+                is None
+            )
+            session.rollback()
+            stale_run = session.get(CrawlRun, queued.crawl_run.id)
+            assert stale_run is not None
+            assert stale_run.status is CrawlRunStatus.CANCELLED
+            assert stale_run.error_code == "source_recipe_not_runnable"
     finally:
         engine.dispose()
 

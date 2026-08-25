@@ -75,10 +75,16 @@ def recipe_config_hash(recipe: SourceRecipe) -> str:
         "byte_budget": recipe.byte_budget,
         "config_version": recipe.config_version,
         "field_mapping": recipe.field_mapping,
+        "item_budget": recipe.item_budget,
         "listing_url": recipe.listing_url,
+        "page_budget": recipe.page_budget,
+        "pagination_mapping": recipe.pagination_mapping,
         "parser_version": recipe.parser_version,
+        "request_budget": recipe.request_budget,
         "requests_per_minute": recipe.requests_per_minute,
         "seniority_filter": recipe.seniority_filter,
+        "terms_notice_version": recipe.terms_notice_version,
+        "time_budget_seconds": recipe.time_budget_seconds,
     }
     encoded = json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
     return sha256(encoded.encode("utf-8")).hexdigest()

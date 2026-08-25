@@ -244,6 +244,24 @@ def test_browser_route_validates_dns_and_proposes_unconfirmed_public_hosts() -> 
     assert decision.proposed_host == "cdn.example.test"
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://example.test/jobs/../admin",
+        "https://example.test/jobs/%2e%2e/admin",
+        "https://example.test/jobs/%252e%252e/admin",
+        "https://example.test/jobs/%2f..%2fadmin",
+    ],
+)
+def test_browser_route_rejects_ambiguous_paths(url: str) -> None:
+    with pytest.raises(SourceRecipeError, match="route_policy_blocked"):
+        _browser().validate_browser_route(
+            url,
+            policy=_policy(),
+            resolver=lambda host, port: ("8.8.8.8",),
+        )
+
+
 class _FakeBody:
     def inner_text(self, *, timeout: int) -> str:
         assert timeout == 10_000
@@ -364,6 +382,10 @@ def test_runner_uses_fresh_restricted_context_without_browser_binary() -> None:
     assert manager.playwright.chromium.launch_options == {
         "headless": True,
         "chromium_sandbox": True,
+        "args": [
+            "--host-resolver-rules=MAP example.test 8.8.8.8, MAP * ~NOTFOUND",
+            "--no-proxy-server",
+        ],
     }
     assert fake_browser.context_options["accept_downloads"] is False
     assert fake_browser.context_options["service_workers"] == "block"
@@ -375,3 +397,33 @@ def test_runner_uses_fresh_restricted_context_without_browser_binary() -> None:
     assert {"popup"} <= set(fake_browser.context.page.events)
     assert capture.artifact.screenshot == b"webp"
     assert len(capture.artifact.to_public_payload().elements) == 5
+
+
+def test_runner_brackets_pinned_ipv6_literal_for_chromium() -> None:
+    browser = _browser()
+    manager = _FakePlaywrightManager()
+
+    browser.BrowserPreviewRunner(
+        resolver=lambda host, port: ("2001:4860:4860::8888",),
+        playwright_factory=lambda: manager,
+    ).render("https://example.test/jobs", _policy())
+
+    assert manager.playwright.chromium.launch_options["args"] == [
+        "--host-resolver-rules=MAP example.test [2001:4860:4860::8888], MAP * ~NOTFOUND",
+        "--no-proxy-server",
+    ]
+
+
+def test_runner_prefers_public_ipv4_when_dns_returns_both_families() -> None:
+    browser = _browser()
+    manager = _FakePlaywrightManager()
+
+    browser.BrowserPreviewRunner(
+        resolver=lambda host, port: ("2001:4860:4860::8888", "8.8.8.8"),
+        playwright_factory=lambda: manager,
+    ).render("https://example.test/jobs", _policy())
+
+    assert manager.playwright.chromium.launch_options["args"] == [
+        "--host-resolver-rules=MAP example.test 8.8.8.8, MAP * ~NOTFOUND",
+        "--no-proxy-server",
+    ]

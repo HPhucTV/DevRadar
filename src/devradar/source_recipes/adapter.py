@@ -45,6 +45,7 @@ from devradar.source_recipes.parser import (
     parse_recipe_document,
 )
 from devradar.source_recipes.policy import build_recipe_fetch_policy, normalize_listing_url
+from devradar.source_recipes.service import recipe_config_hash
 
 HttpFetch = Callable[[str, FetchPolicy], FetchResult]
 
@@ -127,7 +128,7 @@ def recipe_source_config(recipe: SourceRecipe, source: Source) -> SourceConfig:
             terms_reviewed_at=reviewed_on,
             next_review_at=reviewed_on + timedelta(days=90),
         ),
-        config_version=recipe.mapping_version or recipe.config_version,
+        config_version=recipe_config_hash(recipe),
     )
 
 

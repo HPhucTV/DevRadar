@@ -20,6 +20,7 @@ from devradar.source_recipes.models import (
     SourceRecipe,
     SourceRecipeError,
 )
+from devradar.source_recipes.service import recipe_config_hash
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,7 +178,7 @@ def claim_due_source_recipe(
             status=CrawlRunStatus.PENDING,
             coverage_status=CoverageStatus.UNKNOWN,
             adapter_version="pending",
-            config_version=recipe.mapping_version or recipe.config_version,
+            config_version=recipe_config_hash(recipe),
         )
         try:
             session.add(crawl_run)

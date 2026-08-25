@@ -180,6 +180,28 @@ def test_successful_redirect_chain_is_preserved_without_response_body() -> None:
 
 
 @pytest.mark.parametrize(
+    "location",
+    [
+        "https://career.vng.com.vn/jobs/../admin",
+        "https://career.vng.com.vn/jobs/%2e%2e/admin",
+        "https://career.vng.com.vn/jobs/%252e%252e/admin",
+        "https://career.vng.com.vn/jobs/%2f..%2fadmin",
+    ],
+)
+def test_redirect_rejects_ambiguous_paths_before_a_second_request(location: str) -> None:
+    transport = SequenceTransport(
+        (_response(status=302, payload=b"", headers={"location": location}),)
+    )
+    policy = replace(HTML_POLICY, allowed_path_prefixes=("/jobs",))
+
+    with pytest.raises(FetchError) as captured:
+        _fetcher(transport).fetch("https://career.vng.com.vn/jobs", policy)
+
+    assert captured.value.code is FetchErrorCode.REDIRECT_BLOCKED
+    assert len(transport.requests) == 1
+
+
+@pytest.mark.parametrize(
     ("response", "expected_code"),
     [
         (_response(content_type="application/octet-stream"), FetchErrorCode.UNEXPECTED_CONTENT),

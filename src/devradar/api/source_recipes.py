@@ -36,7 +36,12 @@ from devradar.ingestion.models import (
 )
 from devradar.platform.database import get_database_session
 from devradar.platform.security_config import source_recipes_local_enabled
-from devradar.source_recipes.catalog import CATALOG_SCHEMA_VERSION, SOURCE_CATALOG
+from devradar.source_recipes.catalog import (
+    CATALOG_SCHEMA_VERSION,
+    SOURCE_CATALOG,
+    ResolvedTermsNotice,
+    resolve_terms_notice,
+)
 from devradar.source_recipes.models import (
     PreviewStatus,
     RecipeScheduleKind,
@@ -243,11 +248,39 @@ SourceRecipeCrawlResponse = DataResponse[SourceRecipeCrawlData]
 SourceRecipeCrawlListResponse = ListResponse[SourceRecipeCrawlData]
 
 
-def _ack_required(recipe: SourceRecipe) -> bool:
-    return recipe.terms_notice in {TermsNotice.NOT_REVIEWED, TermsNotice.RESTRICTED_TERMS}
+def _ack_required(recipe: SourceRecipe, notice: ResolvedTermsNotice) -> bool:
+    return recipe.terms_notice_version != notice.version or notice.acknowledgement_required
+
+
+def _terms_acknowledged(recipe: SourceRecipe, notice: ResolvedTermsNotice) -> bool:
+    return recipe.terms_notice_version == notice.version and (
+        not notice.acknowledgement_required or recipe.terms_acknowledged_at is not None
+    )
+
+
+def _reviewed_at(notice: ResolvedTermsNotice) -> datetime | None:
+    return (
+        datetime.combine(notice.reviewed_on, time.min, tzinfo=UTC)
+        if notice.reviewed_on is not None
+        else None
+    )
+
+
+def _persist_notice_acknowledgement(
+    recipe: SourceRecipe,
+    notice: ResolvedTermsNotice,
+    *,
+    acknowledged_at: datetime,
+) -> None:
+    recipe.terms_notice = notice.notice
+    recipe.terms_notice_version = notice.version
+    recipe.terms_evidence_url = notice.evidence_url
+    recipe.terms_reviewed_at = _reviewed_at(notice)
+    recipe.terms_acknowledged_at = acknowledged_at
 
 
 def _recipe_data(recipe: SourceRecipe) -> SourceRecipeData:
+    notice = resolve_terms_notice(recipe.listing_url)
     return SourceRecipeData(
         id=recipe.id,
         source_id=recipe.source_id,
@@ -257,11 +290,11 @@ def _recipe_data(recipe: SourceRecipe) -> SourceRecipeData:
         origin=recipe.origin,
         allowed_hosts=list(recipe.allowed_hosts),
         allowed_path_prefixes=list(recipe.allowed_path_prefixes),
-        terms_notice=recipe.terms_notice,
-        terms_notice_version=recipe.terms_notice_version,
-        terms_evidence_url=recipe.terms_evidence_url,
-        terms_acknowledgement_required=_ack_required(recipe),
-        terms_acknowledged=not _ack_required(recipe) or recipe.terms_acknowledged_at is not None,
+        terms_notice=notice.notice,
+        terms_notice_version=notice.version,
+        terms_evidence_url=notice.evidence_url,
+        terms_acknowledgement_required=_ack_required(recipe, notice),
+        terms_acknowledged=_terms_acknowledged(recipe, notice),
         seniority_filter=list(recipe.seniority_filter),
         schedule_kind=recipe.schedule_kind,
         schedule_local_time=recipe.schedule_local_time,
@@ -589,7 +622,10 @@ def _enable_recipe(session: Session, recipe: SourceRecipe, *, now: datetime) -> 
         raise SourceRecipeError("preview_required")
     if preview_requires_route_confirmation(session, recipe):
         raise SourceRecipeError("preview_hosts_confirmation_required")
-    if _ack_required(recipe) and recipe.terms_acknowledged_at is None:
+    notice = resolve_terms_notice(recipe.listing_url)
+    if recipe.terms_notice_version != notice.version:
+        raise SourceRecipeError("terms_notice_acknowledgement_stale")
+    if not _terms_acknowledged(recipe, notice):
         raise SourceRecipeError("terms_notice_acknowledgement_required")
     source = session.get(Source, recipe.source_id) if recipe.source_id is not None else None
     if source is None:
@@ -609,8 +645,16 @@ def _enable_recipe(session: Session, recipe: SourceRecipe, *, now: datetime) -> 
         session.add(source)
         session.flush()
         recipe.source_id = source.id
-    else:
-        source.approval_status = SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL
+    source.name = f"{recipe.name} [{recipe.id.hex[:8]}]"
+    source.base_url = recipe.origin
+    source.adapter_key = _RECIPE_ADAPTER_KEY
+    source.approval_status = SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL
+    source.rate_limit_policy = {
+        "requests_per_minute": recipe.requests_per_minute,
+        "concurrency": 1,
+    }
+    source.allowed_hosts = list(recipe.allowed_hosts)
+    source.terms_reviewed_at = recipe.terms_reviewed_at
     recipe.status = RecipeStatus.ENABLED
     recipe.next_run_at = (
         None
@@ -666,9 +710,14 @@ def patch_source_recipe(
             )
             return SourceRecipeResponse(data=_recipe_data(confirmed))
         if acknowledged_version is not None:
-            if acknowledged_version != recipe.terms_notice_version:
+            current_notice = resolve_terms_notice(recipe.listing_url)
+            if acknowledged_version != current_notice.version:
                 raise SourceRecipeError("terms_notice_acknowledgement_stale")
-            recipe.terms_acknowledged_at = now
+            _persist_notice_acknowledgement(recipe, current_notice, acknowledged_at=now)
+            if recipe.source_id is not None:
+                source = session.get(Source, recipe.source_id)
+                if source is not None:
+                    source.terms_reviewed_at = recipe.terms_reviewed_at
         if payload:
             if recipe.status in {
                 RecipeStatus.ENABLED,
@@ -678,7 +727,7 @@ def patch_source_recipe(
                 raise SourceRecipeError("recipe_status_transition_invalid")
             effective_ack = (
                 recipe.terms_notice_version
-                if recipe.terms_acknowledged_at is not None or not _ack_required(recipe)
+                if _terms_acknowledged(recipe, resolve_terms_notice(recipe.listing_url))
                 else None
             )
             _apply_config_patch(recipe, payload, acknowledged_version=effective_ack)
@@ -746,7 +795,10 @@ def create_source_recipe_preview(
 ) -> SourceRecipePreviewResponse:
     del request
     recipe = _owned_recipe(session, owner_id=context.user.id, recipe_id=recipe_id)
-    if _ack_required(recipe) and recipe.terms_acknowledged_at is None:
+    notice = resolve_terms_notice(recipe.listing_url)
+    if recipe.terms_notice_version != notice.version:
+        raise _domain_error(SourceRecipeError("terms_notice_acknowledgement_stale"))
+    if not _terms_acknowledged(recipe, notice):
         raise _domain_error(SourceRecipeError("terms_notice_acknowledgement_required"))
     try:
         preview = request_preview(session, recipe_id=recipe.id, now=datetime.now(UTC))

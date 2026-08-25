@@ -316,6 +316,10 @@ Owner acknowledgement lưu exact `terms_notice_version` và timestamp. Nó khôn
 certification, không che warning và không override CAPTCHA, authentication, paywall, anti-bot, access
 denial, SSRF hoặc redirect policy.
 
+API resolve notice hiện hành thay vì trình bày metadata persisted đã stale. Notice version drift đưa
+acknowledgement state về chưa đạt và bắt buộc exact-version re-ack; thao tác này cập nhật atomically recipe
+notice/evidence/review/ack metadata cùng `Source.terms_reviewed_at`.
+
 `SourceRecipePreview` là artifact non-canonical có wire status `pending|running|succeeded|failed`, 3–5
 bounded candidates, parser/provenance warnings, optional screenshot + opaque element map và expiry.
 `mapping_required` là safe `error_code` của preview failed có visual artifact dùng được;
@@ -333,3 +337,8 @@ Crawl thật tạo `Source(owner_authorized_local) → CrawlRun → RawJobSnapsh
 layout drift, deadline/budget stop hoặc partial failure luôn `coverage_status=incomplete`, vì vậy không tạo
 false `missing`/`removed`. `owner_authorized_local` không đồng nghĩa global approval; visibility chỉ được mở
 trong explicit localhost recipe mode.
+
+Pending manual/scheduled `CrawlRun` giữ full recipe config hash. Nếu hash hoặc notice không còn current hay
+recipe đã `paused|retired`, worker kết thúc run thành `cancelled` với `started_at=finished_at` và safe error
+code. `cancelled` không phải crawl attempt hoàn tất, không cập nhật source health và không tạo
+missing/removal signal.

@@ -422,6 +422,12 @@ version/evidence/review date, acknowledgement state, lifecycle, block/cooldown/n
 summary. Request không có credential, cookie, proxy, auth header, raw selector/HTML, script, CAPTCHA solver
 hoặc URL override.
 
+Response luôn resolve notice hiện hành từ catalog. Nếu catalog đổi version, `termsAcknowledged=false` và
+`termsAcknowledgementRequired=true` cho tới khi PATCH gửi exact version mới, kể cả khi loại notice mới
+thường không cần acknowledgement. PATCH version cũ trả `409 terms_notice_acknowledgement_stale`; PATCH
+version hiện hành cập nhật atomically notice/version/evidence/review/ack timestamp và Source review date.
+Preview, enable và run tiếp tục fail closed trong khoảng drift này.
+
 Preview response có status, tối đa năm candidate với typed provenance/confidence/warnings, optional bounded
 screenshot và opaque element map; không tạo canonical data. `proposedHosts` và `proposedPathPrefixes` chỉ
 chứa route được derive từ canonical job URL đã validate, không chứa browser/CDN/analytics subresource.
@@ -438,3 +444,9 @@ successful, unexpired preview. Thiếu, thay thế, thêm ngoài proposal, dupli
 host/mười path trả `409 preview_hosts_confirmation_invalid`. Xác nhận hợp lệ reset recipe về `draft`, xóa
 latest successful preview/schedule state và bắt buộc preview lại. Enable khi current preview còn proposal
 trả `409 preview_hosts_confirmation_required`; UI không có arbitrary host/path input.
+
+Manual run bind idempotency với `sourceId + configHash`; reuse cùng key sau khi recipe config đổi trả
+`409 idempotency_conflict`. Pending run lưu full config hash của URL/boundary/mapping/seniority/parser,
+budget/rate và notice version. Worker chuyển pending run thành terminal `cancelled` nếu recipe bị
+pause/retire, notice drift hoặc config không còn khớp; run này không đi vào adapter và không tạo health hay
+absence/removal signal.

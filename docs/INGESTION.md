@@ -19,6 +19,9 @@ catalog nhận notice `not_reviewed`.
 - `terms_notice` có `not_reviewed`, `no_specific_restriction_found` hoặc `restricted_terms`, cùng version,
   review date và evidence URL khi có;
 - notice luôn hiển thị. Recipe cần acknowledgement thì chỉ chấp nhận exact current version;
+- khi catalog đổi notice version, recipe luôn yêu cầu owner review/xác nhận exact version mới trước khi
+  preview/enable/run; persisted notice/evidence/review timestamp và Source review date được cập nhật cùng
+  transaction;
 - owner acknowledgement cho phép tiếp tục bounded local preview/crawl nhưng không phải permission hoặc
   legal certification;
 - CAPTCHA, authentication, paywall, anti-bot, access denial, robots/access control, SSRF và redirect escape
@@ -27,6 +30,8 @@ catalog nhận notice `not_reviewed`.
 ### 2.2. Technical gate
 
 - URL phải là bounded HTTPS URL, không user-info/custom port/fragment/control character/dot-segment;
+  raw/encoded separator, backslash, double slash, invalid/double percent encoding bị reject trước prefix
+  matching và trước mọi redirect/pagination request tiếp theo;
 - host/path/query được normalize và persist; tối đa ba host, không nhận URL/config override theo từng run;
 - preview phải trả 3–5 distinct valid jobs hoặc hoàn tất visual mapping trước `enabled`;
 - item/page/request/byte/time/rate budgets và concurrency 1 là invariant;
@@ -77,8 +82,10 @@ column được deferred khi query để read path không tải payload ngầm.
 
 ## 4. Fetch, pagination và browser policy
 
-- Resolve toàn bộ DNS và fail closed nếu có loopback/link-local/private/reserved address; revalidate/pin
-  mỗi redirect và browser navigation/subrequest.
+- Resolve toàn bộ DNS và fail closed nếu có loopback/link-local/private/reserved address; HTTP pin mỗi
+  request/redirect. Browser resolve toàn bộ allowed host trước launch, ưu tiên một public IPv4 khi có cả hai
+  family, map hostname sang exact validated IP (IPv6 dùng bracket syntax), fail mọi hostname khác và tắt
+  system proxy; navigation/subrequest vẫn revalidate host/path qua pinned resolver.
 - Giới hạn timeout, redirect, bytes, page/item/request/time/rate; content encoding mặc định `identity`.
 - HTTP/structured data luôn chạy trước. Browser dùng fresh context, chặn service worker/download/popup/
   external protocol/WebSocket/permission và không có cookie, credential hoặc persistent profile.
@@ -94,6 +101,12 @@ column được deferred khi query để read path không tải payload ngầm.
 `python -m devradar.cli source-recipe-worker` chỉ claim preview/run đã persist trong PostgreSQL. Network/
 browser work chạy ngoài transaction dài; snapshot, canonical upsert và counters dùng transaction ngắn.
 Fixed schedule và manual request có idempotency key; nhiều worker dùng row lock `SKIP LOCKED`.
+
+Mỗi pending run bind full recipe config hash gồm URL, host/path, field/pagination mapping, seniority,
+parser/config version, item/page/request/byte/time/rate budget và terms notice version. Reuse manual
+idempotency key sau config change là conflict. Nếu recipe bị pause/retire, notice drift hoặc config đổi
+trước claim, worker atomically chuyển run thành `cancelled` với safe code rồi tiếp tục hàng đợi; run không
+vào adapter, không retry và không tác động source health hay missing/removal lifecycle.
 
 Generic empty/layout drift, partial item failure, pagination budget hoặc browser deadline luôn tạo coverage
 `incomplete`. Chỉ run `succeeded + complete` mới là absence/removal signal.

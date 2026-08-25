@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import http.client
 import ipaddress
+import re
 import socket
 import ssl
 import time
@@ -22,6 +23,9 @@ from devradar.ingestion.source_registry import FetchPolicy
 Resolver = Callable[[str, int], tuple[str, ...]]
 Clock = Callable[[], float]
 Sleeper = Callable[[float], None]
+
+_INVALID_PERCENT_PATTERN = re.compile(r"%(?![0-9a-fA-F]{2})")
+_ENCODED_PATH_BOUNDARY_PATTERN = re.compile(r"%(?:25|2e|2f|5c)", re.IGNORECASE)
 
 
 class FetchErrorCode(StrEnum):
@@ -154,6 +158,34 @@ def _path_is_allowed(path: str, prefixes: tuple[str, ...]) -> bool:
     return False
 
 
+def validate_fetch_path(path: str) -> str:
+    """Reject path spellings whose server-side normalization can escape a saved prefix."""
+
+    normalized = path or "/"
+    try:
+        encoded = normalized.encode("ascii")
+    except UnicodeEncodeError as error:
+        raise FetchError(
+            FetchErrorCode.INVALID_URL,
+            "Fetch URL path must be percent-encoded ASCII.",
+            retryable=False,
+        ) from error
+    if (
+        any(byte <= 32 or byte == 127 for byte in encoded)
+        or _INVALID_PERCENT_PATTERN.search(normalized)
+        or _ENCODED_PATH_BOUNDARY_PATTERN.search(normalized)
+        or "\\" in normalized
+        or "//" in normalized
+        or any(segment in {".", ".."} for segment in normalized.split("/"))
+    ):
+        raise FetchError(
+            FetchErrorCode.INVALID_URL,
+            "Fetch URL path contains an ambiguous boundary segment.",
+            retryable=False,
+        )
+    return normalized
+
+
 def _validate_target(url: str, policy: FetchPolicy) -> tuple[str, SplitResult]:
     try:
         parsed = urlsplit(url)
@@ -179,16 +211,15 @@ def _validate_target(url: str, policy: FetchPolicy) -> tuple[str, SplitResult]:
             "Fetch URL must be HTTPS without user info, custom port, or fragment.",
             retryable=False,
         )
-    if host not in policy.allowed_hosts or not _path_is_allowed(
-        parsed.path or "/", policy.allowed_path_prefixes
-    ):
+    path = validate_fetch_path(parsed.path or "/")
+    if host not in policy.allowed_hosts or not _path_is_allowed(path, policy.allowed_path_prefixes):
         raise FetchError(
             FetchErrorCode.POLICY_BLOCKED,
             "Fetch URL is outside the approved source boundary.",
             retryable=False,
         )
 
-    target = parsed.path or "/"
+    target = path
     if parsed.query:
         target = f"{target}?{parsed.query}"
     try:
@@ -206,7 +237,7 @@ def _validate_target(url: str, policy: FetchPolicy) -> tuple[str, SplitResult]:
             retryable=False,
         )
 
-    normalized_url = urlunsplit(("https", host, parsed.path or "/", parsed.query, ""))
+    normalized_url = urlunsplit(("https", host, path, parsed.query, ""))
     return normalized_url, parsed
 
 

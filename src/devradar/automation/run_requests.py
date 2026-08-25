@@ -17,6 +17,7 @@ from devradar.ingestion.models import CoverageStatus, CrawlRun, CrawlRunStatus, 
 from devradar.source_recipes.catalog import resolve_terms_notice
 from devradar.source_recipes.models import SourceRecipe
 from devradar.source_recipes.scheduler import source_recipe_is_runnable
+from devradar.source_recipes.service import recipe_config_hash
 
 _IDEMPOTENCY_KEY_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$")
 
@@ -33,9 +34,9 @@ class RequestedRun:
     reused: bool
 
 
-def _request_hash(source_id: UUID) -> str:
+def _request_hash(source_id: UUID, config_hash: str) -> str:
     payload = json.dumps(
-        {"sourceId": str(source_id)},
+        {"configHash": config_hash, "sourceId": str(source_id)},
         separators=(",", ":"),
         sort_keys=True,
     ).encode()
@@ -106,7 +107,8 @@ def request_source_recipe_run(
         "recipe-api:"
         + sha256(f"{owner_user_id}:{recipe.id}:{idempotency_key}".encode()).hexdigest()
     )
-    request_hash = _request_hash(recipe.source_id)
+    config_hash = recipe_config_hash(recipe)
+    request_hash = _request_hash(recipe.source_id, config_hash)
     existing = session.scalar(
         select(CrawlRun).where(
             CrawlRun.requested_by == requester,
@@ -138,7 +140,7 @@ def request_source_recipe_run(
         status=CrawlRunStatus.PENDING,
         coverage_status=CoverageStatus.UNKNOWN,
         adapter_version="pending",
-        config_version=recipe.mapping_version or recipe.config_version,
+        config_version=config_hash,
     )
     session.add(crawl_run)
     try:

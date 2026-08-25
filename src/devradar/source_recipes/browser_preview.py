@@ -9,10 +9,16 @@ from collections.abc import Callable, Mapping
 from contextlib import ExitStack
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
+from ipaddress import ip_address
 from typing import Any
 from urllib.parse import urlsplit
 
-from devradar.ingestion.safe_http import FetchError, resolve_addresses, validate_public_addresses
+from devradar.ingestion.safe_http import (
+    FetchError,
+    resolve_addresses,
+    validate_fetch_path,
+    validate_public_addresses,
+)
 from devradar.ingestion.source_registry import FetchPolicy
 from devradar.source_recipes.models import SourceRecipeError, SourceRecipePreview
 
@@ -220,6 +226,7 @@ def validate_browser_route(
         raise SourceRecipeError("route_policy_blocked")
     try:
         validate_public_addresses(resolver(host, 443))
+        validate_fetch_path(parsed.path or "/")
     except (FetchError, OSError) as error:
         raise SourceRecipeError("route_policy_blocked") from error
     if host not in policy.allowed_hosts:
@@ -227,6 +234,31 @@ def validate_browser_route(
     if not _path_is_allowed(parsed.path, policy.allowed_path_prefixes):
         return BrowserRouteDecision(allowed=False)
     return BrowserRouteDecision(allowed=True)
+
+
+def _pin_browser_hosts(
+    policy: FetchPolicy,
+    resolver: Resolver,
+) -> tuple[str, Resolver]:
+    pinned: dict[str, tuple[str, ...]] = {}
+    rules: list[str] = []
+    for host in policy.allowed_hosts:
+        try:
+            addresses = validate_public_addresses(resolver(host, 443))
+        except (FetchError, OSError) as error:
+            raise SourceRecipeError("route_policy_blocked") from error
+        address = min(addresses, key=lambda value: (ip_address(value).version != 4, value))
+        pinned[host] = (address,)
+        replacement = f"[{address}]" if ip_address(address).version == 6 else address
+        rules.append(f"MAP {host} {replacement}")
+    rules.append("MAP * ~NOTFOUND")
+
+    def pinned_resolver(host: str, port: int) -> tuple[str, ...]:
+        if port != 443 or host not in pinned:
+            raise OSError("Browser route is not pinned")
+        return pinned[host]
+
+    return ", ".join(rules), pinned_resolver
 
 
 def _bounded_text(value: object) -> str:
@@ -476,7 +508,8 @@ class BrowserPreviewRunner:
         return sync_playwright
 
     def render(self, url: str, policy: FetchPolicy) -> RenderedBrowserPreview:
-        initial = validate_browser_route(url, policy=policy, resolver=self._resolver)
+        resolver_rules, pinned_resolver = _pin_browser_hosts(policy, self._resolver)
+        initial = validate_browser_route(url, policy=policy, resolver=pinned_resolver)
         if not initial.allowed:
             raise SourceRecipeError("route_policy_blocked")
         timeout_ms = policy.timeout_seconds * 1_000
@@ -484,7 +517,17 @@ class BrowserPreviewRunner:
         proposed_hosts: set[str] = set()
         try:
             with self._factory()() as playwright, ExitStack() as resources:
-                browser = playwright.chromium.launch(headless=True, chromium_sandbox=True)
+                # Chromium remaps these hostnames to already-validated IP literals before
+                # connectivity checks, the final rule fails every unlisted resolution, and
+                # direct mode prevents a system proxy from resolving or fetching on our behalf.
+                # Source: https://playwright.dev/python/docs/api/class-browsertype#browser-type-launch
+                # Source: https://chromium.googlesource.com/chromium/src/+/main/net/dns/README.md
+                # Source: https://chromium.googlesource.com/website/+/refs/heads/main/site/developers/design-documents/network-settings/index.md
+                browser = playwright.chromium.launch(
+                    headless=True,
+                    chromium_sandbox=True,
+                    args=[f"--host-resolver-rules={resolver_rules}", "--no-proxy-server"],
+                )
                 resources.callback(browser.close)
                 context = browser.new_context(
                     accept_downloads=False,
@@ -501,7 +544,7 @@ class BrowserPreviewRunner:
                         decision = validate_browser_route(
                             route.request.url,
                             policy=policy,
-                            resolver=self._resolver,
+                            resolver=pinned_resolver,
                         )
                     except SourceRecipeError:
                         monitor.blocked_code = "route_policy_blocked"
