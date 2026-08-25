@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from uuid import uuid4
@@ -10,6 +11,10 @@ import devradar.source_recipes.adapter as recipe_adapter_module
 from devradar.ingestion.contracts import FetchResult, RawSnapshot, RunContext
 from devradar.ingestion.models import Source, SourceApprovalStatus
 from devradar.source_recipes.adapter import RecipeAdapter, RecipeAdapterError, recipe_source_config
+from devradar.source_recipes.document_import import (
+    DocumentImportAdapter,
+    prepare_document_import,
+)
 from devradar.source_recipes.models import (
     RecipeScheduleKind,
     RecipeStatus,
@@ -344,4 +349,54 @@ def test_empty_listing_is_not_completeness_evidence() -> None:
 
     assert listings == ()
     assert adapter.discovery_summary.items_discovered == 0
+    assert adapter.discovery_summary.coverage_complete is False
+
+
+def test_document_import_adapter_is_deterministic_and_always_incomplete() -> None:
+    recipe = _recipe()
+    config = recipe_source_config(recipe, _source(recipe))
+    payload = (
+        b"title,company,url,level\nBackend Intern,Example,https://example.test/careers/1,intern\n"
+    )
+    prepared = prepare_document_import(
+        filename="jobs.csv",
+        declared_content_type="text/csv",
+        payload=payload,
+        recipe=recipe,
+    )
+    imported_at = datetime.now(UTC)
+    adapter = DocumentImportAdapter(
+        recipe=recipe,
+        config=config,
+        prepared=prepared,
+        imported_at=imported_at,
+    )
+    context = RunContext(
+        run_id=uuid4(),
+        source=config,
+        deadline=imported_at + timedelta(minutes=5),
+        correlation_id="document-import",
+    )
+
+    listings = tuple(adapter.discover(context))
+    fetched = adapter.fetch(listings[0], config.fetch_policy)
+    parsed = adapter.parse(
+        RawSnapshot(
+            snapshot_id=uuid4(),
+            source_key=config.source_key,
+            external_id=listings[0].external_id,
+            source_url=listings[0].canonical_url,
+            fetched_at=fetched.fetched_at,
+            content_type=fetched.content_type,
+            raw_content=fetched.payload.decode(),
+            raw_content_hash=fetched.raw_content_hash,
+        )
+    )
+
+    snapshot_payload = json.loads(fetched.payload)
+    assert fetched.final_url == recipe.listing_url
+    assert snapshot_payload["document_hash"] == sha256(payload).hexdigest()
+    assert snapshot_payload["media_type"] == "text/csv"
+    assert parsed.raw.title == "Backend Intern"  # type: ignore[union-attr]
+    assert adapter.discovery_summary.pages_found == 1
     assert adapter.discovery_summary.coverage_complete is False

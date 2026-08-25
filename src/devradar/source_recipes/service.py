@@ -11,6 +11,11 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from devradar.ingestion.models import (
+    Source,
+    SourceApprovalStatus,
+    SourceHealthStatus,
+)
 from devradar.source_recipes.browser_preview import resolve_mapping
 from devradar.source_recipes.models import (
     PreviewStatus,
@@ -43,6 +48,38 @@ ALLOWED_TRANSITIONS = {
     RecipeStatus.BLOCKED: frozenset({RecipeStatus.PREVIEWING, RecipeStatus.RETIRED}),
     RecipeStatus.RETIRED: frozenset(),
 }
+
+
+def ensure_recipe_source(session: Session, recipe: SourceRecipe) -> Source:
+    source = session.get(Source, recipe.source_id) if recipe.source_id is not None else None
+    if source is None:
+        source = Source(
+            name=f"{recipe.name} [{recipe.id.hex[:8]}]",
+            base_url=recipe.origin,
+            adapter_key="source_recipe",
+            approval_status=SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL,
+            health_status=SourceHealthStatus.UNKNOWN,
+            rate_limit_policy={
+                "requests_per_minute": recipe.requests_per_minute,
+                "concurrency": 1,
+            },
+            allowed_hosts=list(recipe.allowed_hosts),
+            terms_reviewed_at=recipe.terms_reviewed_at,
+        )
+        session.add(source)
+        session.flush()
+        recipe.source_id = source.id
+    source.name = f"{recipe.name} [{recipe.id.hex[:8]}]"
+    source.base_url = recipe.origin
+    source.adapter_key = "source_recipe"
+    source.approval_status = SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL
+    source.rate_limit_policy = {
+        "requests_per_minute": recipe.requests_per_minute,
+        "concurrency": 1,
+    }
+    source.allowed_hosts = list(recipe.allowed_hosts)
+    source.terms_reviewed_at = recipe.terms_reviewed_at
+    return source
 
 
 def validate_recipe_transition(current: RecipeStatus, target: RecipeStatus) -> None:

@@ -32,7 +32,6 @@ from devradar.ingestion.models import (
     CrawlTriggerType,
     Source,
     SourceApprovalStatus,
-    SourceHealthStatus,
 )
 from devradar.platform.database import get_database_session
 from devradar.platform.security_config import source_recipes_local_enabled
@@ -60,6 +59,7 @@ from devradar.source_recipes.scheduler import (
 from devradar.source_recipes.service import (
     apply_recipe_mapping,
     confirm_preview_routes,
+    ensure_recipe_source,
     preview_requires_route_confirmation,
 )
 
@@ -67,7 +67,6 @@ router = APIRouter(tags=["source-recipes"])
 DatabaseSession = Annotated[Session, Depends(get_database_session)]
 Authenticated = Annotated[AuthContext, Depends(require_authenticated_user)]
 CsrfContext = Annotated[AuthContext, Depends(require_csrf)]
-_RECIPE_ADAPTER_KEY = "source_recipe"
 
 
 def require_source_recipes_enabled() -> None:
@@ -627,34 +626,7 @@ def _enable_recipe(session: Session, recipe: SourceRecipe, *, now: datetime) -> 
         raise SourceRecipeError("terms_notice_acknowledgement_stale")
     if not _terms_acknowledged(recipe, notice):
         raise SourceRecipeError("terms_notice_acknowledgement_required")
-    source = session.get(Source, recipe.source_id) if recipe.source_id is not None else None
-    if source is None:
-        source = Source(
-            name=f"{recipe.name} [{recipe.id.hex[:8]}]",
-            base_url=recipe.origin,
-            adapter_key=_RECIPE_ADAPTER_KEY,
-            approval_status=SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL,
-            health_status=SourceHealthStatus.UNKNOWN,
-            rate_limit_policy={
-                "requests_per_minute": recipe.requests_per_minute,
-                "concurrency": 1,
-            },
-            allowed_hosts=list(recipe.allowed_hosts),
-            terms_reviewed_at=recipe.terms_reviewed_at,
-        )
-        session.add(source)
-        session.flush()
-        recipe.source_id = source.id
-    source.name = f"{recipe.name} [{recipe.id.hex[:8]}]"
-    source.base_url = recipe.origin
-    source.adapter_key = _RECIPE_ADAPTER_KEY
-    source.approval_status = SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL
-    source.rate_limit_policy = {
-        "requests_per_minute": recipe.requests_per_minute,
-        "concurrency": 1,
-    }
-    source.allowed_hosts = list(recipe.allowed_hosts)
-    source.terms_reviewed_at = recipe.terms_reviewed_at
+    ensure_recipe_source(session, recipe)
     recipe.status = RecipeStatus.ENABLED
     recipe.next_run_at = (
         None

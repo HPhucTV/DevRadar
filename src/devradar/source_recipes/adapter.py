@@ -151,6 +151,79 @@ def _fetch_error(error: FetchError) -> RecipeAdapterError:
     )
 
 
+def candidate_to_parsed_job(candidate: PreviewCandidate) -> ParsedJob | ParseFailure:
+    title = normalize_text(candidate.title)
+    company = normalize_text(candidate.company)
+    if title.value is None or company.value is None:
+        return ParseFailure(
+            error_code="missing_required_field",
+            stage="recipe_parse",
+            safe_summary="Required job fields were blank after normalization.",
+        )
+    description = (
+        html_to_text(candidate.description or "") or normalize_text(candidate.description).value
+    )
+    location = normalize_location(candidate.location)
+    level_evidence = (
+        candidate.level_raw
+        if normalize_text(candidate.level_raw).value is not None
+        else candidate.title
+    )
+    levels = normalize_levels(level_evidence).value or ()
+    posted_at: datetime | None = None
+    warnings = [*candidate.warnings, *location.warnings]
+    if candidate.posted_at:
+        try:
+            parsed_time = datetime.fromisoformat(candidate.posted_at.replace("Z", "+00:00"))
+            if parsed_time.tzinfo is not None and parsed_time.utcoffset() is not None:
+                posted_at = parsed_time.astimezone(UTC)
+            else:
+                warnings.append("posted_at_timezone_missing")
+        except ValueError:
+            warnings.append("posted_at_invalid")
+    evidence = tuple(
+        FieldEvidence(field_name=item.field_name, source_path=item.source_path)
+        for item in candidate.provenance
+    )
+    if not evidence:
+        return ParseFailure(
+            error_code="missing_provenance",
+            stage="recipe_parse",
+            safe_summary="Parsed job did not contain field provenance.",
+        )
+    normalized_location = location.value
+    return ParsedJob(
+        raw=RawJobFields(
+            external_id=candidate.external_id,
+            canonical_url=candidate.job_url,
+            title=candidate.title,
+            company_name=candidate.company,
+            description=description,
+            location=candidate.location,
+            level=candidate.level_raw,
+            posted_at=candidate.posted_at,
+            source_fields={"parser_confidence": candidate.confidence},
+        ),
+        normalized_candidates=NormalizedJobCandidates(
+            title=title.value,
+            company_name=company.value,
+            description_text=description,
+            location_city=normalized_location.city if normalized_location else None,
+            location_province=normalized_location.province if normalized_location else None,
+            work_mode=(
+                normalized_location.work_mode.value
+                if normalized_location and normalized_location.work_mode
+                else None
+            ),
+            levels=tuple(level.value for level in levels),
+            posted_at=posted_at,
+        ),
+        evidence=evidence,
+        parser_version=candidate.parser_version,
+        warnings=tuple(warnings),
+    )
+
+
 class RecipeAdapter(JobSourceAdapter):
     adapter_key = "source_recipe"
     adapter_version = f"recipe-adapter-{PARSER_VERSION}"
@@ -342,76 +415,4 @@ class RecipeAdapter(JobSourceAdapter):
                 job_url=listing_candidate.job_url,
             )
         )
-        return self._to_parsed_job(candidate)
-
-    def _to_parsed_job(self, candidate: PreviewCandidate) -> ParsedJob | ParseFailure:
-        title = normalize_text(candidate.title)
-        company = normalize_text(candidate.company)
-        if title.value is None or company.value is None:
-            return ParseFailure(
-                error_code="missing_required_field",
-                stage="recipe_parse",
-                safe_summary="Required job fields were blank after normalization.",
-            )
-        description = (
-            html_to_text(candidate.description or "") or normalize_text(candidate.description).value
-        )
-        location = normalize_location(candidate.location)
-        level_evidence = (
-            candidate.level_raw
-            if normalize_text(candidate.level_raw).value is not None
-            else candidate.title
-        )
-        levels = normalize_levels(level_evidence).value or ()
-        posted_at: datetime | None = None
-        warnings = [*candidate.warnings, *location.warnings]
-        if candidate.posted_at:
-            try:
-                parsed_time = datetime.fromisoformat(candidate.posted_at.replace("Z", "+00:00"))
-                if parsed_time.tzinfo is not None and parsed_time.utcoffset() is not None:
-                    posted_at = parsed_time.astimezone(UTC)
-                else:
-                    warnings.append("posted_at_timezone_missing")
-            except ValueError:
-                warnings.append("posted_at_invalid")
-        evidence = tuple(
-            FieldEvidence(field_name=item.field_name, source_path=item.source_path)
-            for item in candidate.provenance
-        )
-        if not evidence:
-            return ParseFailure(
-                error_code="missing_provenance",
-                stage="recipe_parse",
-                safe_summary="Parsed job did not contain field provenance.",
-            )
-        normalized_location = location.value
-        return ParsedJob(
-            raw=RawJobFields(
-                external_id=candidate.external_id,
-                canonical_url=candidate.job_url,
-                title=candidate.title,
-                company_name=candidate.company,
-                description=description,
-                location=candidate.location,
-                level=candidate.level_raw,
-                posted_at=candidate.posted_at,
-                source_fields={"parser_confidence": candidate.confidence},
-            ),
-            normalized_candidates=NormalizedJobCandidates(
-                title=title.value,
-                company_name=company.value,
-                description_text=description,
-                location_city=normalized_location.city if normalized_location else None,
-                location_province=normalized_location.province if normalized_location else None,
-                work_mode=(
-                    normalized_location.work_mode.value
-                    if normalized_location and normalized_location.work_mode
-                    else None
-                ),
-                levels=tuple(level.value for level in levels),
-                posted_at=posted_at,
-            ),
-            evidence=evidence,
-            parser_version=candidate.parser_version,
-            warnings=tuple(warnings),
-        )
+        return candidate_to_parsed_job(candidate)

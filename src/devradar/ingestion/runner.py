@@ -99,6 +99,8 @@ def _create_run(
     started_at: datetime,
     trigger_type: CrawlTriggerType,
     trigger_key: str | None,
+    requested_by: str | None,
+    request_hash: str | None,
     scheduled_for: datetime | None,
     retry_of_run_id: UUID | None,
     attempt_number: int,
@@ -107,6 +109,8 @@ def _create_run(
         source_id=source_id,
         trigger_type=trigger_type,
         trigger_key=trigger_key,
+        requested_by=requested_by,
+        request_hash=request_hash,
         scheduled_for=scheduled_for,
         retry_of_run_id=retry_of_run_id,
         attempt_number=attempt_number,
@@ -295,6 +299,7 @@ def _finalize_run(
     error_code: str | None,
     retry_after_seconds: int | None = None,
     status_override: CrawlRunStatus | None = None,
+    update_source_health: bool = True,
 ) -> RunReport:
     finished_at = datetime.now(UTC)
     crawl_run = session.get(CrawlRun, run_id, with_for_update=True)
@@ -324,19 +329,21 @@ def _finalize_run(
     crawl_run.error_summary = (
         None if error_code is None else "Crawl run completed with one or more safe failures."
     )
-    evaluate_source_health(
-        session,
-        source=source,
-        crawl_run=crawl_run,
-        finished_at=finished_at,
-    )
+    if update_source_health:
+        evaluate_source_health(
+            session,
+            source=source,
+            crawl_run=crawl_run,
+            finished_at=finished_at,
+        )
     apply_absence_lifecycle(session, crawl_run=crawl_run, detected_at=finished_at)
-    source.last_crawled_at = finished_at
-    if (
-        crawl_run.status is CrawlRunStatus.SUCCEEDED
-        and crawl_run.coverage_status is CoverageStatus.COMPLETE
-    ):
-        source.last_success_at = finished_at
+    if update_source_health:
+        source.last_crawled_at = finished_at
+        if (
+            crawl_run.status is CrawlRunStatus.SUCCEEDED
+            and crawl_run.coverage_status is CoverageStatus.COMPLETE
+        ):
+            source.last_success_at = finished_at
     session.flush()
     report = _report(crawl_run, source_key)
     session.commit()
@@ -370,10 +377,13 @@ def run_source_recipe(
     max_items: int | None = None,
     trigger_type: CrawlTriggerType = CrawlTriggerType.MANUAL,
     trigger_key: str | None = None,
+    requested_by: str | None = None,
+    request_hash: str | None = None,
     scheduled_for: datetime | None = None,
     retry_of_run_id: UUID | None = None,
     attempt_number: int = 1,
     claimed_run_id: UUID | None = None,
+    update_source_health: bool = True,
 ) -> RunReport:
     return _execute_source_recipe(
         session,
@@ -383,11 +393,14 @@ def run_source_recipe(
         max_items=max_items,
         trigger_type=trigger_type,
         trigger_key=trigger_key,
+        requested_by=requested_by,
+        request_hash=request_hash,
         scheduled_for=scheduled_for,
         retry_of_run_id=retry_of_run_id,
         attempt_number=attempt_number,
         claimed_run_id=claimed_run_id,
         persisted_source_id=persisted_source_id,
+        update_source_health=update_source_health,
     )
 
 
@@ -400,11 +413,14 @@ def _execute_source_recipe(
     max_items: int | None = None,
     trigger_type: CrawlTriggerType = CrawlTriggerType.MANUAL,
     trigger_key: str | None = None,
+    requested_by: str | None = None,
+    request_hash: str | None = None,
     scheduled_for: datetime | None = None,
     retry_of_run_id: UUID | None = None,
     attempt_number: int = 1,
     claimed_run_id: UUID | None = None,
     persisted_source_id: UUID,
+    update_source_health: bool = True,
 ) -> RunReport:
     """Own one claimed run lifecycle; network work happens outside DB transactions."""
 
@@ -428,6 +444,22 @@ def _execute_source_recipe(
         raise IngestionRunError(
             "invalid_trigger_key",
             "Trigger key must contain 1..200 non-blank characters.",
+        )
+    if (requested_by is None) != (request_hash is None):
+        raise IngestionRunError(
+            "invalid_request_identity",
+            "Requested by and request hash must be supplied together.",
+        )
+    if requested_by is not None and (
+        not requested_by.strip()
+        or len(requested_by) > 100
+        or request_hash is None
+        or not re.fullmatch(r"[0-9a-f]{64}", request_hash)
+        or trigger_key is None
+    ):
+        raise IngestionRunError(
+            "invalid_request_identity",
+            "Request identity must be bounded and include a SHA-256 request hash.",
         )
     if claimed_run_id is not None and (
         trigger_type is not CrawlTriggerType.MANUAL
@@ -520,6 +552,8 @@ def _execute_source_recipe(
             started_at=started_at,
             trigger_type=trigger_type,
             trigger_key=trigger_key,
+            requested_by=requested_by,
+            request_hash=request_hash,
             scheduled_for=scheduled_for,
             retry_of_run_id=retry_of_run_id,
             attempt_number=attempt_number,
@@ -533,6 +567,14 @@ def _execute_source_recipe(
             raise IngestionRunError(
                 "run_already_active",
                 "An ingestion run is already active for this trigger.",
+            )
+        if request_hash is not None and (
+            existing.requested_by != requested_by or existing.request_hash != request_hash
+        ):
+            session.rollback()
+            raise IngestionRunError(
+                "idempotency_conflict",
+                "Idempotency key was already used for a different request.",
             )
         report = _report(existing, config.source_key, reused=True)
         session.rollback()
@@ -555,6 +597,7 @@ def _execute_source_recipe(
             coverage_complete=False,
             error_code="operator_cancelled",
             status_override=CrawlRunStatus.CANCELLED,
+            update_source_health=update_source_health,
         )
         raise
     except Exception as error:
@@ -568,6 +611,7 @@ def _execute_source_recipe(
             coverage_complete=False,
             error_code=error_code,
             retry_after_seconds=_retry_after_seconds(error),
+            update_source_health=update_source_health,
         )
 
     summary = (
@@ -588,6 +632,7 @@ def _execute_source_recipe(
             processed_items=0,
             coverage_complete=False,
             error_code="discovery_summary_invalid",
+            update_source_health=update_source_health,
         )
     _set_discovery_summary(session, run_id, summary)
     if not listings:
@@ -599,6 +644,7 @@ def _execute_source_recipe(
                 processed_items=0,
                 coverage_complete=summary.coverage_complete,
                 error_code=None,
+                update_source_health=update_source_health,
             )
         return _finalize_run(
             session,
@@ -607,6 +653,7 @@ def _execute_source_recipe(
             processed_items=0,
             coverage_complete=False,
             error_code="empty_discovery",
+            update_source_health=update_source_health,
         )
 
     selected = listings if max_items is None else listings[:max_items]
@@ -640,6 +687,7 @@ def _execute_source_recipe(
                 coverage_complete=False,
                 error_code="operator_cancelled",
                 status_override=CrawlRunStatus.CANCELLED,
+                update_source_health=update_source_health,
             )
             raise
         except Exception as error:
@@ -773,4 +821,5 @@ def _execute_source_recipe(
         coverage_complete=coverage_complete,
         error_code=first_error_code,
         retry_after_seconds=first_retry_after_seconds,
+        update_source_health=update_source_health,
     )
