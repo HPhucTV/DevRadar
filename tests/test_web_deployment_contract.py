@@ -9,6 +9,7 @@ PRODUCTION_ENV = Path(".env.production.example")
 DEPLOY = Path("scripts/deploy.ps1")
 ROLLBACK = Path("scripts/rollback.ps1")
 WEB_SMOKE = Path("scripts/web-smoke.ps1")
+SUPPLY_CHAIN = Path("scripts/scan-supply-chain.ps1")
 CI = Path(".github/workflows/ci.yml")
 
 
@@ -76,3 +77,10 @@ def test_release_commands_and_ci_cover_web_and_api() -> None:
     assert "devradar-web:ci" in ci
     assert "devradar-web:known-good" in ci
     assert "devradar-web:ci" in ci.split("Trivy full reports", maxsplit=1)[1]
+
+
+def test_local_supply_chain_scan_covers_api_crawler_and_web_images() -> None:
+    scan = _read(SUPPLY_CHAIN)
+
+    assert '$WebImage = "devradar-web:local"' in scan
+    assert "$images = @($Image, $CrawlerImage, $WebImage)" in scan

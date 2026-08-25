@@ -1,6 +1,7 @@
 param(
     [string]$Image = "devradar-app:local",
     [string]$CrawlerImage = "devradar-crawler:local",
+    [string]$WebImage = "devradar-web:local",
     [string]$EnvFile = ".env.example"
 )
 
@@ -30,7 +31,7 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 }
 
 $trivyImage = "aquasec/trivy@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969"
-$images = @($Image, $CrawlerImage)
+$images = @($Image, $CrawlerImage, $WebImage)
 
 foreach ($containerImage in $images) {
     docker image inspect $containerImage *> $null
