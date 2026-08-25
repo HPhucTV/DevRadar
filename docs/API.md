@@ -416,12 +416,25 @@ Tất cả endpoint recipe yêu cầu `DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED=tru
 local no-login vẫn kiểm Origin. Mọi query owner-scoped và cross-owner trả `404` generic.
 
 Create dùng `name`, immutable `listingUrl`, `seniority`, fixed schedule/timezone/local time/weekday và
-bounded budgets. Response trả `termsNotice`, version/evidence/review date, acknowledgement state, lifecycle,
-block/cooldown/next-run và safe mapping summary. Request không có credential, cookie, proxy, auth header,
-raw selector/HTML, script, CAPTCHA solver hoặc URL override.
+bounded budgets. Create không nhận `allowedHosts` hoặc `allowedPathPrefixes`; boundary ban đầu luôn được
+derive từ normalized listing URL. Response trả hai boundary field này cùng `termsNotice`,
+version/evidence/review date, acknowledgement state, lifecycle, block/cooldown/next-run và safe mapping
+summary. Request không có credential, cookie, proxy, auth header, raw selector/HTML, script, CAPTCHA solver
+hoặc URL override.
 
 Preview response có status, tối đa năm candidate với typed provenance/confidence/warnings, optional bounded
-screenshot và opaque element map; không tạo canonical data. Mapping request chỉ dùng opaque IDs từ current
-unexpired artifact. `blocked` có safe reason như `authentication_required`, `payment_required`,
-`access_denied`, `challenge_detected`, `route_policy_blocked`, `unsupported_interaction` hoặc
-`layout_unavailable`; không có action để vượt barrier.
+screenshot và opaque element map; không tạo canonical data. `proposedHosts` và `proposedPathPrefixes` chỉ
+chứa route được derive từ canonical job URL đã validate, không chứa browser/CDN/analytics subresource.
+Mapping request chỉ dùng opaque IDs từ current unexpired artifact. Wire status của preview là
+`pending|running|succeeded|failed`; `errorCode` phân biệt
+`mapping_required` (artifact dùng được, owner cần map), `source_unavailable` (network transient) và
+`rate_limited` (có cooldown) mà không lộ parser/transport code nội bộ. `blocked` có safe reason như
+`layout_unavailable`, `authentication_required`, `payment_required`, `access_denied`,
+`challenge_detected`, `route_policy_blocked` hoặc `unsupported_interaction`; không có action để vượt
+barrier.
+
+PATCH xác nhận route phải gửi đồng thời exact ordered union của boundary đã lưu và proposal thuộc current
+successful, unexpired preview. Thiếu, thay thế, thêm ngoài proposal, duplicate, stale preview hoặc vượt ba
+host/mười path trả `409 preview_hosts_confirmation_invalid`. Xác nhận hợp lệ reset recipe về `draft`, xóa
+latest successful preview/schedule state và bắt buộc preview lại. Enable khi current preview còn proposal
+trả `409 preview_hosts_confirmation_required`; UI không có arbitrary host/path input.

@@ -5,8 +5,6 @@ const RECIPE_FIELDS = new Set([
   "listingUrl",
   "seniorityFilter",
   "acknowledgedNoticeVersion",
-  "allowedHosts",
-  "allowedPathPrefixes",
   "scheduleKind",
   "scheduleLocalTime",
   "scheduleWeekday",

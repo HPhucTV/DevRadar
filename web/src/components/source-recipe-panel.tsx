@@ -14,6 +14,7 @@ import { useI18n } from "@/i18n/locale-provider";
 import { formatDate, formatNumber, formatPercent, interpolate, type Locale } from "@/i18n/locale";
 import type { ApiFailure } from "@/lib/api";
 import {
+  confirmPreviewRoutes,
   createSourceRecipe,
   getSourceCatalog,
   getSourcePreview,
@@ -130,6 +131,9 @@ export function SourceRecipePanel() {
     [recipes, selectedId],
   );
   const currentMappingField = MAPPING_STEPS[mappingStep] ?? null;
+  const hasRouteProposal = Boolean(
+    preview && (preview.proposedHosts.length > 0 || preview.proposedPathPrefixes.length > 0),
+  );
   const canEnable = selected?.status === "preview_ready" || selected?.status === "paused";
   const canCrawl = selected?.status === "enabled";
 
@@ -284,6 +288,19 @@ export function SourceRecipePanel() {
     setBusy(null);
   }
 
+  async function queuePreviewFor(recipe: SourceRecipe): Promise<boolean> {
+    const result = await requestSourcePreview(recipe.id);
+    if (result.kind === "error") {
+      setError(result);
+      setBusy(null);
+      return false;
+    }
+    setPreview(result.value.data);
+    setPreviewPoll({ recipeId: recipe.id, previewId: result.value.data.id, startedAt: Date.now() });
+    setNotice(() => (messages: Dictionary) => messages.sourceRecipes.previewQueued);
+    return true;
+  }
+
   async function queuePreview() {
     if (!selected) return;
     setBusy("preview");
@@ -307,15 +324,38 @@ export function SourceRecipePanel() {
       recipe = ackResult.value.data;
       setRecipes((current) => current.map((item) => (item.id === recipe.id ? recipe : item)));
     }
-    const result = await requestSourcePreview(recipe.id);
-    if (result.kind === "error") {
-      setError(result);
+    await queuePreviewFor(recipe);
+  }
+
+  async function confirmRoutes() {
+    if (!selected || !preview || !hasRouteProposal) return;
+    setBusy("confirm-routes");
+    setError(null);
+    setNotice(null);
+    const allowedHosts = [...new Set([...selected.allowedHosts, ...preview.proposedHosts])];
+    const allowedPathPrefixes = [
+      ...new Set([...selected.allowedPathPrefixes, ...preview.proposedPathPrefixes]),
+    ];
+    const patched = await confirmPreviewRoutes(
+      selected.id,
+      allowedHosts,
+      allowedPathPrefixes,
+    );
+    if (patched.kind === "error") {
+      setError(patched);
       setBusy(null);
       return;
     }
-    setPreview(result.value.data);
-    setPreviewPoll({ recipeId: recipe.id, previewId: result.value.data.id, startedAt: Date.now() });
-    setNotice(() => (messages: Dictionary) => messages.sourceRecipes.previewQueued);
+    const recipe = patched.value.data;
+    setRecipes((current) => current.map((item) => (item.id === recipe.id ? recipe : item)));
+    setForm(toForm(recipe));
+    setPreview(null);
+    setMapping(DEFAULT_MAPPING);
+    setMappingStep(0);
+    setBusy("preview");
+    if (await queuePreviewFor(patched.value.data)) {
+      setNotice(() => (messages: Dictionary) => messages.sourceRecipes.routesConfirmed);
+    }
   }
 
   function selectMappingElement(elementId: string) {
@@ -467,12 +507,14 @@ export function SourceRecipePanel() {
 
           {preview ? <section aria-live="polite" className="recipe-preview"><div className="section-heading"><div><p className="eyebrow">{copy.previewEyebrow}</p><h3>{formatNumber(preview.candidates.length, locale)} {copy.previewJobs}</h3></div><span>{statusLabels[preview.status] ?? preview.status}</span></div>{preview.errorCode ? <p className="api-state api-state--error"><strong>{copy.previewStopped}</strong><span> {preview.errorCode}</span></p> : null}<div className="preview-job-grid">{preview.candidates.slice(0, 5).map((candidate, index) => <article className="preview-job-card" key={candidateKey(candidate, index)}><strong>{candidate.title}</strong><span>{candidate.company}{candidate.location ? ` · ${candidate.location}` : ""}</span><small>{formatPercent(candidate.confidence, locale, 0)} · {candidate.parserVersion}</small><small>{copy.provenance}: {candidate.provenance.map((item) => `${item.fieldName} · ${item.method}`).join(", ")}</small></article>)}</div></section> : null}
 
+          {preview && hasRouteProposal ? <section aria-labelledby="route-proposal-title" className="route-proposal-card"><div><p className="eyebrow">{copy.routeProposalEyebrow}</p><h3 id="route-proposal-title">{copy.routeProposalTitle}</h3><p>{copy.routeProposalBody}</p></div><div className="route-proposal-groups">{preview.proposedHosts.length ? <div><strong>{copy.routeProposalHosts}</strong><ul>{preview.proposedHosts.map((host) => <li className="route-proposal-value" key={host}><code>{host}</code></li>)}</ul></div> : null}{preview.proposedPathPrefixes.length ? <div><strong>{copy.routeProposalPaths}</strong><ul>{preview.proposedPathPrefixes.map((path) => <li className="route-proposal-value" key={path}><code>{path}</code></li>)}</ul></div> : null}</div><button className="button-primary" disabled={busy !== null} onClick={() => void confirmRoutes()} type="button">{busy === "confirm-routes" ? copy.confirmingRoutes : copy.confirmRoutes}</button></section> : null}
+
           {preview?.screenshotDataUrl && preview.elements.length ? <section className="visual-mapper"><div className="section-heading"><div><p className="eyebrow">{copy.mapperEyebrow}</p><h3>{copy.mapperTitle}</h3></div><span>{mappingStep + 1}/{MAPPING_STEPS.length}</span></div><p>{interpolate(copy.mapperInstruction, { field: mappingLabel(currentMappingField) })}</p><div className="mapping-viewport"><div className="mapping-canvas">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img alt={copy.mapperImageAlt} onLoad={captureImageSize} src={preview.screenshotDataUrl} />
             <div className="mapping-overlay">{preview.elements.map((element) => <button aria-label={interpolate(copy.chooseElement, { text: element.textSummary || element.tag })} aria-pressed={currentMappingField ? mapping[currentMappingField] === element.elementId : false} className="mapping-overlay-button" key={element.elementId} onClick={() => selectMappingElement(element.elementId)} style={mappingButtonStyle(element, imageSize)} title={element.textSummary} type="button"><span>{element.textSummary || element.tag}</span></button>)}</div></div></div>{currentMappingField === "locationElementId" ? <button className="button-secondary" onClick={markOptionalAbsent} type="button">{copy.locationAbsent}</button> : null}{currentMappingField === "paginationElementId" ? <button className="button-secondary" onClick={markOptionalAbsent} type="button">{copy.singlePage}</button> : null}<div className="mapping-summary">{MAPPING_STEPS.map((field) => <span className={mapping[field] ? "is-complete" : ""} key={field}>{mappingLabel(field)}</span>)}</div><button className="button-primary" disabled={busy !== null} onClick={() => void submitMapping()} type="button">{busy === "mapping" ? copy.savingMapping : copy.saveMapping}</button></section> : null}
 
-          {selected ? <section className="recipe-operations"><div className="section-heading"><div><p className="eyebrow">{copy.operationsEyebrow}</p><h3>{copy.operationsTitle}</h3></div>{selected.nextRunAt ? <time dateTime={selected.nextRunAt}>{interpolate(copy.nextRun, { date: formatDate(selected.nextRunAt, locale) })}</time> : null}</div><div className="recipe-actions"><button disabled={busy !== null || !canCrawl} onClick={() => void crawlNow()} type="button">{copy.crawlNow}</button>{selected.status === "enabled" ? <button className="button-secondary" disabled={busy !== null} onClick={() => void changeStatus("paused")} type="button">{copy.pause}</button> : <button className="button-secondary" disabled={busy !== null || !canEnable} onClick={() => void changeStatus("enabled")} type="button">{selected.status === "paused" ? copy.resume : copy.enable}</button>}<button className="button-danger" disabled={busy !== null} onClick={() => void retire()} type="button">{copy.retire}</button></div></section> : null}
+          {selected ? <section className="recipe-operations"><div className="section-heading"><div><p className="eyebrow">{copy.operationsEyebrow}</p><h3>{copy.operationsTitle}</h3></div>{selected.nextRunAt ? <time dateTime={selected.nextRunAt}>{interpolate(copy.nextRun, { date: formatDate(selected.nextRunAt, locale) })}</time> : null}</div><div className="recipe-actions"><button disabled={busy !== null || !canCrawl} onClick={() => void crawlNow()} type="button">{copy.crawlNow}</button>{selected.status === "enabled" ? <button className="button-secondary" disabled={busy !== null} onClick={() => void changeStatus("paused")} type="button">{copy.pause}</button> : <button className="button-secondary" disabled={busy !== null || !canEnable || hasRouteProposal} onClick={() => void changeStatus("enabled")} type="button">{selected.status === "paused" ? copy.resume : copy.enable}</button>}<button className="button-danger" disabled={busy !== null} onClick={() => void retire()} type="button">{copy.retire}</button></div></section> : null}
         </section>
       </section>
     </>

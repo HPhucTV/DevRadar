@@ -44,11 +44,10 @@ PlaywrightFactory = Callable[[], Any]
 
 _CAPTURE_SCRIPT = r"""
 () => {
-  const esc = (value) => CSS.escape(value);
   const selector = (element) => {
     const parts = [];
     let current = element;
-    while (current && current !== document.body && parts.length < 8) {
+    while (current && current !== document.body && parts.length < 32) {
       const tag = current.tagName.toLowerCase();
       const siblings = Array.from(current.parentElement?.children || []).filter(
         (candidate) => candidate.tagName === current.tagName
@@ -57,6 +56,7 @@ _CAPTURE_SCRIPT = r"""
       parts.unshift(`${tag}${suffix}`);
       current = current.parentElement;
     }
+    if (current !== document.body) return null;
     return `body > ${parts.join(" > ")}`;
   };
   const candidates = Array.from(document.querySelectorAll(
@@ -68,12 +68,20 @@ _CAPTURE_SCRIPT = r"""
     const bounds = element.getBoundingClientRect();
     const text = (element.innerText || element.textContent || "").replace(/\s+/g, " ").trim();
     if (bounds.width <= 0 || bounds.height <= 0 || !text) continue;
-    const card = element.closest(
-      "article, li, [role='listitem'], [class*='job'], [class*='result']"
-    ) || element;
+    const documentX = bounds.x + window.scrollX;
+    const documentY = bounds.y + window.scrollY;
+    if (documentX < 0 || documentY < 0) continue;
+    const structuralCard = element.closest("article, li, [role='listitem']");
+    const classCard = element.closest(
+      "div[class*='job'], section[class*='job'], div[class*='result'], section[class*='result']"
+    );
+    const card = structuralCard || classCard || element;
+    const elementSelector = selector(element);
+    const cardSelector = selector(card);
+    if (!elementSelector || !cardSelector) continue;
     result.push({
-      selector: selector(element),
-      cardSelector: selector(card),
+      selector: elementSelector,
+      cardSelector: cardSelector,
       tag: element.tagName.toLowerCase(),
       role: element.getAttribute("role") || "",
       text: text.slice(0, 200),
@@ -81,7 +89,12 @@ _CAPTURE_SCRIPT = r"""
         tag: element.tagName.toLowerCase(),
         class_tokens: Array.from(element.classList).filter(Boolean).slice(0, 8),
       },
-      bounds: {x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height},
+      bounds: {
+        x: bounds.x + window.scrollX,
+        y: bounds.y + window.scrollY,
+        width: bounds.width,
+        height: bounds.height,
+      },
     });
   }
   return result;
@@ -277,6 +290,8 @@ def build_browser_artifact(
 
     if len(raw_nodes) > _MAX_ELEMENTS:
         raise SourceRecipeError("preview_element_map_too_large")
+    if not screenshot:
+        raise SourceRecipeError("preview_screenshot_empty")
     if len(screenshot) > _MAX_SCREENSHOT_BYTES:
         raise SourceRecipeError("preview_screenshot_too_large")
     if screenshot_media_type not in {"image/webp", "image/png"}:
@@ -367,9 +382,17 @@ def resolve_mapping(
     required_names = ("card", "title", "company", "job_url")
     if any(not isinstance(selected_ids[name], str) for name in required_names):
         raise SourceRecipeError("preview_mapping_invalid")
-    non_null_ids = [value for value in selected_ids.values() if value is not None]
-    if len(non_null_ids) != len(set(non_null_ids)):
+    structural_ids = [
+        selected_ids[name]
+        for name in ("card", "company", "location", "job_url", "pagination")
+        if selected_ids[name] is not None
+    ]
+    title_id = selected_ids["title"]
+    if len(structural_ids) != len(set(structural_ids)) or (
+        title_id in structural_ids and title_id != selected_ids["job_url"]
+    ):
         raise SourceRecipeError("preview_mapping_invalid")
+    non_null_ids = [value for value in selected_ids.values() if value is not None]
     if any(
         not isinstance(value, str) or not _OPAQUE_ID_PATTERN.fullmatch(value)
         for value in non_null_ids

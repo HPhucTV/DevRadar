@@ -78,3 +78,34 @@ def test_listing_query_and_url_size_are_bounded() -> None:
         policy.normalize_listing_url(  # type: ignore[attr-defined]
             f"https://example.test/jobs?q={'x' * 2048}"
         )
+
+
+def test_candidate_route_proposal_derives_cross_host_common_path() -> None:
+    policy = _policy_module()
+
+    proposal = policy.derive_candidate_route_proposal(  # type: ignore[attr-defined]
+        (
+            "https://boards.greenhouse.io/navervietnam/jobs/101",
+            "https://boards.greenhouse.io/navervietnam/jobs/102",
+            "https://boards.greenhouse.io/navervietnam/jobs/103",
+        ),
+        allowed_hosts=("boards-api.greenhouse.io",),
+        allowed_path_prefixes=("/v1/boards/navervietnam/jobs",),
+    )
+
+    assert proposal.hosts == ("boards.greenhouse.io",)
+    assert proposal.path_prefixes == ("/navervietnam/jobs",)
+
+
+def test_candidate_route_proposal_rejects_a_fourth_total_host() -> None:
+    policy = _policy_module()
+
+    with pytest.raises(ValueError, match="preview_proposed_hosts_too_many"):
+        policy.derive_candidate_route_proposal(  # type: ignore[attr-defined]
+            (
+                "https://third.test/jobs/1",
+                "https://fourth.test/jobs/2",
+            ),
+            allowed_hosts=("listing.test", "detail.test"),
+            allowed_path_prefixes=("/jobs",),
+        )

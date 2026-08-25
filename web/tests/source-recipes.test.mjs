@@ -26,12 +26,16 @@ test("source recipe BFF surface exists and uses bounded backend paths", async ()
 
 test("source recipe BFF rejects arbitrary fetch and code fields", async () => {
   const collection = await source("src/app/api/devradar/source-recipes/route.ts");
+  const detail = await source("src/app/api/devradar/source-recipes/[recipeId]/route.ts");
   const preview = await source("src/app/api/devradar/source-recipes/[recipeId]/previews/route.ts");
   const mapping = await source(
     "src/app/api/devradar/source-recipes/[recipeId]/previews/[previewId]/mapping/route.ts",
   );
   const runs = await source("src/app/api/devradar/source-recipes/[recipeId]/crawl-runs/route.ts");
   assert.match(collection, /RECIPE_FIELDS/);
+  assert.doesNotMatch(collection, /"allowedHosts"|"allowedPathPrefixes"/);
+  assert.match(detail, /"allowedHosts"/);
+  assert.match(detail, /"allowedPathPrefixes"/);
   assert.match(preview, /Object\.keys\(body\)\.length/);
   assert.match(mapping, /MAPPING_FIELDS/);
   assert.match(runs, /Object\.keys\(body\)\.length/);
@@ -106,4 +110,23 @@ test("recipe operations are bounded to fixed schedules and safe states", async (
   assert.match(panel, /blockReason/);
   assert.match(panel, /cooldownUntil/);
   assert.doesNotMatch(panel + client, /credential|cookie|proxy|captcha.?solve|bypass|cronExpression|cron-expression/i);
+});
+
+test("preview route proposals require one exact confirmation before enable", async () => {
+  const panel = await source("src/components/source-recipe-panel.tsx");
+  const client = await source("src/lib/source-recipes.ts");
+
+  assert.match(client, /allowedHosts:\s*string\[\]/);
+  assert.match(client, /allowedPathPrefixes:\s*string\[\]/);
+  assert.match(client, /proposedPathPrefixes:\s*string\[\]/);
+  assert.match(client, /Array\.isArray\(value\.proposedPathPrefixes\)/);
+  assert.match(client, /export function confirmPreviewRoutes/);
+  assert.match(panel, /const hasRouteProposal/);
+  assert.match(panel, /async function confirmRoutes/);
+  assert.match(panel, /selected\.allowedHosts.*preview\.proposedHosts/s);
+  assert.match(panel, /selected\.allowedPathPrefixes.*preview\.proposedPathPrefixes/s);
+  assert.match(panel, /queuePreviewFor\(patched\.value\.data\)/);
+  assert.match(panel, /route-proposal-card/);
+  assert.match(panel, /disabled=\{busy !== null \|\| !canEnable \|\| hasRouteProposal\}/);
+  assert.doesNotMatch(panel, /name=["']allowedHosts|name=["']allowedPathPrefixes/);
 });

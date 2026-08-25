@@ -316,10 +316,18 @@ Owner acknowledgement lưu exact `terms_notice_version` và timestamp. Nó khôn
 certification, không che warning và không override CAPTCHA, authentication, paywall, anti-bot, access
 denial, SSRF hoặc redirect policy.
 
-`SourceRecipePreview` là artifact non-canonical có status `pending|processing|preview_ready|mapping_required|blocked|failed`,
-3–5 bounded candidates, parser/provenance warnings, optional screenshot + opaque element map và expiry.
-Preview không tạo `CrawlRun`, `RawJobSnapshot`, `Job` hoặc `JobChange`. Chỉ current successful preview và
-current acknowledgement mới cho phép `enabled`.
+`SourceRecipePreview` là artifact non-canonical có wire status `pending|running|succeeded|failed`, 3–5
+bounded candidates, parser/provenance warnings, optional screenshot + opaque element map và expiry.
+`mapping_required` là safe `error_code` của preview failed có visual artifact dùng được;
+`source_unavailable` là failure transient; `layout_unavailable` là block reason khi không thể tạo preview
+hoặc mapper hợp lệ. Preview không tạo `CrawlRun`, `RawJobSnapshot`, `Job` hoặc `JobChange`. Chỉ current
+successful preview và current acknowledgement mới cho phép `enabled`.
+
+Boundary ban đầu của `SourceRecipe` chỉ gồm normalized listing host/path. Nếu candidate canonical job URL
+chứng minh detail route mới, preview trả proposal host/path để owner xác nhận exact union. Xác nhận không
+fetch detail, không nhận URL tự do và reset recipe về `draft`; fresh preview phải thành công không còn
+proposal mới được enable. Thiếu hoặc sửa proposal trả `preview_hosts_confirmation_invalid`; enable sớm trả
+`preview_hosts_confirmation_required`. Browser subresource không tham gia proposal.
 
 Crawl thật tạo `Source(owner_authorized_local) → CrawlRun → RawJobSnapshot → Job/JobChange`. Generic empty,
 layout drift, deadline/budget stop hoặc partial failure luôn `coverage_status=incomplete`, vì vậy không tạo

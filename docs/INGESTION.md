@@ -53,6 +53,21 @@ structured JSON/JSON-LD → deterministic HTML cards → isolated Playwright cap
 không đủ tin cậy, API chỉ trả screenshot bounded và opaque element IDs; UI không nhận CSS selector, raw
 HTML hay script. Saved mapping được revalidate theo origin, artifact expiry và element map trước khi dùng.
 
+Cross-host detail route chỉ được đề xuất từ canonical job URL của 3–5 candidate đã validate. Preview không
+fetch detail URL trước xác nhận và không dùng browser subresource, CDN, font hoặc analytics host làm
+proposal. UI hiển thị exact host/path, không có textbox tùy ý; owner chỉ có thể xác nhận exact union với
+boundary đã lưu. Xác nhận reset recipe về `draft` rồi queue fresh preview. DNS/IP/path/redirect policy tiếp
+tục fail closed ở lần fetch sau; tổng boundary tối đa ba host và mười path prefix.
+
+Disposition public không lộ lỗi parser/transport nội bộ:
+
+- browser artifact có screenshot non-empty và element map dùng được nhưng chưa đủ ba job trả
+  `mapping_required`, giữ recipe ở `draft` để owner sửa mapping;
+- nội dung/layout không tạo được candidate hoặc visual artifact hợp lệ trả `layout_unavailable` và
+  chuyển recipe sang `blocked`;
+- DNS/network/TLS/`5xx` transient được gom thành `source_unavailable`, giữ recipe ở `draft` để retry sau;
+- `rate_limited` dùng cooldown; access barrier và route policy tiếp tục trả hard-stop code riêng.
+
 ### 3.2. Raw snapshot storage
 
 PostgreSQL giữ bounded `RawJobSnapshot.raw_content`, HTTP metadata, canonical provenance URL và

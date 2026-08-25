@@ -20,6 +20,8 @@ export type SourceRecipe = {
   status: SourceRecipeStatus;
   listingUrl: string;
   origin: string;
+  allowedHosts: string[];
+  allowedPathPrefixes: string[];
   termsNotice: "not_reviewed" | "no_specific_restriction_found" | "restricted_terms";
   termsNoticeVersion: string;
   termsEvidenceUrl: string | null;
@@ -78,6 +80,7 @@ export type SourceRecipePreview = {
   warnings: Array<Record<string, unknown>>;
   elements: PreviewElement[];
   proposedHosts: string[];
+  proposedPathPrefixes: string[];
   screenshotDataUrl: string | null;
   errorCode: string | null;
   expiresAt: string;
@@ -129,6 +132,10 @@ function isRecipe(value: unknown): value is SourceRecipe {
     typeof value.status === "string" &&
     typeof value.listingUrl === "string" &&
     typeof value.origin === "string" &&
+    Array.isArray(value.allowedHosts) &&
+    value.allowedHosts.every((item) => typeof item === "string") &&
+    Array.isArray(value.allowedPathPrefixes) &&
+    value.allowedPathPrefixes.every((item) => typeof item === "string") &&
     typeof value.termsNoticeVersion === "string" &&
     (typeof value.termsEvidenceUrl === "string" || value.termsEvidenceUrl === null) &&
     typeof value.termsAcknowledgementRequired === "boolean" &&
@@ -204,6 +211,9 @@ function isPreview(value: unknown): value is SourceRecipePreview {
     Array.isArray(value.elements) &&
     value.elements.every(isElement) &&
     Array.isArray(value.proposedHosts) &&
+    value.proposedHosts.every((item) => typeof item === "string") &&
+    Array.isArray(value.proposedPathPrefixes) &&
+    value.proposedPathPrefixes.every((item) => typeof item === "string") &&
     typeof value.expiresAt === "string"
   );
 }
@@ -300,7 +310,11 @@ export function createSourceRecipe(
 
 export function updateSourceRecipe(
   recipeId: string,
-  patch: Partial<SourceRecipeInput> & { status?: "enabled" | "paused" },
+  patch: Partial<Omit<SourceRecipeInput, "listingUrl">> & {
+    allowedHosts?: string[];
+    allowedPathPrefixes?: string[];
+    status?: "enabled" | "paused";
+  },
 ): Promise<ApiResult<DataEnvelope<SourceRecipe>>> {
   return request(
     `/api/devradar/source-recipes/${encodeURIComponent(recipeId)}`,
@@ -308,6 +322,14 @@ export function updateSourceRecipe(
     (value): value is DataEnvelope<SourceRecipe> => isData(value, isRecipe),
     "Source recipe could not be updated.",
   );
+}
+
+export function confirmPreviewRoutes(
+  recipeId: string,
+  allowedHosts: string[],
+  allowedPathPrefixes: string[],
+): Promise<ApiResult<DataEnvelope<SourceRecipe>>> {
+  return updateSourceRecipe(recipeId, { allowedHosts, allowedPathPrefixes });
 }
 
 export async function retireSourceRecipe(recipeId: string): Promise<ApiResult<null>> {

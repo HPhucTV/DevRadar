@@ -31,7 +31,11 @@ from devradar.source_recipes.parser import (
     candidate_to_dict,
     parse_recipe_document,
 )
-from devradar.source_recipes.policy import build_recipe_fetch_policy, normalize_listing_url
+from devradar.source_recipes.policy import (
+    build_recipe_fetch_policy,
+    derive_candidate_route_proposal,
+    normalize_listing_url,
+)
 from devradar.source_recipes.service import recipe_config_hash, validate_recipe_transition
 
 _PREVIEW_TTL = timedelta(hours=24)
@@ -85,6 +89,7 @@ def classify_preview_fetch_error(error: FetchError) -> PreviewFetchDisposition:
         FetchErrorCode.INVALID_URL,
         FetchErrorCode.POLICY_BLOCKED,
         FetchErrorCode.REDIRECT_BLOCKED,
+        FetchErrorCode.TOO_MANY_REDIRECTS,
     }:
         return PreviewFetchDisposition("route_policy_blocked", blocked=True)
     if error.code is FetchErrorCode.RATE_LIMITED:
@@ -95,7 +100,36 @@ def classify_preview_fetch_error(error: FetchError) -> PreviewFetchDisposition:
             blocked=False,
             cooldown_seconds=cooldown,
         )
-    return PreviewFetchDisposition(error.code.value, blocked=False)
+    if error.code in {
+        FetchErrorCode.DNS_FAILURE,
+        FetchErrorCode.NETWORK_TIMEOUT,
+        FetchErrorCode.TLS_FAILURE,
+        FetchErrorCode.NETWORK_ERROR,
+        FetchErrorCode.SERVER_ERROR,
+    }:
+        return PreviewFetchDisposition("source_unavailable", blocked=False)
+    return PreviewFetchDisposition("layout_unavailable", blocked=True)
+
+
+def _classify_browser_error(error: SourceRecipeError) -> PreviewFetchDisposition:
+    if error.code in {
+        "access_denied",
+        "authentication_required",
+        "challenge_detected",
+        "payment_required",
+        "route_policy_blocked",
+        "unsupported_interaction",
+    }:
+        return PreviewFetchDisposition(error.code, blocked=True)
+    if error.code == "rate_limited":
+        return PreviewFetchDisposition(
+            "rate_limited",
+            blocked=False,
+            cooldown_seconds=_DEFAULT_RATE_LIMIT_COOLDOWN_SECONDS,
+        )
+    if error.code in {"browser_failure", "browser_http_error"}:
+        return PreviewFetchDisposition("source_unavailable", blocked=False)
+    return PreviewFetchDisposition("layout_unavailable", blocked=True)
 
 
 def request_preview(
@@ -183,6 +217,8 @@ def _finish_preview(
     blocked: bool,
     cooldown_seconds: int | None = None,
     browser_artifact: BrowserPreviewArtifact | None = None,
+    proposed_hosts: tuple[str, ...] = (),
+    proposed_path_prefixes: tuple[str, ...] = (),
 ) -> SourceRecipePreview:
     finished_at = _require_aware_utc(now)
     preview = session.get(SourceRecipePreview, claim.preview_id, with_for_update=True)
@@ -198,8 +234,15 @@ def _finish_preview(
     preview.candidate_jobs = candidate_jobs[:5]
     preview.warnings = warnings[:50]
     preview.error_code = error_code
+    artifact_map = (
+        browser_artifact.to_private_element_map() if browser_artifact is not None else {}
+    )
+    preview.element_map = {
+        **artifact_map,
+        "proposed_hosts": list(proposed_hosts),
+        "proposed_path_prefixes": list(proposed_path_prefixes),
+    }
     if browser_artifact is not None:
-        preview.element_map = browser_artifact.to_private_element_map()
         preview.screenshot = browser_artifact.screenshot
         preview.screenshot_media_type = browser_artifact.screenshot_media_type
     recipe.updated_at = finished_at
@@ -236,6 +279,9 @@ def process_preview_claim(
     if session.in_transaction():
         raise SourceRecipeError("preview_processing_requires_fresh_transaction")
     fetch_document = fetch or SafeHttpFetcher().fetch
+    browser_artifact: BrowserPreviewArtifact | None = None
+    content_hash: str | None = None
+    preview_result = None
     try:
         result = fetch_document(claim.listing_url, claim.fetch_policy)
         candidates = parse_recipe_document(
@@ -245,8 +291,23 @@ def process_preview_claim(
             mapping=claim.field_mapping,
         )
         preview_result = build_preview_result(candidates, limit=5)
+        content_hash = result.raw_content_hash
     except FetchError as error:
-        disposition = classify_preview_fetch_error(error)
+        if error.code is not FetchErrorCode.UNEXPECTED_CONTENT or browser_render is None:
+            disposition = classify_preview_fetch_error(error)
+            return _finish_preview(
+                session,
+                claim,
+                now=now,
+                candidate_jobs=[],
+                warnings=[],
+                content_hash=None,
+                error_code=disposition.error_code,
+                blocked=disposition.blocked,
+                cooldown_seconds=disposition.cooldown_seconds,
+            )
+    except SourceRecipeError as error:
+        disposition = _classify_browser_error(error)
         return _finish_preview(
             session,
             claim,
@@ -258,22 +319,11 @@ def process_preview_claim(
             blocked=disposition.blocked,
             cooldown_seconds=disposition.cooldown_seconds,
         )
-    except SourceRecipeError as error:
-        blocked = error.code == "challenge_detected"
-        return _finish_preview(
-            session,
-            claim,
-            now=now,
-            candidate_jobs=[],
-            warnings=[],
-            content_hash=None,
-            error_code=error.code,
-            blocked=blocked,
-        )
 
-    browser_artifact: BrowserPreviewArtifact | None = None
-    content_hash = result.raw_content_hash
-    if preview_result.error_code == "preview_insufficient_jobs" and browser_render is not None:
+    needs_browser = (
+        preview_result is None or preview_result.error_code == "preview_insufficient_jobs"
+    )
+    if needs_browser and browser_render is not None:
         try:
             rendered = browser_render(claim.listing_url, claim.fetch_policy)
             browser_artifact = rendered.artifact
@@ -286,15 +336,7 @@ def process_preview_claim(
             preview_result = build_preview_result(rendered_candidates, limit=5)
             content_hash = sha256(rendered.rendered_html.encode("utf-8")).hexdigest()
         except SourceRecipeError as error:
-            blocked = error.code in {
-                "access_denied",
-                "challenge_detected",
-                "payment_required",
-                "route_policy_blocked",
-            }
-            cooldown = (
-                _DEFAULT_RATE_LIMIT_COOLDOWN_SECONDS if error.code == "rate_limited" else None
-            )
+            disposition = _classify_browser_error(error)
             return _finish_preview(
                 session,
                 claim,
@@ -302,13 +344,50 @@ def process_preview_claim(
                 candidate_jobs=[],
                 warnings=[],
                 content_hash=None,
-                error_code=error.code,
-                blocked=blocked,
-                cooldown_seconds=cooldown,
+                error_code=disposition.error_code,
+                blocked=disposition.blocked,
+                cooldown_seconds=disposition.cooldown_seconds,
             )
 
+    if preview_result is None:
+        return _finish_preview(
+            session,
+            claim,
+            now=now,
+            candidate_jobs=[],
+            warnings=[],
+            content_hash=None,
+            error_code="layout_unavailable",
+            blocked=True,
+        )
+    try:
+        route_proposal = derive_candidate_route_proposal(
+            (candidate.job_url for candidate in preview_result.jobs),
+            allowed_hosts=claim.fetch_policy.allowed_hosts,
+            allowed_path_prefixes=claim.fetch_policy.allowed_path_prefixes,
+        )
+    except SourceRecipeError:
+        return _finish_preview(
+            session,
+            claim,
+            now=now,
+            candidate_jobs=[],
+            warnings=[],
+            content_hash=content_hash,
+            error_code="route_policy_blocked",
+            blocked=True,
+            browser_artifact=browser_artifact,
+        )
     jobs = [candidate_to_dict(candidate) for candidate in preview_result.jobs]
     warnings = [{"code": warning} for warning in preview_result.warnings]
+    error_code = preview_result.error_code
+    blocked = False
+    if error_code is not None:
+        if browser_artifact is not None and browser_artifact.elements:
+            error_code = "mapping_required"
+        else:
+            error_code = "layout_unavailable"
+            blocked = True
     return _finish_preview(
         session,
         claim,
@@ -316,7 +395,9 @@ def process_preview_claim(
         candidate_jobs=jobs,
         warnings=warnings,
         content_hash=content_hash,
-        error_code=preview_result.error_code,
-        blocked=False,
+        error_code=error_code,
+        blocked=blocked,
         browser_artifact=browser_artifact,
+        proposed_hosts=route_proposal.hosts,
+        proposed_path_prefixes=route_proposal.path_prefixes,
     )

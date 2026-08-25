@@ -74,6 +74,13 @@ test("source recipe mapper stays operable at narrow widths", async () => {
   assert.match(panel, /aria-pressed/);
 });
 
+test("source route confirmation is readable and operable on narrow screens", async () => {
+  const css = await source("src/app/globals.css");
+  assert.match(css, /\.route-proposal-card\{[^}]*display:grid/);
+  assert.match(css, /\.route-proposal-value\{[^}]*overflow-wrap:anywhere/);
+  assert.match(css, /@media\(max-width:420px\)[\s\S]*\.route-proposal-card[^}]*padding/);
+});
+
 test("shared shell and route surfaces use redesign primitives", async () => {
   const shell = await source("src/components/app-shell.tsx");
   const overview = await source("src/app/(dashboard)/page.tsx");

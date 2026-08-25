@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
@@ -16,6 +17,7 @@ from devradar.auth.models import User
 from devradar.catalog.models import Job, JobChange
 from devradar.ingestion.contracts import FetchResult
 from devradar.ingestion.models import CrawlRun, RawJobSnapshot, Source
+from devradar.ingestion.safe_http import FetchError, FetchErrorCode
 from devradar.platform.database import DATABASE_URL_ENV
 from devradar.source_recipes.browser_preview import (
     RenderedBrowserPreview,
@@ -37,13 +39,18 @@ def _preview_module() -> object:
     return importlib.import_module("devradar.source_recipes.preview")
 
 
-def _recipe(session: Session, *, now: datetime) -> SourceRecipe:
+def _recipe(
+    session: Session,
+    *,
+    now: datetime,
+    listing_url: str = "https://topdev.vn/viec-lam-it",
+) -> SourceRecipe:
     owner = User(username=f"recipe{uuid4().hex[:8]}", password_hash="x" * 64)
     session.add(owner)
     session.flush()
     draft = SourceRecipeDraft.from_input(
         name="Fixture recipe",
-        listing_url="https://topdev.vn/viec-lam-it",
+        listing_url=listing_url,
         seniority_filter=["all"],
         acknowledged_notice_version=None,
     )
@@ -140,7 +147,72 @@ def test_preview_queue_claims_outside_network_transaction_and_creates_no_canonic
 
 
 @pytest.mark.postgresql
-def test_insufficient_preview_stays_draft_and_is_not_claimed_twice(
+def test_structured_preview_proposes_cross_host_detail_route_without_fetching_it(
+    fresh_postgresql_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(DATABASE_URL_ENV, fresh_postgresql_url)
+    command.upgrade(Config(str(PROJECT_ROOT / "alembic.ini")), "head")
+    engine = create_engine(fresh_postgresql_url)
+    preview = _preview_module()
+    now = datetime.now(UTC)
+    listing_url = (
+        "https://boards-api.greenhouse.io/v1/boards/navervietnam/jobs?content=true"
+    )
+    payload = json.dumps(
+        {
+            "jobs": [
+                {
+                    "id": str(index),
+                    "title": f"Engineer {index}",
+                    "company": "NAVER Vietnam",
+                    "absolute_url": (
+                        f"https://boards.greenhouse.io/navervietnam/jobs/{index}"
+                    ),
+                }
+                for index in range(101, 104)
+            ]
+        }
+    ).encode("utf-8")
+    fetched_urls: list[str] = []
+    try:
+        with Session(engine) as session:
+            recipe = _recipe(session, now=now, listing_url=listing_url)
+            preview.request_preview(session, recipe_id=recipe.id, now=now)  # type: ignore[attr-defined]
+            claim = preview.claim_pending_preview(session, now=now)  # type: ignore[attr-defined]
+            assert claim is not None
+
+            def fetch(url: str, policy: object) -> FetchResult:
+                fetched_urls.append(url)
+                return FetchResult(
+                    final_url=listing_url,
+                    fetched_at=now,
+                    http_status=200,
+                    content_type="application/json",
+                    payload=payload,
+                    raw_content_hash=sha256(payload).hexdigest(),
+                )
+
+            finished = preview.process_preview_claim(  # type: ignore[attr-defined]
+                session,
+                claim,
+                fetch=fetch,
+                now=now,
+            )
+
+            assert finished.status is PreviewStatus.SUCCEEDED
+            assert len(finished.candidate_jobs) == 3
+            assert fetched_urls == [listing_url]
+            assert finished.element_map["proposed_hosts"] == ["boards.greenhouse.io"]
+            assert finished.element_map["proposed_path_prefixes"] == [
+                "/navervietnam/jobs"
+            ]
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.postgresql
+def test_insufficient_preview_without_visual_artifact_blocks_as_layout_unavailable(
     fresh_postgresql_url: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -166,11 +238,12 @@ def test_insufficient_preview_stays_draft_and_is_not_claimed_twice(
                 now=now,
             )
             assert finished.status is PreviewStatus.FAILED
-            assert finished.error_code == "preview_insufficient_jobs"
+            assert finished.error_code == "layout_unavailable"
             assert finished.candidate_jobs == []
             refreshed = session.get(SourceRecipe, recipe_id)
             assert refreshed is not None
-            assert refreshed.status is RecipeStatus.DRAFT
+            assert refreshed.status is RecipeStatus.BLOCKED
+            assert refreshed.block_reason == "layout_unavailable"
             assert session.scalar(select(func.count()).select_from(SourceRecipePreview)) == 1
     finally:
         engine.dispose()
@@ -264,5 +337,123 @@ def test_http_insufficient_uses_injected_browser_fallback_and_persists_artifact(
             assert finished.screenshot == b"webp"
             assert len(finished.element_map["elements"]) == 1
             assert "selector" not in repr(finished.candidate_jobs).casefold()
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.postgresql
+def test_insufficient_rendered_preview_requests_visual_mapping(
+    fresh_postgresql_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(DATABASE_URL_ENV, fresh_postgresql_url)
+    command.upgrade(Config(str(PROJECT_ROOT / "alembic.ini")), "head")
+    engine = create_engine(fresh_postgresql_url)
+    preview = _preview_module()
+    now = datetime.now(UTC)
+    try:
+        with Session(engine) as session:
+            recipe = _recipe(session, now=now)
+            recipe_id = recipe.id
+            preview.request_preview(session, recipe_id=recipe_id, now=now)  # type: ignore[attr-defined]
+            claim = preview.claim_pending_preview(session, now=now)  # type: ignore[attr-defined]
+            assert claim is not None
+            artifact = build_browser_artifact(
+                page_url=claim.listing_url,
+                raw_nodes=[
+                    {
+                        "selector": "main",
+                        "cardSelector": "main",
+                        "tag": "main",
+                        "role": "main",
+                        "text": "Rendered jobs",
+                        "signature": {"tag": "main", "class_tokens": []},
+                        "bounds": {"x": 0, "y": 0, "width": 800, "height": 600},
+                    }
+                ],
+                screenshot=b"webp",
+                screenshot_media_type="image/webp",
+                proposed_hosts=(),
+            )
+            finished = preview.process_preview_claim(  # type: ignore[attr-defined]
+                session,
+                claim,
+                fetch=lambda url, policy: _fetch_result("insufficient.html", now=now),
+                browser_render=lambda url, policy: RenderedBrowserPreview(
+                    final_url=url,
+                    rendered_html=(FIXTURES / "insufficient.html").read_text(encoding="utf-8"),
+                    artifact=artifact,
+                ),
+                now=now,
+            )
+
+            assert finished.status is PreviewStatus.FAILED
+            assert finished.error_code == "mapping_required"
+            assert finished.screenshot == b"webp"
+            assert len(finished.element_map["elements"]) == 1
+            refreshed = session.get(SourceRecipe, recipe_id)
+            assert refreshed is not None
+            assert refreshed.status is RecipeStatus.DRAFT
+            assert refreshed.block_reason is None
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.postgresql
+def test_unexpected_http_content_uses_browser_fallback(
+    fresh_postgresql_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(DATABASE_URL_ENV, fresh_postgresql_url)
+    command.upgrade(Config(str(PROJECT_ROOT / "alembic.ini")), "head")
+    engine = create_engine(fresh_postgresql_url)
+    preview = _preview_module()
+    now = datetime.now(UTC)
+    try:
+        with Session(engine) as session:
+            recipe = _recipe(session, now=now)
+            preview.request_preview(session, recipe_id=recipe.id, now=now)  # type: ignore[attr-defined]
+            claim = preview.claim_pending_preview(session, now=now)  # type: ignore[attr-defined]
+            assert claim is not None
+            artifact = build_browser_artifact(
+                page_url=claim.listing_url,
+                raw_nodes=[
+                    {
+                        "selector": "main",
+                        "cardSelector": "main",
+                        "tag": "main",
+                        "role": "main",
+                        "text": "Rendered jobs",
+                        "signature": {"tag": "main", "class_tokens": []},
+                        "bounds": {"x": 0, "y": 0, "width": 800, "height": 600},
+                    }
+                ],
+                screenshot=b"webp",
+                screenshot_media_type="image/webp",
+                proposed_hosts=(),
+            )
+
+            def reject_http(url: str, policy: object) -> FetchResult:
+                raise FetchError(
+                    FetchErrorCode.UNEXPECTED_CONTENT,
+                    "safe",
+                    retryable=False,
+                )
+
+            finished = preview.process_preview_claim(  # type: ignore[attr-defined]
+                session,
+                claim,
+                fetch=reject_http,
+                browser_render=lambda url, policy: RenderedBrowserPreview(
+                    final_url=url,
+                    rendered_html=(FIXTURES / "jobs_cards.html").read_text(encoding="utf-8"),
+                    artifact=artifact,
+                ),
+                now=now,
+            )
+
+            assert finished.status is PreviewStatus.SUCCEEDED
+            assert len(finished.candidate_jobs) == 3
+            assert finished.error_code is None
     finally:
         engine.dispose()

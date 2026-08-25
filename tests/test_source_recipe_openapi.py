@@ -44,3 +44,6 @@ def test_source_recipe_openapi_publishes_only_bounded_resource_contracts() -> No
         assert forbidden not in serialized_inputs
     screenshot = schemas["SourceRecipePreviewData"]["properties"]["screenshotDataUrl"]
     assert screenshot["anyOf"][0]["maxLength"] <= 2_100_000
+    preview_properties = schemas["SourceRecipePreviewData"]["properties"]
+    assert preview_properties["proposedHosts"]["items"]["type"] == "string"
+    assert preview_properties["proposedPathPrefixes"]["items"]["type"] == "string"

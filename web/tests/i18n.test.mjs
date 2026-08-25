@@ -61,6 +61,23 @@ test("domain wire values have localized presentation labels", async () => {
   }
 });
 
+test("source route confirmation has complete Vietnamese and English copy", async () => {
+  const messages = JSON.parse(await source("src/i18n/dictionaries.json"));
+  for (const key of [
+    "routeProposalEyebrow",
+    "routeProposalTitle",
+    "routeProposalBody",
+    "routeProposalHosts",
+    "routeProposalPaths",
+    "confirmRoutes",
+    "confirmingRoutes",
+    "routesConfirmed",
+  ]) {
+    assert.equal(typeof messages.vi.sourceRecipes[key], "string", `missing vi.sourceRecipes.${key}`);
+    assert.equal(typeof messages.en.sourceRecipes[key], "string", `missing en.sourceRecipes.${key}`);
+  }
+});
+
 test("job detail and analytics localize enum and date presentation", async () => {
   const detail = await source("src/app/(dashboard)/jobs/[jobId]/page.tsx");
   const analytics = await source("src/app/(dashboard)/analytics/page.tsx");

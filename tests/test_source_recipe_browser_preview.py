@@ -128,6 +128,23 @@ def test_public_preview_payload_contains_opaque_ids_not_selectors() -> None:
     assert "tracking=hidden" not in serialized
 
 
+def test_capture_script_aligns_bounds_with_full_page_screenshot() -> None:
+    capture_script = _browser()._CAPTURE_SCRIPT
+
+    assert "x: bounds.x + window.scrollX" in capture_script
+    assert "y: bounds.y + window.scrollY" in capture_script
+
+
+def test_capture_script_uses_replayable_structural_card_boundaries() -> None:
+    capture_script = _browser()._CAPTURE_SCRIPT
+
+    assert "parts.length < 32" in capture_script
+    assert "if (current !== document.body) return null" in capture_script
+    assert "element.closest(\"article, li, [role='listitem']\")" in capture_script
+    assert "div[class*='job']" in capture_script
+    assert "[role='listitem'], [class*='job']" not in capture_script
+
+
 def test_mapping_rejects_expired_tampered_or_cross_origin_element_ids() -> None:
     browser = _browser()
     now = datetime.now(UTC)
@@ -162,8 +179,35 @@ def test_mapping_rejects_expired_tampered_or_cross_origin_element_ids() -> None:
         )
 
 
+def test_mapping_allows_one_anchor_to_supply_title_and_job_url() -> None:
+    browser = _browser()
+    now = datetime.now(UTC)
+    artifact = _artifact()
+    selected = _selected_ids(artifact)
+    selected["title"] = selected["job_url"]
+
+    resolved = browser.resolve_mapping(
+        _preview(artifact, now=now),
+        selected_ids=selected,
+        expected_origin="https://example.test",
+        expected_config_hash="a" * 64,
+        now=now,
+    )
+
+    assert resolved.field_mapping["title"] == resolved.field_mapping["job_url"]
+    assert resolved.field_mapping["job_url"]["tag"] == "a"
+
+
 def test_browser_artifact_caps_nodes_and_screenshot() -> None:
     browser = _browser()
+    with pytest.raises(SourceRecipeError, match="preview_screenshot_empty"):
+        browser.build_browser_artifact(
+            page_url="https://example.test/jobs",
+            raw_nodes=_raw_nodes(),
+            screenshot=b"",
+            screenshot_media_type="image/webp",
+            proposed_hosts=(),
+        )
     with pytest.raises(SourceRecipeError, match="preview_element_map_too_large"):
         browser.build_browser_artifact(
             page_url="https://example.test/jobs",

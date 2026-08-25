@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import posixpath
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from ipaddress import ip_address
 from urllib.parse import parse_qsl, unquote, urlsplit, urlunsplit
@@ -25,6 +27,12 @@ class NormalizedListingUrl:
     origin: str
     host: str
     path_prefix: str
+
+
+@dataclass(frozen=True, slots=True)
+class CandidateRouteProposal:
+    hosts: tuple[str, ...]
+    path_prefixes: tuple[str, ...]
 
 
 def _is_ip_literal(value: str) -> bool:
@@ -132,6 +140,47 @@ def normalize_listing_url(value: str) -> NormalizedListingUrl:
         host=host,
         path_prefix=path_prefix,
     )
+
+
+def _path_is_within_prefix(path: str, prefix: str) -> bool:
+    return path == prefix or path.startswith(f"{prefix.rstrip('/')}/")
+
+
+def derive_candidate_route_proposal(
+    candidate_urls: Iterable[str],
+    *,
+    allowed_hosts: tuple[str, ...],
+    allowed_path_prefixes: tuple[str, ...],
+) -> CandidateRouteProposal:
+    grouped_paths: dict[str, list[str]] = {}
+    for candidate_url in candidate_urls:
+        normalized = normalize_listing_url(candidate_url)
+        grouped_paths.setdefault(normalized.host, []).append(normalized.path_prefix)
+
+    hosts = tuple(sorted(host for host in grouped_paths if host not in allowed_hosts))
+    if len(set(allowed_hosts).union(hosts)) > 3:
+        raise SourceRecipeError("preview_proposed_hosts_too_many")
+
+    path_prefixes: set[str] = set()
+    for paths in grouped_paths.values():
+        uncovered = [
+            path
+            for path in paths
+            if not any(
+                _path_is_within_prefix(path, prefix) for prefix in allowed_path_prefixes
+            )
+        ]
+        if not uncovered:
+            continue
+        common = normalize_path_prefix(posixpath.commonpath(uncovered))
+        if common == "/":
+            raise SourceRecipeError("preview_proposed_path_too_broad")
+        path_prefixes.add(common)
+
+    normalized_paths = tuple(sorted(path_prefixes))
+    if len(set(allowed_path_prefixes).union(normalized_paths)) > 10:
+        raise SourceRecipeError("preview_proposed_paths_too_many")
+    return CandidateRouteProposal(hosts=hosts, path_prefixes=normalized_paths)
 
 
 def build_recipe_fetch_policy(

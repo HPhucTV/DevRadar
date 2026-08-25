@@ -31,6 +31,7 @@ from devradar.source_recipes.models import (
     SourceRecipe,
     SourceRecipePreview,
 )
+from devradar.source_recipes.service import recipe_config_hash
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PASSWORD = "source-recipe-test-password"
@@ -73,6 +74,54 @@ def _payload(*, listing_url: str = "https://example.test/jobs?role=backend") -> 
 
 def _csrf(token: str) -> dict[str, str]:
     return {"X-DevRadar-CSRF": token}
+
+
+def _seed_successful_preview(
+    database_url: str,
+    *,
+    recipe_id: str,
+    proposed_hosts: list[str],
+    proposed_path_prefixes: list[str],
+) -> UUID:
+    now = datetime.now(UTC)
+    with Session(_database_engine(database_url)) as session:
+        recipe = session.get(SourceRecipe, UUID(recipe_id))
+        assert recipe is not None
+        preview = SourceRecipePreview(
+            recipe_id=recipe.id,
+            status=PreviewStatus.SUCCEEDED,
+            config_hash=recipe_config_hash(recipe),
+            candidate_jobs=[
+                {
+                    "external_id": str(index),
+                    "job_url": f"https://detail.example.test/jobs/{index}",
+                    "title": f"Engineer {index}",
+                    "company": "Example",
+                    "confidence": 0.94,
+                    "provenance": [],
+                    "warnings": [],
+                    "parser_version": "source-recipe-parser-v1",
+                }
+                for index in range(3)
+            ],
+            warnings=[],
+            element_map={
+                "proposed_hosts": proposed_hosts,
+                "proposed_path_prefixes": proposed_path_prefixes,
+            },
+            requested_at=now,
+            started_at=now,
+            finished_at=now,
+            expires_at=now + timedelta(hours=24),
+        )
+        session.add(preview)
+        session.flush()
+        recipe.status = RecipeStatus.PREVIEW_READY
+        recipe.terms_acknowledged_at = now
+        recipe.latest_successful_preview_id = preview.id
+        recipe.latest_successful_preview_hash = "a" * 64
+        session.commit()
+        return preview.id
 
 
 def _mapping_artifact() -> tuple[dict[str, object], dict[str, str | None]]:
@@ -209,6 +258,8 @@ def test_create_acknowledge_and_queue_preview_without_canonical_rows(
     polled = client.get(f"/api/v1/source-recipes/{recipe_id}/previews/{preview_id}")
     assert polled.status_code == 200
     assert polled.json()["data"]["status"] == "pending"
+    assert polled.json()["data"]["proposedHosts"] == []
+    assert polled.json()["data"]["proposedPathPrefixes"] == []
     assert "selector" not in polled.text.casefold()
     assert "<html" not in polled.text.casefold()
 
@@ -218,6 +269,186 @@ def test_create_acknowledge_and_queue_preview_without_canonical_rows(
         assert session.scalar(select(func.count()).select_from(RawJobSnapshot)) == 0
         assert session.scalar(select(func.count()).select_from(Job)) == 0
         assert session.scalar(select(func.count()).select_from(JobChange)) == 0
+
+
+@pytest.mark.postgresql
+def test_exact_route_confirmation_resets_preview_and_keeps_listing_boundary(
+    source_recipe_api: tuple[TestClient, str, str],
+) -> None:
+    client, database_url, csrf = source_recipe_api
+    listing_url = (
+        "https://boards-api.greenhouse.io/v1/boards/navervietnam/jobs?content=true"
+    )
+    created = client.post(
+        "/api/v1/source-recipes",
+        json=_payload(listing_url=listing_url),
+        headers=_csrf(csrf),
+    )
+    assert created.status_code == 201
+    recipe_id = created.json()["data"]["id"]
+    preview_id = _seed_successful_preview(
+        database_url,
+        recipe_id=recipe_id,
+        proposed_hosts=["boards.greenhouse.io"],
+        proposed_path_prefixes=["/navervietnam/jobs"],
+    )
+
+    polled = client.get(f"/api/v1/source-recipes/{recipe_id}/previews/{preview_id}")
+    assert polled.status_code == 200
+    assert polled.json()["data"]["proposedHosts"] == ["boards.greenhouse.io"]
+    assert polled.json()["data"]["proposedPathPrefixes"] == ["/navervietnam/jobs"]
+
+    premature = client.patch(
+        f"/api/v1/source-recipes/{recipe_id}",
+        json={"status": "enabled"},
+        headers=_csrf(csrf),
+    )
+    assert premature.status_code == 409
+    assert premature.json()["error"]["code"] == "preview_hosts_confirmation_required"
+
+    response = client.patch(
+        f"/api/v1/source-recipes/{recipe_id}",
+        json={
+            "allowedHosts": ["boards-api.greenhouse.io", "boards.greenhouse.io"],
+            "allowedPathPrefixes": [
+                "/v1/boards/navervietnam/jobs",
+                "/navervietnam/jobs",
+            ],
+        },
+        headers=_csrf(csrf),
+    )
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["status"] == "draft"
+    assert data["allowedHosts"] == [
+        "boards-api.greenhouse.io",
+        "boards.greenhouse.io",
+    ]
+    assert data["allowedPathPrefixes"] == [
+        "/v1/boards/navervietnam/jobs",
+        "/navervietnam/jobs",
+    ]
+    with Session(_database_engine(database_url)) as session:
+        recipe = session.get(SourceRecipe, UUID(recipe_id))
+        assert recipe is not None
+        assert recipe.latest_successful_preview_id is None
+        assert recipe.latest_successful_preview_hash is None
+
+
+@pytest.mark.postgresql
+def test_route_confirmation_rejects_missing_replacement_superset_and_fourth_host(
+    source_recipe_api: tuple[TestClient, str, str],
+) -> None:
+    client, database_url, csrf = source_recipe_api
+    created = client.post(
+        "/api/v1/source-recipes",
+        json=_payload(
+            listing_url=(
+                "https://boards-api.greenhouse.io/v1/boards/navervietnam/jobs?content=true"
+            )
+        ),
+        headers=_csrf(csrf),
+    )
+    recipe_id = created.json()["data"]["id"]
+    _seed_successful_preview(
+        database_url,
+        recipe_id=recipe_id,
+        proposed_hosts=["boards.greenhouse.io"],
+        proposed_path_prefixes=["/navervietnam/jobs"],
+    )
+    invalid_payloads = [
+        {
+            "allowedHosts": ["boards-api.greenhouse.io"],
+            "allowedPathPrefixes": ["/v1/boards/navervietnam/jobs"],
+        },
+        {
+            "allowedHosts": ["boards.greenhouse.io"],
+            "allowedPathPrefixes": ["/navervietnam/jobs"],
+        },
+        {
+            "allowedHosts": [
+                "boards-api.greenhouse.io",
+                "boards.greenhouse.io",
+                "extra.test",
+            ],
+            "allowedPathPrefixes": [
+                "/v1/boards/navervietnam/jobs",
+                "/navervietnam/jobs",
+            ],
+        },
+        {
+            "allowedHosts": [
+                "boards-api.greenhouse.io",
+                "boards.greenhouse.io",
+                "third.test",
+                "fourth.test",
+            ],
+            "allowedPathPrefixes": [
+                "/v1/boards/navervietnam/jobs",
+                "/navervietnam/jobs",
+            ],
+        },
+    ]
+    for payload in invalid_payloads:
+        response = client.patch(
+            f"/api/v1/source-recipes/{recipe_id}",
+            json=payload,
+            headers=_csrf(csrf),
+        )
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "preview_hosts_confirmation_invalid"
+
+
+@pytest.mark.postgresql
+def test_route_confirmation_rejects_stale_preview(
+    source_recipe_api: tuple[TestClient, str, str],
+) -> None:
+    client, database_url, csrf = source_recipe_api
+    created = client.post(
+        "/api/v1/source-recipes",
+        json=_payload(),
+        headers=_csrf(csrf),
+    )
+    recipe_id = created.json()["data"]["id"]
+    _seed_successful_preview(
+        database_url,
+        recipe_id=recipe_id,
+        proposed_hosts=["detail.example.test"],
+        proposed_path_prefixes=["/jobs/detail"],
+    )
+    with Session(_database_engine(database_url)) as session:
+        recipe = session.get(SourceRecipe, UUID(recipe_id))
+        assert recipe is not None
+        recipe.latest_successful_preview_id = None
+        session.commit()
+
+    response = client.patch(
+        f"/api/v1/source-recipes/{recipe_id}",
+        json={
+            "allowedHosts": ["example.test", "detail.example.test"],
+            "allowedPathPrefixes": ["/jobs", "/jobs/detail"],
+        },
+        headers=_csrf(csrf),
+    )
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "preview_hosts_confirmation_invalid"
+
+
+@pytest.mark.postgresql
+def test_create_cannot_seed_extra_route_boundaries(
+    source_recipe_api: tuple[TestClient, str, str],
+) -> None:
+    client, _, csrf = source_recipe_api
+    response = client.post(
+        "/api/v1/source-recipes",
+        json={
+            **_payload(),
+            "allowedHosts": ["example.test", "attacker.test"],
+            "allowedPathPrefixes": ["/jobs", "/proxy"],
+        },
+        headers=_csrf(csrf),
+    )
+    assert response.status_code == 422
 
 
 @pytest.mark.postgresql

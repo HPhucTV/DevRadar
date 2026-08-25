@@ -52,7 +52,11 @@ from devradar.source_recipes.scheduler import (
     next_source_recipe_run_at,
     source_recipe_schedule_slot,
 )
-from devradar.source_recipes.service import apply_recipe_mapping
+from devradar.source_recipes.service import (
+    apply_recipe_mapping,
+    confirm_preview_routes,
+    preview_requires_route_confirmation,
+)
 
 router = APIRouter(tags=["source-recipes"])
 DatabaseSession = Annotated[Session, Depends(get_database_session)]
@@ -89,8 +93,6 @@ class SourceRecipeCreate(ApiModel):
     listing_url: str = Field(min_length=1, max_length=2048)
     seniority_filter: list[str] = Field(default_factory=lambda: ["all"], min_length=1, max_length=8)
     acknowledged_notice_version: str | None = Field(default=None, min_length=64, max_length=64)
-    allowed_hosts: list[str] | None = Field(default=None, max_length=3)
-    allowed_path_prefixes: list[str] | None = Field(default=None, max_length=10)
     schedule_kind: RecipeScheduleKind = RecipeScheduleKind.MANUAL
     schedule_local_time: time | None = None
     schedule_weekday: int | None = Field(default=None, ge=0, le=6)
@@ -110,8 +112,8 @@ class SourceRecipePatch(ApiModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     seniority_filter: list[str] | None = Field(default=None, min_length=1, max_length=8)
     acknowledged_notice_version: str | None = Field(default=None, min_length=64, max_length=64)
-    allowed_hosts: list[str] | None = Field(default=None, max_length=3)
-    allowed_path_prefixes: list[str] | None = Field(default=None, max_length=10)
+    allowed_hosts: list[str] | None = Field(default=None, max_length=4)
+    allowed_path_prefixes: list[str] | None = Field(default=None, max_length=11)
     schedule_kind: RecipeScheduleKind | None = None
     schedule_local_time: time | None = None
     schedule_weekday: int | None = Field(default=None, ge=0, le=6)
@@ -215,6 +217,7 @@ class SourceRecipePreviewData(ApiModel):
     warnings: list[dict[str, Any]]
     elements: list[PreviewElementData]
     proposed_hosts: list[str]
+    proposed_path_prefixes: list[str]
     screenshot_data_url: str | None = Field(default=None, max_length=2_100_000)
     error_code: str | None
     requested_at: datetime
@@ -313,6 +316,11 @@ def _preview_data(preview: SourceRecipePreview) -> SourceRecipePreviewData:
         if isinstance(preview.element_map, dict)
         else []
     )
+    proposed_path_prefixes = (
+        preview.element_map.get("proposed_path_prefixes", [])
+        if isinstance(preview.element_map, dict)
+        else []
+    )
     return SourceRecipePreviewData(
         id=preview.id,
         recipe_id=preview.recipe_id,
@@ -323,6 +331,11 @@ def _preview_data(preview: SourceRecipePreview) -> SourceRecipePreviewData:
         proposed_hosts=(
             [value for value in proposed_hosts if isinstance(value, str)]
             if isinstance(proposed_hosts, list)
+            else []
+        ),
+        proposed_path_prefixes=(
+            [value for value in proposed_path_prefixes if isinstance(value, str)]
+            if isinstance(proposed_path_prefixes, list)
             else []
         ),
         screenshot_data_url=screenshot_data_url,
@@ -386,6 +399,8 @@ def _domain_error(error: SourceRecipeError) -> ApiContractError:
             "preview_mapping_expired",
             "preview_mapping_invalid",
             "preview_required",
+            "preview_hosts_confirmation_invalid",
+            "preview_hosts_confirmation_required",
             "recipe_not_enabled",
             "recipe_status_transition_invalid",
             "source_run_active",
@@ -572,6 +587,8 @@ def _apply_config_patch(
 def _enable_recipe(session: Session, recipe: SourceRecipe, *, now: datetime) -> None:
     if recipe.status not in {RecipeStatus.PREVIEW_READY, RecipeStatus.PAUSED}:
         raise SourceRecipeError("preview_required")
+    if preview_requires_route_confirmation(session, recipe):
+        raise SourceRecipeError("preview_hosts_confirmation_required")
     if _ack_required(recipe) and recipe.terms_acknowledged_at is None:
         raise SourceRecipeError("terms_notice_acknowledgement_required")
     source = session.get(Source, recipe.source_id) if recipe.source_id is not None else None
@@ -629,6 +646,25 @@ def patch_source_recipe(
     acknowledged_version = payload.pop("acknowledged_notice_version", None)
     now = datetime.now(UTC)
     try:
+        has_allowed_hosts = "allowed_hosts" in payload
+        has_allowed_paths = "allowed_path_prefixes" in payload
+        if has_allowed_hosts or has_allowed_paths:
+            if (
+                not has_allowed_hosts
+                or not has_allowed_paths
+                or len(payload) != 2
+                or target_status is not None
+                or acknowledged_version is not None
+            ):
+                raise SourceRecipeError("preview_hosts_confirmation_invalid")
+            confirmed = confirm_preview_routes(
+                session,
+                recipe_id=recipe.id,
+                allowed_hosts=payload["allowed_hosts"],
+                allowed_path_prefixes=payload["allowed_path_prefixes"],
+                now=now,
+            )
+            return SourceRecipeResponse(data=_recipe_data(confirmed))
         if acknowledged_version is not None:
             if acknowledged_version != recipe.terms_notice_version:
                 raise SourceRecipeError("terms_notice_acknowledgement_stale")

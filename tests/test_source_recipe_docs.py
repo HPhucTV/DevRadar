@@ -41,12 +41,28 @@ def test_active_contracts_describe_the_recipe_boundary_consistently() -> None:
         "structured data",
         "Playwright",
         "visual mapping",
+        "mapping_required",
+        "layout_unavailable",
+        "source_unavailable",
         "every_6_hours",
         "incomplete",
         "CAPTCHA",
     ):
         assert term in ingestion
     assert "không bypass" in ingestion.casefold()
+    assert "pending|running|succeeded|failed" in DOCS["domain"]
+    assert "mapping_required" in DOCS["api"]
+    assert "source_unavailable" in DOCS["api"]
+    for term in (
+        "proposedHosts",
+        "proposedPathPrefixes",
+        "preview_hosts_confirmation_required",
+        "preview_hosts_confirmation_invalid",
+    ):
+        assert term in DOCS["api"]
+    assert "canonical job URL" in ingestion
+    assert "browser subresource" in ingestion
+    assert "preview_hosts_confirmation_required" in DOCS["domain"]
 
 
 def test_api_and_operator_docs_publish_only_current_recipe_commands() -> None:
@@ -74,9 +90,9 @@ def test_api_and_operator_docs_publish_only_current_recipe_commands() -> None:
         )
     )
     for removed in (
-        "custom-source-worker",
-        "DEVRADAR_CUSTOM_SOURCES_LOCAL_ENABLED",
-        "/api/v1/custom-sources",
+        "custom" + "-source-worker",
+        "DEVRADAR_CUSTOM" + "_SOURCES_LOCAL_ENABLED",
+        "/api/v1/custom" + "-sources",
         "crawl --source",
         "adapters/greenhouse.py",
         "adapters/vng.py",

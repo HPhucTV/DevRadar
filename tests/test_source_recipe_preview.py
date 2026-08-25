@@ -51,7 +51,22 @@ def _preview() -> object:
         ),
         (
             FetchError(FetchErrorCode.SERVER_ERROR, "safe", retryable=True, http_status=503),
-            "server_error",
+            "source_unavailable",
+            False,
+        ),
+        (
+            FetchError(FetchErrorCode.DNS_FAILURE, "safe", retryable=True),
+            "source_unavailable",
+            False,
+        ),
+        (
+            FetchError(FetchErrorCode.UNEXPECTED_CONTENT, "safe", retryable=False),
+            "layout_unavailable",
+            True,
+        ),
+        (
+            FetchError(FetchErrorCode.NETWORK_TIMEOUT, "safe", retryable=True),
+            "source_unavailable",
             False,
         ),
     ],
