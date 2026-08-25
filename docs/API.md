@@ -109,6 +109,7 @@ V1 dùng page-based pagination vì dataset portfolio còn bounded và UI cần t
 | `GET /api/v1/source-recipes/{recipeId}/previews/{previewId}` | Poll preview/candidates/mapping artifact | V6-020 — implemented | localhost owner/read |
 | `POST /api/v1/source-recipes/{recipeId}/previews/{previewId}/mapping` | Lưu opaque visual mapping và re-preview | V6-020 — implemented | localhost owner/write |
 | `GET/POST /api/v1/source-recipes/{recipeId}/crawl-runs` | History hoặc enqueue manual run | V6-020 — implemented | localhost owner; current preview/notice |
+| `POST /api/v1/source-recipes/{recipeId}/document-imports` | Import bounded HTML/JSON/CSV không network | V6-021 — implemented | localhost owner/write; current notice |
 | `GET /api/v1/skills` | Taxonomy và frequency có denominator/coverage | V3 — implemented | local/read |
 | `GET /api/v1/skill-trends` | Bounded cohort/time-window trend | V3 — implemented | local/read |
 | `POST /api/v1/resume-profiles` | Idempotent upload/tạo profile | V5-003 — implemented | owner/write; session khi auth bật |
@@ -450,3 +451,16 @@ Manual run bind idempotency với `sourceId + configHash`; reuse cùng key sau k
 budget/rate và notice version. Worker chuyển pending run thành terminal `cancelled` nếu recipe bị
 pause/retire, notice drift hoặc config không còn khớp; run này không đi vào adapter và không tạo health hay
 absence/removal signal.
+
+### 11.1. Local document import
+
+`POST /api/v1/source-recipes/{recipeId}/document-imports` nhận `multipart/form-data` gồm đúng một part
+`file` và `Idempotency-Key` dài 8–128 ký tự. Endpoint chỉ nhận UTF-8 HTML/JSON/CSV tối đa 2 MiB, không nhận
+URL/header/cookie/proxy/credential/selector/code và không thực hiện outbound request. Candidate URL phải là
+HTTPS, không credential/custom port và đúng recipe origin hostname.
+
+Response `data` gồm `crawlRunId`, `jobsFound`, `jobsNew`, `jobsUpdated`, `jobsUnchanged`,
+`itemsFilteredOut`, `coverage="incomplete"` và `documentHashPrefix`; không echo filename hoặc raw content.
+Import cần current notice acknowledgement, cho phép recipe đang `blocked` nhưng từ chối `retired`, không
+đổi preview/block/enable state, remote source health hoặc absence/removal lifecycle. Lỗi size/type/content/
+challenge/route/idempotency dùng safe error envelope `413|415|422|409`; feature bị tắt trả `404`.

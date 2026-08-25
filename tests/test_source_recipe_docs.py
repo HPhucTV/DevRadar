@@ -124,6 +124,43 @@ def test_current_decision_and_roadmap_preserve_history_without_active_claims() -
     assert "V6-020-no-code-source-recipes.md" in roadmap
 
 
+def test_local_document_import_contract_is_published_without_remote_access_claims() -> None:
+    readme = DOCS["readme"]
+    api = DOCS["api"]
+    domain = DOCS["domain"]
+    ingestion = DOCS["ingestion"]
+    operations = DOCS["operations"]
+    roadmap = DOCS["roadmap"]
+
+    assert "POST /api/v1/source-recipes/{recipeId}/document-imports" in api
+    for term in (
+        "HTML",
+        "JSON",
+        "CSV",
+        "2 MiB",
+        "500",
+        "64 KiB",
+        "coverage=incomplete",
+    ):
+        assert term in ingestion
+    for term in (
+        "không outbound request",
+        "không lưu file gốc",
+        "không thay đổi remote source health",
+        "không tạo `missing` hoặc `removed`",
+    ):
+        assert term in ingestion
+    assert "SourceRecipeDocumentImport" in domain
+    assert "start-devradar.cmd" in readme
+    assert "Nhập tệp" in readme
+    assert "TopCV/Vieclam24h" in readme
+    assert "không tự động crawl theo lịch" in readme
+    assert "controlled fixture" in operations
+    assert "không live-fetch TopCV/Vieclam24h" in operations
+    assert "V6-021" in roadmap
+    assert "V6-021-local-document-import.md" in roadmap
+
+
 def test_active_documentation_local_links_resolve() -> None:
     link_pattern = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
     paths = (

@@ -24,6 +24,7 @@ DevRadar đang ở trạng thái **implementation in progress** trong V6. Local 
 
 - nhận URL trang tuyển dụng qua một `SourceRecipe` generic, không cần người dùng viết adapter;
 - chọn seniority, xem trước 3–5 job và ánh xạ field trực quan khi auto-detection chưa đủ tin cậy;
+- Nhập tệp HTML/JSON/CSV đã lưu cục bộ khi remote preview bị access denial, không upload file gốc để lưu trữ;
 - chạy thủ công hoặc theo lịch cố định, theo dõi history/health và bảo vệ job khỏi false removal;
 - khám phá job, analytics, CV matching và alert qua dashboard Việt/Anh.
 
@@ -100,6 +101,11 @@ Sau khi Docker ready, launcher chỉ tạo `.env` từ `.env.example` khi file c
 migrate PostgreSQL, bật API/web/crawler worker trong localhost no-login mode, chạy smoke rồi mở dashboard.
 Nó không tự enable hoặc crawl URL và không xóa volume. Workflow nằm tại
 `http://127.0.0.1:3000/sources`.
+
+Trong `/sources`, chọn recipe đã xác nhận notice rồi dùng **Nhập tệp** với HTML, JSON hoặc CSV UTF-8 tối
+đa 2 MiB. Đây là đường import thủ công, không fetch URL và không tự động crawl theo lịch. Nó hữu ích khi
+operator mở được TopCV/Vieclam24h trong browser nhưng remote crawler bị access denial; DevRadar vẫn không
+bypass CAPTCHA, login, paywall, `401/403` hoặc anti-bot.
 
 ### Chạy thủ công cho development
 

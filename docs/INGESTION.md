@@ -80,6 +80,23 @@ PostgreSQL giữ bounded `RawJobSnapshot.raw_content`, HTTP metadata, canonical 
 revalidate final URL/config và strict-decode charset; transaction ownership thuộc workflow caller. Raw
 column được deferred khi query để read path không tải payload ngầm.
 
+### 3.3. Local document import
+
+Khi remote preview/crawl bị access denial nhưng operator đã lưu trang hợp lệ cục bộ, endpoint document
+import nhận đúng một tệp UTF-8 HTML, JSON hoặc CSV tối đa `2 MiB` và không vượt recipe byte budget. CSV
+dùng `DictReader` standard library với tối đa `500` row, `64` column và `64 KiB` mỗi cell. Archive, binary,
+NUL, invalid UTF-8, empty/malformed/challenge content và candidate không có HTTPS URL đúng recipe hostname
+bị reject trước canonical persistence.
+
+Import không outbound request, không render/execute HTML/script và không lưu file gốc. Nó chỉ persist
+canonical candidate JSON cùng field provenance, media type và document SHA-256 trong `RawJobSnapshot`, rồi
+tái sử dụng source-scoped normalization, content hash, `Job` và `JobChange`. Idempotency key reuse với cùng
+request trả lại run hiện hữu; reuse với document/config khác là conflict.
+
+Mọi imported run có `coverage=incomplete`: import không tạo `missing` hoặc `removed`, không thay đổi remote source health,
+failure/quarantine/baseline/timestamp và không thay đổi recipe preview/block/enable state.
+Import không cấp schedule cho file và không chứng minh remote crawler truy cập được source.
+
 ## 4. Fetch, pagination và browser policy
 
 - Resolve toàn bộ DNS và fail closed nếu có loopback/link-local/private/reserved address; HTTP pin mỗi
@@ -264,6 +281,9 @@ Acceptance bắt buộc:
 7. Unknown-origin recipe dùng `not_reviewed`; restricted catalog source cần exact-version owner acknowledgement.
 8. Challenge/login/paywall/403 fixture đi tới `blocked` và UI không có bypass action.
 9. Generic empty/layout drift, failed hoặc partial run không tạo false removal.
+10. HTML/JSON/CSV import hợp lệ tạo provenance; replay idempotent, changed candidate tạo đúng change.
+11. Import oversized/binary/invalid/challenge/cross-host/stale acknowledgement/retired bị chặn an toàn.
+12. Import luôn incomplete, không đổi remote health/lifecycle và không live-fetch URL trong file.
 
 Source-specific adapter/evidence cũ được giữ trong Git history và historical ADR/evidence, không phải runtime
 contract hiện hành. Acceptance V6-020 dùng cùng generic implementation cho URL catalog và URL ngoài catalog;

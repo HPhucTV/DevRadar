@@ -463,6 +463,16 @@ Independent re-review trả `0 Critical / 0 Important`. Merged SHA `992347d` pas
 secret/supply-chain gates; GitHub Actions run `32843224071` terminal `success` đủ `7/7` jobs. V6-004/
 V6-005/V6-007/V6-014 provider/public gates không đổi và V6 không được đóng bởi local capability này.
 
+### V6-021 progress (`Done`)
+
+ADR-027 chấp nhận local document import khi remote access bị từ chối mà không nới no-bypass boundary.
+Implementation nhận bounded UTF-8 HTML/JSON/CSV, parse deterministic không network, tái sử dụng canonical
+PostgreSQL ingestion/provenance/idempotency và luôn tạo coverage `incomplete`; import không đổi recipe
+preview/block/enable state, remote source health hoặc absence/removal lifecycle. Dashboard cung cấp flow
+Việt/Anh tại `/sources`. Full Python/PostgreSQL/web/static/runtime/secret gates và controlled-fixture
+acceptance được ghi tại [V6-021-local-document-import.md](evidence/V6-021-local-document-import.md), không
+live-fetch TopCV/Vieclam24h hoặc claim scheduled access.
+
 ## 9. Quy tắc cập nhật roadmap
 
 - Chỉ đổi status khi kiểm tra exit criteria và link evidence cụ thể.

@@ -114,6 +114,8 @@ PostgreSQL test hiện dùng `DEVRADAR_TEST_DATABASE_URL`, tạo database tên n
 ### 4.3. End-to-end và acceptance
 
 - V6-020 local: create recipe → acknowledge notice → preview/map → enable → Crawl now → provenance/history.
+- V6-021 local: import một controlled fixture HTML/JSON/CSV vào recipe đã acknowledge, xác minh provenance,
+  idempotency, incomplete coverage và remote block/health state không đổi; không live-fetch TopCV/Vieclam24h.
 - V2: nhiều scheduled fixture cycles phát hiện new/update/missing/removed/reactivated, duplicate slot không process lại, partial/anomaly không false removal và quarantine recovery đúng policy.
 - V3: deterministic extraction + LLM fallback trên labeled suite; fixed local model backfill; keyword/semantic comparison và skill trend có denominator/coverage.
 - V4: historical planner/validator/analyst safety suite và migration regression chứng minh runtime bị loại ở current head.
@@ -127,6 +129,7 @@ PostgreSQL test hiện dùng `DEVRADAR_TEST_DATABASE_URL`, tạo database tên n
 | Replay cùng snapshot | Không duplicate Job hoặc JobChange; metric idempotent. |
 | Crawl network/parser fail | Run `partial/failed`; không tăng missing count. |
 | Recipe chưa preview/current acknowledgement | Không enable hoặc enqueue; không outbound crawl. |
+| Local document import | Đúng một UTF-8 HTML/JSON/CSV bounded file; không network/file retention, coverage incomplete và không đổi remote health/removal state. |
 | Duplicate schedule/API trigger hoặc hai worker claim | Một trigger/pending row chỉ được process một lần; replay trả history hiện hữu. |
 | Redirect/private address | Bị chặn và ghi safe policy error; không follow. |
 | Empty/anomalous source response | Coverage không được coi complete nếu invariant chưa đạt. |
@@ -312,6 +315,8 @@ probe bị treo sẽ bị terminate, nên tổng preflight không chờ vô hạ
 Sau preflight, launcher giữ `.env` nếu đã có, build API/web/crawler, migrate, bật localhost no-login +
 Source Recipe worker, chạy API/web `/sources`/privacy smoke rồi mới mở dashboard. Nó không tự cài Docker,
 auto-enable/auto-crawl recipe hoặc xóa volume. Manual Compose commands trong README/AGENTS là fallback.
+Sau khi mở `/sources`, operator có thể dùng card Nhập tệp cho controlled local HTML/JSON/CSV; launcher
+không tự chọn tệp, không schedule lại import và không biến flow này thành remote fetch.
 
 - clean setup từ documented prerequisites;
 - migration chạy trên PostgreSQL mới;

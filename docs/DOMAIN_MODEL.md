@@ -21,6 +21,7 @@ Tài liệu này là ubiquitous language của DevRadar. Tên entity, enum và s
 | Source | Một nguồn tuyển dụng đã đăng ký cùng policy crawl. |
 | SourceRecipe | Cấu hình owner-local cho một listing URL, terms notice, seniority, mapping và lịch cố định. |
 | SourceRecipePreview | Artifact ngắn hạn để kiểm tra 3–5 candidate/visual mapping trước canonical ingestion. |
+| SourceRecipeDocumentImport | Input request-scoped HTML/JSON/CSV đã validate để tạo canonical run không network. |
 | CrawlRun | Một lần chạy có boundary, metric và kết quả hoàn chỉnh/không hoàn chỉnh rõ ràng. |
 | RawJobSnapshot | Bằng chứng bất biến cho một response/job observation tại một thời điểm. |
 | Job | Canonical listing của một source; chưa tự động đồng nhất với listing tương tự ở source khác. |
@@ -326,6 +327,12 @@ bounded candidates, parser/provenance warnings, optional screenshot + opaque ele
 `source_unavailable` là failure transient; `layout_unavailable` là block reason khi không thể tạo preview
 hoặc mapper hợp lệ. Preview không tạo `CrawlRun`, `RawJobSnapshot`, `Job` hoặc `JobChange`. Chỉ current
 successful preview và current acknowledgement mới cho phép `enabled`.
+
+`SourceRecipeDocumentImport` không phải persisted entity hoặc remote preview. Nó là bounded request-scoped
+artifact gồm canonical candidates, media type và SHA-256 document; file gốc không được giữ sau request.
+Import tạo `CrawlRun(trigger=manual, coverage_status=incomplete)` cùng `RawJobSnapshot → Job/JobChange`,
+nhưng không đổi recipe lifecycle, remote Source health/baseline/timestamp hoặc tạo absence signal. Snapshot
+chỉ giữ canonical candidate JSON, field provenance, media type và document hash.
 
 Boundary ban đầu của `SourceRecipe` chỉ gồm normalized listing host/path. Nếu candidate canonical job URL
 chứng minh detail route mới, preview trả proposal host/path để owner xác nhận exact union. Xác nhận không
