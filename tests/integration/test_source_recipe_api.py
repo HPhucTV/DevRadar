@@ -1,18 +1,27 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterator
 from dataclasses import replace
 from datetime import UTC, date, datetime, time, timedelta
+from io import BytesIO
 from pathlib import Path
 from uuid import UUID
 
 import pytest
 from alembic import command
 from alembic.config import Config
+from fastapi import Request, UploadFile
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from starlette.datastructures import FormData
 
+from devradar.api.errors import ApiContractError
+from devradar.api.source_recipe_imports import (
+    _document_upload_from_form,
+    read_document_upload,
+)
 from devradar.auth.models import AuthRole, User
 from devradar.auth.service import (
     AUTH_ENABLED_ENV,
@@ -77,6 +86,45 @@ def _payload(*, listing_url: str = "https://example.test/jobs?role=backend") -> 
 
 def _csrf(token: str) -> dict[str, str]:
     return {"X-DevRadar-CSRF": token}
+
+
+def _document_headers(csrf: str, key: str = "document-import-1") -> dict[str, str]:
+    return {**_csrf(csrf), "Idempotency-Key": key}
+
+
+def _document_payload(*, title: str = "Backend Intern") -> bytes:
+    return (
+        "title,company,url,level\n"
+        f"{title},Example,https://example.test/careers/1,intern\n"
+        "Senior Data,Example,https://example.test/careers/2,senior\n"
+    ).encode()
+
+
+def _create_acknowledged_blocked_recipe(
+    client: TestClient,
+    *,
+    database_url: str,
+    csrf: str,
+) -> str:
+    created = client.post(
+        "/api/v1/source-recipes",
+        json=_payload(),
+        headers=_csrf(csrf),
+    )
+    data = created.json()["data"]
+    acknowledged = client.patch(
+        f"/api/v1/source-recipes/{data['id']}",
+        json={"acknowledgedNoticeVersion": data["termsNoticeVersion"]},
+        headers=_csrf(csrf),
+    )
+    assert acknowledged.status_code == 200
+    with Session(_database_engine(database_url)) as session:
+        recipe = session.get(SourceRecipe, UUID(data["id"]))
+        assert recipe is not None
+        recipe.status = RecipeStatus.BLOCKED
+        recipe.block_reason = "access_denied"
+        session.commit()
+    return str(data["id"])
 
 
 def _seed_successful_preview(
@@ -679,3 +727,290 @@ def test_mapping_payload_is_sanitized_and_enable_gates_crawl_requests(
     history = client.get(f"/api/v1/source-recipes/{recipe_id}/crawl-runs")
     assert history.status_code == 200
     assert history.json()["pagination"]["totalItems"] == 1
+
+
+def test_document_import_closes_invalid_multipart_parts() -> None:
+    first = UploadFile(BytesIO(b"first"), filename="first.csv")
+    second = UploadFile(BytesIO(b"second"), filename="second.csv")
+    form = FormData([("file", first), ("file", second)])
+
+    with pytest.raises(ApiContractError) as raised:
+        asyncio.run(_document_upload_from_form(form))
+
+    assert raised.value.code == "document_import_multipart_invalid"
+    assert first.file.closed
+    assert second.file.closed
+
+
+def test_document_import_caps_chunked_request_before_multipart_parse() -> None:
+    received = 0
+
+    async def receive() -> dict[str, object]:
+        nonlocal received
+        received += 1
+        return {
+            "type": "http.request",
+            "body": b"x" * (2 * 1024 * 1024 if received == 1 else 128 * 1024),
+            "more_body": received == 1,
+        }
+
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v1/source-recipes/00000000-0000-0000-0000-000000000000/document-imports",
+            "headers": [(b"content-type", b"multipart/form-data; boundary=test")],
+        },
+        receive,
+    )
+
+    with pytest.raises(ApiContractError) as raised:
+        asyncio.run(read_document_upload(request))
+
+    assert raised.value.status_code == 413
+    assert raised.value.code == "document_import_too_large"
+    assert received == 2
+
+
+def test_document_import_disabled_gate_runs_before_form_parsing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED", raising=False)
+
+    async def unexpected_form_parse(*args: object, **kwargs: object) -> FormData:
+        del args, kwargs
+        raise AssertionError("multipart parsing ran before the document import gate")
+
+    monkeypatch.setattr(Request, "form", unexpected_form_parse)
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/source-recipes/00000000-0000-0000-0000-000000000000/document-imports",
+            headers={"Idempotency-Key": "document-import-1"},
+            files={"file": ("jobs.csv", _document_payload(), "text/csv")},
+        )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "document_import_disabled"
+
+
+@pytest.mark.postgresql
+def test_document_import_api_is_owner_scoped_idempotent_and_sanitized(
+    source_recipe_api: tuple[TestClient, str, str],
+) -> None:
+    client, database_url, csrf = source_recipe_api
+    recipe_id = _create_acknowledged_blocked_recipe(
+        client,
+        database_url=database_url,
+        csrf=csrf,
+    )
+    url = f"/api/v1/source-recipes/{recipe_id}/document-imports"
+    headers = _document_headers(csrf)
+
+    first = client.post(
+        url,
+        headers=headers,
+        files={"file": ("jobs.csv", _document_payload(), "text/csv")},
+    )
+    replay = client.post(
+        url,
+        headers=headers,
+        files={"file": ("jobs.csv", _document_payload(), "text/csv")},
+    )
+
+    assert first.status_code == replay.status_code == 200
+    data = first.json()["data"]
+    assert replay.json()["data"]["crawlRunId"] == data["crawlRunId"]
+    assert data["jobsFound"] == data["jobsNew"] == 2
+    assert data["jobsUpdated"] == data["jobsUnchanged"] == 0
+    assert data["itemsFilteredOut"] == 0
+    assert data["coverage"] == "incomplete"
+    assert len(data["documentHashPrefix"]) == 12
+    assert "Backend Intern" not in first.text
+    assert "jobs.csv" not in first.text
+
+    conflict = client.post(
+        url,
+        headers=headers,
+        files={
+            "file": (
+                "jobs.csv",
+                _document_payload(title="Backend Intern Updated"),
+                "text/csv",
+            )
+        },
+    )
+    assert conflict.status_code == 409
+    assert conflict.json()["error"]["code"] == "idempotency_conflict"
+
+    missing_csrf = client.post(
+        url,
+        headers={"Idempotency-Key": "document-import-2"},
+        files={"file": ("jobs.csv", _document_payload(), "text/csv")},
+    )
+    assert missing_csrf.status_code == 403
+    assert missing_csrf.json()["error"]["code"] == "csrf_invalid"
+
+    with Session(_database_engine(database_url)) as session:
+        session.add(
+            User(
+                username="document-import-other",
+                password_hash=hash_password("other document password"),
+                role=AuthRole.OWNER.value,
+                is_active=True,
+            )
+        )
+        session.commit()
+    with TestClient(app) as other:
+        login = other.post(
+            "/api/v1/auth/login",
+            json={
+                "username": "document-import-other",
+                "password": "other document password",
+            },
+        )
+        other_csrf = login.json()["data"]["csrfToken"]
+        hidden = other.post(
+            url,
+            headers=_document_headers(other_csrf, "document-import-other"),
+            files={"file": ("jobs.csv", _document_payload(), "text/csv")},
+        )
+    assert hidden.status_code == 404
+
+    with Session(_database_engine(database_url)) as session:
+        assert session.scalar(select(func.count()).select_from(CrawlRun)) == 1
+        assert session.scalar(select(func.count()).select_from(RawJobSnapshot)) == 2
+        assert session.scalar(select(func.count()).select_from(Job)) == 2
+        assert session.scalar(select(func.count()).select_from(JobChange)) == 2
+
+
+@pytest.mark.postgresql
+def test_document_import_api_rejects_boundary_abuse(
+    source_recipe_api: tuple[TestClient, str, str],
+) -> None:
+    client, database_url, csrf = source_recipe_api
+    recipe_id = _create_acknowledged_blocked_recipe(
+        client,
+        database_url=database_url,
+        csrf=csrf,
+    )
+    url = f"/api/v1/source-recipes/{recipe_id}/document-imports"
+
+    missing_key = client.post(
+        url,
+        headers=_csrf(csrf),
+        files={"file": ("jobs.csv", _document_payload(), "text/csv")},
+    )
+    invalid_key = client.post(
+        url,
+        headers=_document_headers(csrf, "short"),
+        files={"file": ("jobs.csv", _document_payload(), "text/csv")},
+    )
+    multiple = client.post(
+        url,
+        headers=_document_headers(csrf, "document-import-multiple"),
+        files=[
+            ("file", ("one.csv", _document_payload(), "text/csv")),
+            ("file", ("two.csv", _document_payload(), "text/csv")),
+        ],
+    )
+    extra = client.post(
+        url,
+        headers=_document_headers(csrf, "document-import-extra"),
+        data={"selector": ".job"},
+        files={"file": ("jobs.csv", _document_payload(), "text/csv")},
+    )
+
+    assert missing_key.status_code == invalid_key.status_code == 422
+    assert missing_key.json()["error"]["code"] == "idempotency_key_required"
+    assert invalid_key.json()["error"]["code"] == "idempotency_key_invalid"
+    assert multiple.json()["error"]["code"] == "document_import_multipart_invalid"
+    assert extra.json()["error"]["code"] == "document_import_multipart_invalid"
+
+    cases = [
+        (
+            "document-import-type",
+            ("jobs.zip", b"PK\x03\x04", "application/zip"),
+            415,
+            "document_import_type_unsupported",
+        ),
+        (
+            "document-import-utf8",
+            ("jobs.csv", b"\xff", "text/csv"),
+            422,
+            "document_import_invalid",
+        ),
+        (
+            "document-import-challenge",
+            (
+                "jobs.html",
+                b"<html><body>Verify you are human CAPTCHA</body></html>",
+                "text/html",
+            ),
+            422,
+            "document_import_challenge_detected",
+        ),
+        (
+            "document-import-host",
+            (
+                "jobs.csv",
+                b"title,company,url\nA,Example,https://other.test/jobs/1\n",
+                "text/csv",
+            ),
+            422,
+            "document_import_route_blocked",
+        ),
+    ]
+    for key, file_part, expected_status, expected_code in cases:
+        response = client.post(
+            url,
+            headers=_document_headers(csrf, key),
+            files={"file": file_part},
+        )
+        assert response.status_code == expected_status
+        assert response.json()["error"]["code"] == expected_code
+
+    oversized = client.post(
+        url,
+        headers=_document_headers(csrf, "document-import-oversized"),
+        files={"file": ("jobs.csv", b"x" * (2 * 1024 * 1024 + 1), "text/csv")},
+    )
+    assert oversized.status_code == 413
+    assert oversized.json()["error"]["code"] == "document_import_too_large"
+
+    unacknowledged = client.post(
+        "/api/v1/source-recipes",
+        json={
+            **_payload(listing_url="https://unreviewed.test/jobs"),
+            "name": "Unacknowledged document recipe",
+        },
+        headers=_csrf(csrf),
+    ).json()["data"]
+    acknowledgement_required = client.post(
+        f"/api/v1/source-recipes/{unacknowledged['id']}/document-imports",
+        headers=_document_headers(csrf, "document-import-unacknowledged"),
+        files={
+            "file": (
+                "jobs.csv",
+                b"title,company,url\nA,Example,https://unreviewed.test/jobs/1\n",
+                "text/csv",
+            )
+        },
+    )
+    assert acknowledgement_required.status_code == 409
+    assert (
+        acknowledgement_required.json()["error"]["code"]
+        == "document_import_acknowledgement_required"
+    )
+
+    with Session(_database_engine(database_url)) as session:
+        recipe = session.get(SourceRecipe, UUID(recipe_id))
+        assert recipe is not None
+        recipe.status = RecipeStatus.RETIRED
+        session.commit()
+    retired = client.post(
+        url,
+        headers=_document_headers(csrf, "document-import-retired"),
+        files={"file": ("jobs.csv", _document_payload(), "text/csv")},
+    )
+    assert retired.status_code == 409
+    assert retired.json()["error"]["code"] == "document_import_recipe_invalid"

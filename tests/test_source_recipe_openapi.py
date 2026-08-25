@@ -17,6 +17,7 @@ def test_source_recipe_openapi_publishes_only_bounded_resource_contracts() -> No
         "/api/v1/source-recipes/{recipeId}/previews/{previewId}": {"get"},
         "/api/v1/source-recipes/{recipeId}/previews/{previewId}/mapping": {"post"},
         "/api/v1/source-recipes/{recipeId}/crawl-runs": {"get", "post"},
+        "/api/v1/source-recipes/{recipeId}/document-imports": {"post"},
     }
     for path, methods in expected.items():
         assert methods <= set(document["paths"][path])
@@ -47,3 +48,19 @@ def test_source_recipe_openapi_publishes_only_bounded_resource_contracts() -> No
     preview_properties = schemas["SourceRecipePreviewData"]["properties"]
     assert preview_properties["proposedHosts"]["items"]["type"] == "string"
     assert preview_properties["proposedPathPrefixes"]["items"]["type"] == "string"
+
+    import_operation = document["paths"]["/api/v1/source-recipes/{recipeId}/document-imports"][
+        "post"
+    ]
+    multipart = import_operation["requestBody"]["content"]["multipart/form-data"]["schema"]
+    assert multipart["required"] == ["file"]
+    assert set(multipart["properties"]) == {"file"}
+    assert multipart["additionalProperties"] is False
+    idempotency = next(
+        parameter
+        for parameter in import_operation["parameters"]
+        if parameter["name"] == "Idempotency-Key"
+    )
+    assert idempotency["required"] is True
+    assert idempotency["schema"]["minLength"] == 8
+    assert idempotency["schema"]["maxLength"] == 128
