@@ -143,11 +143,15 @@ def test_bounded_process_terminates_a_hung_probe() -> None:
         ("Invoke-BoundedProcess",),
         """
 $childPowerShell = (Get-Process -Id $PID).Path
+$stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 $result = Invoke-BoundedProcess `
     -FilePath $childPowerShell `
     -Arguments '-NoLogo -NoProfile -Command "Start-Sleep -Seconds 5"' `
     -TimeoutMilliseconds 200
-$result | ConvertTo-Json -Compress
+[pscustomobject]@{
+    Completed = $result.Completed
+    ElapsedMilliseconds = $stopwatch.ElapsedMilliseconds
+} | ConvertTo-Json -Compress
 """,
         timeout=4,
     )
@@ -155,6 +159,7 @@ $result | ConvertTo-Json -Compress
     assert completed.returncode == 0, completed.stderr
     payload = json.loads(completed.stdout.strip())
     assert payload["Completed"] is False
+    assert payload["ElapsedMilliseconds"] < 1500
 
 
 def test_desktop_context_rejects_a_remote_endpoint() -> None:
