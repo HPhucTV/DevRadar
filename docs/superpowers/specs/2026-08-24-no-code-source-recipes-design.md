@@ -245,6 +245,20 @@ HTTPS + DNS/IP policy pass và owner xác nhận danh sách domain dễ đọc; 
 Redirect ở mỗi run vẫn được revalidate. Không nhận arbitrary headers, cookies, proxy, DNS hoặc URL
 override theo run.
 
+Preview chỉ đề xuất host lấy từ canonical job URL của 3–5 candidate đã parse; host của analytics,
+font, image, CDN hoặc browser subresource không được dùng làm `proposedHosts`. Preview không fetch URL
+candidate nằm ngoài `allowed_hosts`. Mỗi proposal được normalize, loại host listing hiện có, giới hạn
+theo phần capacity còn lại trong tổng ba host và đi kèm common path prefix tại segment boundary được
+derive từ các candidate cùng host; không tự mở path `/` khi các candidate không chứng minh boundary đó.
+
+Khi có proposal, UI hiển thị exact host/path list và một nút xác nhận rõ ràng; không có textbox để
+nhập host tùy ý. Xác nhận dùng `PATCH /api/v1/source-recipes/{recipeId}` để cộng exact proposal vào
+`allowedHosts` và các observed path prefix vào boundary hiện có. Server revalidate toàn bộ URL, giữ
+listing host, từ chối stale/tampered/superset confirmation, reset recipe về `draft`, xóa successful
+preview cũ và UI tự queue preview mới. `enabled` bị từ chối với
+`preview_hosts_confirmation_required` nếu current successful preview vẫn còn proposed host chưa xác
+nhận. DNS/IP/redirect validation tiếp tục chạy fail-closed ở mọi fetch sau xác nhận.
+
 Unsupported multi-step form, infinite interaction không có stable load-more, websocket-only private
 feed hoặc credential flow trả `unsupported_interaction`; user không phải viết code để xử lý.
 
@@ -281,7 +295,9 @@ POST   /api/v1/source-recipes/{recipeId}/crawl-runs
 
 Create nhận listing URL, name, seniority, schedule và acknowledgement fields đã validate. Crawl-run
 mutation không nhận URL/header/mapping override. Screenshot được trả dạng bounded data URL trong JSON
-preview response để giữ API JSON-only và tránh thêm artifact service.
+preview response để giữ API JSON-only và tránh thêm artifact service. `proposedHosts` chỉ chứa host
+candidate detail chưa nằm trong saved boundary. Client chỉ có thể xác nhận exact proposal của preview
+hiện hành; PATCH host làm invalid preview và bắt buộc preview lại trước enable.
 
 Các endpoint `/api/v1/custom-sources` và BFF tương ứng bị xóa theo hard-cut migration; project chưa
 phát hành compatibility promise cho API này. Error code và lifecycle mới phải được cập nhật đồng thời
@@ -358,7 +374,10 @@ README cập nhật một-click path cùng manual fallback commands đã kiểm 
 
 ## Failure handling
 
-- Preview dưới 3 distinct valid jobs: `preview_insufficient_jobs`, giữ `draft`.
+- Preview dưới 3 distinct valid jobs với screenshot + opaque element map hợp lệ: public
+  `mapping_required`, giữ `draft`; nếu visual artifact không dùng được: `layout_unavailable`, chuyển
+  `blocked`. DNS/network/TLS/`5xx` transient trả public `source_unavailable` và không bị gắn nhầm thành
+  technical policy block.
 - Mapping ID sai origin/expired: `preview_mapping_expired`, yêu cầu preview mới.
 - Title/company/job URL thiếu: preview fail; location có thể absent explicit.
 - Pagination lặp URL, detail trùng identity hoặc vượt budget: run `partial/incomplete`; không removal.
@@ -376,6 +395,7 @@ README cập nhật một-click path cùng manual fallback commands đã kiểm 
 
 - terms notice/acknowledgement version, exact-origin binding và owner isolation;
 - HTTPS, user-info, custom port, DNS/IP, redirect/path/host boundary negatives;
+- candidate detail host proposal, exact confirmation, stale/tampered/superset rejection và giới hạn ba host;
 - structured data, heuristic và saved mapping fixtures;
 - opaque element ID origin/expiry/tamper tests;
 - seniority VI/EN aliases, `all`, multi-select và unknown filtering;
@@ -387,7 +407,8 @@ README cập nhật một-click path cùng manual fallback commands đã kiểm 
 
 - destructive migration purge đúng source-derived graph và giữ auth/operator/resume/rule data;
 - migration failure rollback, no partial purge;
-- create → acknowledge → preview → mapping correction → enable → manual/scheduled run;
+- create → acknowledge → preview → confirm detail host/path → re-preview → mapping correction → enable
+  → manual/scheduled run;
 - same input rerun idempotent;
 - failed/partial/layout-drift run không tạo false missing/removal;
 - two qualified complete absences mới tạo missing/removed, rồi reactivation giữ history;
@@ -401,6 +422,7 @@ README cập nhật một-click path cùng manual fallback commands đã kiểm 
 - known restricted source preview được sau acknowledgement;
 - screenshot mapper chọn card/field/pagination mà không lộ selector;
 - enable chỉ sau preview 3–5 job;
+- proposed host hiển thị dễ đọc, xác nhận một lần rồi tự re-preview; không có arbitrary host input;
 - blocked source hiển thị reason và không có bypass action;
 - Crawl now, schedule, polling/history và one-click startup smoke.
 
@@ -416,6 +438,38 @@ README cập nhật một-click path cùng manual fallback commands đã kiểm 
 8. Crawl fail/partial/empty anomaly không false removal.
 9. Seniority unknown không lọt vào filtered recipe.
 10. Purge không đụng auth/operator/ResumeProfile ngoài JobMatch liên quan.
+11. Cross-host structured listing như Greenhouse không fetch detail trước confirmation; confirmation
+    exact host/path cho phép re-preview/crawl, còn stale proposal hoặc host thứ tư bị từ chối.
+
+## Đánh giá Firecrawl ngày 2026-08-25
+
+[Firecrawl](https://github.com/firecrawl/firecrawl) có các capability liên quan gồm scrape một URL,
+crawl/map nhiều URL, JavaScript rendering và output Markdown/HTML/screenshot/structured JSON. Đây là
+một hướng thay thế hợp lệ nếu DevRadar sau này cần thuê ngoài hoặc tự vận hành một crawl engine tổng
+quát. Tuy nhiên nó không giải quyết trực tiếp domain contract của DevRadar: provenance
+`SourceRecipe → CrawlRun → RawJobSnapshot → Job`, seniority filter, idempotency và false-removal gate
+vẫn phải do DevRadar kiểm soát.
+
+Quyết định hiện tại là **không tích hợp Firecrawl vào runtime** và không thêm SDK/API key/service:
+
+- [self-host guide](https://docs.firecrawl.dev/contributing/self-host) yêu cầu vận hành thêm API,
+  worker, PostgreSQL queue, Redis và RabbitMQ; default local API chưa authentication, còn screenshot,
+  action và advanced anti-bot cần Fire-engine hoặc Cloud. Stack này vượt nhu cầu single-operator đã
+  đáp ứng bằng PostgreSQL queue + Playwright hiện có;
+- repository dùng [AGPL-3.0](https://github.com/firecrawl/firecrawl/blob/main/LICENSE), nên copy hoặc
+  sửa code self-host phải được review nghĩa vụ license trước khi phân phối/cung cấp qua network;
+- Firecrawl có [security advisory SSRF](https://github.com/firecrawl/firecrawl/security/advisories/GHSA-vjp8-2wgg-p734).
+  Advisory đã patch version cũ nhưng vẫn khuyến nghị secure proxy cho OSS Playwright vì không thể bảo
+  đảm mọi SSRF path của Chrome/Playwright; Firecrawl không được dùng để thay DevRadar allow-list,
+  DNS/IP validation, redirect validation hoặc owner confirmation;
+- Cloud thêm external data flow, API secret, credit/cost, cache/retention và provider availability.
+  Các boundary này chưa có requirement hoặc evaluation gate trong phase hiện tại.
+
+DevRadar chỉ tham khảo các pattern nhỏ không phụ thuộc Firecrawl: tách preview/discovery khỏi canonical
+ingestion, typed output, bounded caching và explicit threat policy. Một Firecrawl provider chỉ được
+đề xuất lại bằng ADR/spike khi có số liệu cho thấy generic engine hiện tại thất bại trên nguồn cần hỗ
+trợ, đồng thời khóa license, privacy/retention, chi phí, availability và SSRF/egress. Provider tương lai
+vẫn phải nhận URL từ persisted recipe boundary, không được trở thành arbitrary-fetch hoặc bypass path.
 
 ## Delivery slices
 
@@ -427,8 +481,9 @@ Một implementation plan bao phủ cùng design nhưng chia checkpoint độc l
 4. Scheduler, seniority filter, UI/BFF và ten-source catalog acceptance.
 5. One-click launcher, docs/evidence, PostgreSQL/Compose/browser/full gates.
 
-Không thêm Redis, Prefect, external AI, microservice, proxy service hoặc source-specific adapter. Direct
-PostgreSQL queue, existing modular monolith và crawler container là đủ cho single-operator workload.
+Không thêm Redis, Prefect, Firecrawl, external AI, microservice, proxy service hoặc source-specific
+adapter. Direct PostgreSQL queue, existing modular monolith và crawler container là đủ cho
+single-operator workload.
 
 ## Trade-offs được chấp nhận
 
