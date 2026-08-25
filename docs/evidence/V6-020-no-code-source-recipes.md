@@ -1,6 +1,6 @@
 # V6-020 — No-code Source Recipes
 
-**Status:** `Ready to merge` — independent re-review pass; merge và remote CI pending
+**Status:** `Done` — merged vào `main`; exact-SHA local và remote gates pass
 
 **Boundary:** single-operator `LOCALHOST_SERVICE`; không phải public deployment evidence
 
@@ -125,10 +125,20 @@ Playwright `1.62.0` actual bundled-Chromium smoke với DNS pinning + no-proxy t
 local ban đầu thiếu headless-shell ICU data; `playwright install --force chromium` khôi phục exact revision
 `1234` trước smoke, không có production code workaround.
 
-## Gate còn mở trước khi đánh dấu Done
+## Closeout — 2026-08-25
 
-- merge vào `main`, rerun local gates trên merged HEAD;
-- push exact merged SHA và required GitHub Actions đạt terminal success.
+- `codex/no-code-source-recipes` đã fast-forward merge vào `main` tại exact SHA
+  `992347de8ab910448d05e0fdfc800f469658461a` và push lên `origin/main`.
+- Merged-HEAD PostgreSQL suite: `422 passed in 198.22s`; Ruff lint/format, mypy `141 source files`,
+  `pip check`, web `66` tests + ESLint + TypeScript + Next.js build đều pass.
+- Merged-HEAD Docker build pass cho `devradar-app:local`, `devradar-crawler:local` và
+  `devradar-web:local`; `secret_scan=pass` và `supply_chain_scan=pass`.
+- Merged-HEAD Trivy full HIGH/CRITICAL counts: API `19`, crawler `34`, web `31`; tất cả `unfixed`,
+  `fixed=0`.
+- GitHub Actions [run `32843224071`](https://github.com/HPhucTV/DevRadar/actions/runs/32843224071)
+  của exact SHA trên đạt terminal `success` đủ `7/7` jobs: Python/default tests, PostgreSQL integration,
+  web check/build, Compose migration/API smoke, application rollback, PostgreSQL backup/restore và
+  container advisory gate.
 
 Không đổi trạng thái V6-004, V6-005, V6-007 hoặc V6-014: public HTTPS, managed secrets, provider backup,
 RPO/RTO và public uptime evidence vẫn chưa được task này cung cấp.
