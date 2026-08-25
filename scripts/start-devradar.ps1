@@ -42,7 +42,7 @@ function Invoke-BoundedProcess {
             catch [System.InvalidOperationException] {
                 # The process exited between the timeout and the kill request.
             }
-            $process.WaitForExit()
+            [void]$process.WaitForExit(1000)
             return [pscustomobject]@{
                 Completed = $false
                 ExitCode = $null

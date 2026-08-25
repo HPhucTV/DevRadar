@@ -163,6 +163,14 @@ $result = Invoke-BoundedProcess `
     assert payload["ElapsedMilliseconds"] < 1500
 
 
+def test_bounded_process_does_not_wait_unbounded_after_timeout() -> None:
+    launcher = _read(LAUNCHER)
+    timeout_start = launcher.index("if (-not $process.WaitForExit($TimeoutMilliseconds)) {")
+    timeout_return = launcher.index("return [pscustomobject]@{", timeout_start)
+
+    assert "$process.WaitForExit()" not in launcher[timeout_start:timeout_return]
+
+
 def test_desktop_context_rejects_a_remote_endpoint() -> None:
     completed = _run_launcher_functions(
         ("Test-DockerDesktopContext",),
