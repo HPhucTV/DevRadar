@@ -96,7 +96,7 @@ test("shared shell and route surfaces use redesign primitives", async () => {
   const jobs = await source("src/components/job-list.tsx");
   assert.match(shell, /brand-mark/);
   assert.match(shell, /PrimaryNavigation/);
-  assert.match(overview, /dashboard-grid/);
+  assert.match(overview, /overview-layout/);
   assert.match(jobs, /job-table/);
 });
 
@@ -142,6 +142,20 @@ test("job explorer uses a dense table and focus-safe summary inspector", async (
   assert.match(jobs, /mobile-job-link/);
   assert.match(css, /\.job-table-row/);
   assert.match(css, /@media\(max-width:767px\)/);
+});
+
+test("core data routes use the approved dense archetypes", async () => {
+  const overview = await source("src/app/(dashboard)/page.tsx");
+  const jobs = await source("src/app/(dashboard)/jobs/page.tsx");
+  const analytics = await source("src/app/(dashboard)/analytics/page.tsx");
+  assert.match(overview, /route-header/);
+  assert.match(overview, /metrics-layout/);
+  assert.match(overview, /comparison-list/);
+  assert.match(overview, /data-surface/);
+  assert.match(jobs, /explorer-toolbar/);
+  assert.match(jobs, /data-surface/);
+  assert.match(analytics, /comparison-list/);
+  assert.match(analytics, /trend-table/);
 });
 
 test("primary navigation exposes current route and bounded mobile disclosure", async () => {

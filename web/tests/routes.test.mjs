@@ -187,6 +187,7 @@ test("privacy route exposes truthful retention, AI and source policy", async () 
   const page = await readFile(new URL(route.pageFile, webRoot), "utf8");
   const bff = await readFile(new URL("src/app/api/devradar/privacy/route.ts", webRoot), "utf8");
   const shell = await readFile(new URL("src/components/app-shell.tsx", webRoot), "utf8");
+  const navigation = await readFile(new URL("src/components/primary-navigation.tsx", webRoot), "utf8");
   const dictionaries = await readFile(new URL("src/i18n/dictionaries.json", webRoot), "utf8");
   assert.match(page, /resumeProfileTtlHours/);
   assert.match(page, /sourceRecipesLocalOnly/);
@@ -197,5 +198,5 @@ test("privacy route exposes truthful retention, AI and source policy", async () 
   assert.match(dictionaries, /external LLM/i);
   assert.match(page, /ApiErrorState/);
   assert.match(bff, /proxyBackend/);
-  assert.match(shell, /privacy/);
+  assert.match(shell + navigation, /privacy/);
 });
