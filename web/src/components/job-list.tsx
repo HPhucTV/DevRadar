@@ -7,7 +7,7 @@ import { formatDate } from "@/i18n/locale";
 import type { Job } from "@/lib/api";
 import { sourceDisplayName } from "@/lib/source-display";
 
-export function JobList({ jobs }: { jobs: Job[] }) {
+export function JobList({ jobs, compact = false }: { jobs: Job[]; compact?: boolean }) {
   const { locale, dictionary } = useI18n();
   const statusLabels = dictionary.status as Record<string, string>;
   const [selected, setSelected] = useState<Job | null>(null);
@@ -39,7 +39,7 @@ export function JobList({ jobs }: { jobs: Job[] }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [selected]);
 
-  return <div className={`job-explorer${selected ? " has-inspector" : ""}`}>
+  return <div className={`job-explorer${compact ? " is-compact" : ""}${selected ? " has-inspector" : ""}`}>
     <div className="job-table" role="table">
       <div className="job-table-row job-table-header" role="row">
         <span role="columnheader">{dictionary.jobs.titleColumn}</span>
@@ -53,16 +53,20 @@ export function JobList({ jobs }: { jobs: Job[] }) {
         const location = job.location.city ?? job.location.raw ?? dictionary.jobs.locationMissing;
         return <article className="job-table-row" key={job.id} role="row">
           <div className="job-primary-cell" role="cell">
-            <button
-              aria-controls="job-summary-inspector"
-              aria-expanded={selected?.id === job.id}
-              className="desktop-job-trigger"
-              onClick={(event) => openInspector(job, event.currentTarget)}
-              type="button"
-            >
-              {job.title}
-            </button>
-            <Link className="mobile-job-link" href={`/jobs/${job.id}`}>{job.title}</Link>
+            {compact
+              ? <Link className="compact-job-link" href={`/jobs/${job.id}`}>{job.title}</Link>
+              : <>
+                <button
+                  aria-controls="job-summary-inspector"
+                  aria-expanded={selected?.id === job.id}
+                  className="desktop-job-trigger"
+                  onClick={(event) => openInspector(job, event.currentTarget)}
+                  type="button"
+                >
+                  {job.title}
+                </button>
+                <Link className="mobile-job-link" href={`/jobs/${job.id}`}>{job.title}</Link>
+              </>}
             <span>{location} · <span title={job.source.name}>{sourceName}</span> · {formatDate(job.lastSeenAt, locale, { dateStyle: "medium" })}</span>
           </div>
           <span className="job-company-cell" role="cell">{job.companyName}</span>
@@ -76,7 +80,7 @@ export function JobList({ jobs }: { jobs: Job[] }) {
         </article>;
       })}
     </div>
-    {selected ? <aside
+    {!compact && selected ? <aside
       aria-labelledby="job-inspector-title"
       className="job-inspector glass-surface"
       id="job-summary-inspector"

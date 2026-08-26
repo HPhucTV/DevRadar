@@ -77,6 +77,7 @@ test("source recipe mapper stays operable at narrow widths", async () => {
   assert.match(css, /\.source-recipe-layout\{[^}]*grid-template-columns/);
   assert.match(css, /\.mapping-viewport\{[^}]*overflow:auto/);
   assert.match(css, /\.mapping-overlay-button\{[^}]*min-width:44px[^}]*min-height:44px/);
+  assert.match(css, /\.recipe-shortcuts button\{[^}]*min-height:var\(--control-min-height\)/);
   assert.match(css, /@media\(max-width:420px\)/);
   assert.match(css, /\.source-recipe-layout[^}]*grid-template-columns:1fr/);
   assert.match(panel, /aria-label/);
@@ -152,6 +153,7 @@ test("core data routes use the approved dense archetypes", async () => {
   assert.match(overview, /metrics-layout/);
   assert.match(overview, /comparison-list/);
   assert.match(overview, /data-surface/);
+  assert.match(overview, /<JobList compact/);
   assert.match(jobs, /explorer-toolbar/);
   assert.match(jobs, /data-surface/);
   assert.match(analytics, /comparison-list/);
