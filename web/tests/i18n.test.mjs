@@ -156,7 +156,6 @@ const serverSurfaces = [
   "src/app/(dashboard)/alerts/page.tsx",
   "src/app/(dashboard)/sources/page.tsx",
   "src/app/(dashboard)/privacy/page.tsx",
-  "src/components/job-list.tsx",
 ];
 
 for (const path of serverSurfaces) {
@@ -171,6 +170,7 @@ const clientSurfaces = [
   "src/components/auth-controls.tsx",
   "src/components/login-form.tsx",
   "src/components/primary-navigation.tsx",
+  "src/components/job-list.tsx",
   "src/components/route-placeholder.tsx",
 ];
 

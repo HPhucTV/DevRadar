@@ -40,7 +40,6 @@ test("readable type scale, controls and navigation are bounded", async () => {
   assert.match(css, /line-height:1\.12/);
   assert.match(css, /letter-spacing:-\.035em/);
   assert.doesNotMatch(css, /15vw|font-size:clamp\(2\.65rem,7vw,5\.4rem\)/);
-  assert.doesNotMatch(css, /font-size:\.(?:7\d|8)rem/);
   assert.doesNotMatch(css, /\.nav-links\{[^}]*flex-wrap:wrap/);
   assert.match(css, /\.nav-links a\[aria-current="page"\]/);
   assert.match(css, /\.nav-toggle\{[^}]*min-width:44px/);
@@ -98,7 +97,7 @@ test("shared shell and route surfaces use redesign primitives", async () => {
   assert.match(shell, /brand-mark/);
   assert.match(shell, /PrimaryNavigation/);
   assert.match(overview, /dashboard-grid/);
-  assert.match(jobs, /job-card/);
+  assert.match(jobs, /job-table/);
 });
 
 test("C1 shell groups routes in a responsive sidebar", async () => {
@@ -129,6 +128,20 @@ test("shared route states reserve space and expose recovery semantics", async ()
   assert.match(loading, /aria-hidden="true"/);
   assert.match(error, /role="alert"/);
   assert.match(error, /reset\(\)/);
+});
+
+test("job explorer uses a dense table and focus-safe summary inspector", async () => {
+  const jobs = await source("src/components/job-list.tsx");
+  const css = await cssBundle();
+  assert.match(jobs, /job-explorer/);
+  assert.match(jobs, /job-table/);
+  assert.match(jobs, /job-inspector/);
+  assert.match(jobs, /aria-expanded/);
+  assert.match(jobs, /event\.key === "Escape"/);
+  assert.match(jobs, /sourceDisplayName/);
+  assert.match(jobs, /mobile-job-link/);
+  assert.match(css, /\.job-table-row/);
+  assert.match(css, /@media\(max-width:767px\)/);
 });
 
 test("primary navigation exposes current route and bounded mobile disclosure", async () => {

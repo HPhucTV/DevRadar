@@ -168,7 +168,15 @@
       "salaryMissing": "Chưa công bố lương",
       "locationMissing": "Chưa công bố địa điểm",
       "levelsLabel": "Cấp bậc công việc",
-      "levelMissing": "Chưa công bố cấp bậc"
+      "levelMissing": "Chưa công bố cấp bậc",
+      "titleColumn": "Việc làm",
+      "companyColumn": "Công ty",
+      "quickView": "Xem nhanh",
+      "closeQuickView": "Đóng xem nhanh",
+      "openFullDetails": "Mở chi tiết đầy đủ",
+      "sourceLabel": "Nguồn",
+      "statusLabel": "Trạng thái",
+      "lastSeen": "Ghi nhận gần nhất"
     },
     "jobDetail": {
       "back": "← Quay lại việc làm",
@@ -695,7 +703,15 @@
       "salaryMissing": "Salary not disclosed",
       "locationMissing": "Location not disclosed",
       "levelsLabel": "Job levels",
-      "levelMissing": "Level not disclosed"
+      "levelMissing": "Level not disclosed",
+      "titleColumn": "Job",
+      "companyColumn": "Company",
+      "quickView": "Quick view",
+      "closeQuickView": "Close quick view",
+      "openFullDetails": "Open full details",
+      "sourceLabel": "Source",
+      "statusLabel": "Status",
+      "lastSeen": "Last seen"
     },
     "jobDetail": {
       "back": "← Back to jobs",
