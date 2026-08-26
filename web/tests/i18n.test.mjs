@@ -167,7 +167,6 @@ for (const path of serverSurfaces) {
 
 const clientSurfaces = [
   "src/app/(dashboard)/error.tsx",
-  "src/app/(dashboard)/loading.tsx",
   "src/components/api-state.tsx",
   "src/components/auth-controls.tsx",
   "src/components/login-form.tsx",

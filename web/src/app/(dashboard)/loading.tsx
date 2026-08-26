@@ -1,3 +1,9 @@
-"use client";
-import { useI18n } from "@/i18n/locale-provider";
-export default function Loading() { const { dictionary } = useI18n(); return <section className="route-panel loading-state" aria-busy="true"><p className="eyebrow">{dictionary.loading.eyebrow}</p><h1>{dictionary.loading.title}</h1><p>{dictionary.loading.body}</p></section>; }
+export default function Loading() {
+  return <div aria-hidden="true" className="route-skeleton">
+    <div className="skeleton skeleton-heading" />
+    <div className="skeleton-metrics">
+      {[0, 1, 2].map((index) => <div className="skeleton skeleton-metric" key={index} />)}
+    </div>
+    <div className="skeleton skeleton-surface" />
+  </div>;
+}

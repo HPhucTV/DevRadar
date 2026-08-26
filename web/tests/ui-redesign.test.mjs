@@ -118,6 +118,19 @@ test("C1 shell groups routes in a responsive sidebar", async () => {
   assert.doesNotMatch(css, /\.nav-links\{[^}]*flex-wrap:wrap/);
 });
 
+test("shared route states reserve space and expose recovery semantics", async () => {
+  const states = await source("src/components/api-state.tsx");
+  const loading = await source("src/app/(dashboard)/loading.tsx");
+  const error = await source("src/app/(dashboard)/error.tsx");
+  assert.match(states, /state-panel--error/);
+  assert.match(states, /state-panel--empty/);
+  assert.match(states, /metric-card/);
+  assert.match(loading, /route-skeleton/);
+  assert.match(loading, /aria-hidden="true"/);
+  assert.match(error, /role="alert"/);
+  assert.match(error, /reset\(\)/);
+});
+
 test("primary navigation exposes current route and bounded mobile disclosure", async () => {
   const navigation = await source("src/components/primary-navigation.tsx");
   const shell = await source("src/components/app-shell.tsx");
