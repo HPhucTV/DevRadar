@@ -4,31 +4,41 @@ import test from "node:test";
 
 const webRoot = new URL("../", import.meta.url);
 async function source(path) { return readFile(new URL(path, webRoot), "utf8"); }
+async function cssBundle() {
+  return Promise.all([
+    source("src/styles/tokens.css"),
+    source("src/styles/base.css"),
+    source("src/styles/dashboard.css"),
+  ]).then((parts) => parts.join("\n"));
+}
 
-test("light editorial token contract is present and old green theme is gone", async () => {
-  const css = await source("src/app/globals.css");
-  assert.match(css, /--bg:\s*#F6F8FC/i);
-  assert.match(css, /--accent:\s*#4F46E5/i);
-  assert.match(css, /--font-editorial:"Times New Roman",Georgia,serif/);
-  assert.match(css, /Georgia/);
-  assert.doesNotMatch(css, /--bg:#f4f1e8/);
-  assert.doesNotMatch(css, /prefers-color-scheme:\s*dark/);
+test("dense glass tokens replace the editorial theme", async () => {
+  const css = await cssBundle();
+  assert.match(css, /--blue-600:\s*#2563eb/i);
+  assert.match(css, /--color-ink:\s*var\(--slate-900\)/);
+  assert.match(css, /--glass-data:\s*rgb\(255 255 255 \/ \.88\)/);
+  assert.match(css, /--motion-fast:\s*140ms/);
+  assert.match(css, /--motion-component:\s*220ms/);
+  assert.match(css, /--motion-route:\s*300ms/);
+  assert.match(css, /@supports not \(backdrop-filter:blur\(1px\)\)/);
+  assert.match(css, /@media\(prefers-reduced-motion:reduce\)/);
+  assert.doesNotMatch(css, /Times New Roman|font-editorial/);
 });
 
 test("document does not force horizontal overflow at a 320px viewport", async () => {
-  const css = await source("src/app/globals.css");
+  const css = await cssBundle();
   assert.doesNotMatch(css, /html\{[^}]*min-width:\s*320px/);
 });
 
 test("readable type scale, controls and navigation are bounded", async () => {
-  const css = await source("src/app/globals.css");
+  const css = await cssBundle();
 
-  assert.match(css, /--font-ui:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif/);
-  assert.match(css, /--text-xs:\.8125rem/);
-  assert.match(css, /--control-min-height:44px/);
-  assert.match(css, /font-size:clamp\(2\.25rem,4vw,3\.5rem\)/);
-  assert.match(css, /line-height:1\.08/);
-  assert.match(css, /letter-spacing:-\.025em/);
+  assert.match(css, /--font-ui:\s*ui-sans-serif,\s*system-ui,\s*-apple-system,\s*"Segoe UI",\s*sans-serif/);
+  assert.match(css, /--text-xs:\s*\.8125rem/);
+  assert.match(css, /--control-min-height:\s*44px/);
+  assert.match(css, /font-size:clamp\(1\.75rem,3vw,2\.25rem\)/);
+  assert.match(css, /line-height:1\.12/);
+  assert.match(css, /letter-spacing:-\.035em/);
   assert.doesNotMatch(css, /15vw|font-size:clamp\(2\.65rem,7vw,5\.4rem\)/);
   assert.doesNotMatch(css, /font-size:\.(?:7\d|8)rem/);
   assert.match(css, /\.nav-links\{[^}]*flex-wrap:wrap/);
@@ -38,7 +48,7 @@ test("readable type scale, controls and navigation are bounded", async () => {
 });
 
 test("route grids reflow before content creates document overflow", async () => {
-  const css = await source("src/app/globals.css");
+  const css = await cssBundle();
 
   assert.match(css, /@media\(max-width:960px\)/);
   assert.match(css, /\.dashboard-grid,\.detail-grid,\.analytics-grid,\.cv-layout\{grid-template-columns:1fr\}/);
@@ -62,7 +72,7 @@ test("app metadata includes a local brand icon", async () => {
 });
 
 test("source recipe mapper stays operable at narrow widths", async () => {
-  const css = await source("src/app/globals.css");
+  const css = await cssBundle();
   const panel = await source("src/components/source-recipe-panel.tsx");
 
   assert.match(css, /\.source-recipe-layout\{[^}]*grid-template-columns/);
@@ -75,7 +85,7 @@ test("source recipe mapper stays operable at narrow widths", async () => {
 });
 
 test("source route confirmation is readable and operable on narrow screens", async () => {
-  const css = await source("src/app/globals.css");
+  const css = await cssBundle();
   assert.match(css, /\.route-proposal-card\{[^}]*display:grid/);
   assert.match(css, /\.route-proposal-value\{[^}]*overflow-wrap:anywhere/);
   assert.match(css, /@media\(max-width:420px\)[\s\S]*\.route-proposal-card[^}]*padding/);

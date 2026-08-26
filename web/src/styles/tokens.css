@@ -1,0 +1,89 @@
+:root {
+  color-scheme: light;
+
+  /* Primitive tokens */
+  --slate-50: #f8fafc;
+  --slate-100: #f1f5f9;
+  --slate-200: #e2e8f0;
+  --slate-300: #cbd5e1;
+  --slate-500: #64748b;
+  --slate-600: #475569;
+  --slate-900: #0f172a;
+  --blue-50: #eff6ff;
+  --blue-600: #2563eb;
+  --blue-700: #1d4ed8;
+  --violet-600: #7c3aed;
+  --cyan-600: #0891b2;
+  --emerald-50: #ecfdf5;
+  --emerald-700: #047857;
+  --amber-50: #fffbeb;
+  --amber-700: #b45309;
+  --red-50: #fef2f2;
+  --red-700: #b91c1c;
+  --space-1: .25rem;
+  --space-2: .5rem;
+  --space-3: .75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --radius-control: .5rem;
+  --radius-panel: .75rem;
+  --radius-surface: 1rem;
+  --radius-shell: 1.25rem;
+
+  /* Semantic tokens */
+  --color-canvas: #eaf0f8;
+  --color-ink: var(--slate-900);
+  --color-muted: var(--slate-600);
+  --color-primary: var(--blue-600);
+  --color-primary-hover: var(--blue-700);
+  --color-info: var(--cyan-600);
+  --color-success: var(--emerald-700);
+  --color-warning: var(--amber-700);
+  --color-danger: var(--red-700);
+  --glass-shell: rgb(255 255 255 / .45);
+  --glass-panel: rgb(255 255 255 / .64);
+  --glass-data: rgb(255 255 255 / .88);
+  --glass-border: rgb(255 255 255 / .72);
+  --motion-fast: 140ms;
+  --motion-component: 220ms;
+  --motion-route: 300ms;
+  --control-min-height: 44px;
+  --font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-data: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --text-xs: .8125rem;
+  --text-sm: .875rem;
+  --text-base: 1rem;
+
+  /* Component tokens */
+  --button-bg: var(--color-primary);
+  --button-fg: white;
+  --input-bg: rgb(255 255 255 / .72);
+  --input-border: rgb(148 163 184 / .58);
+  --table-bg: var(--glass-data);
+  --focus-ring-color: var(--color-primary);
+  --focus-ring: 0 0 0 2px rgb(255 255 255 / .9), 0 0 0 4px var(--focus-ring-color);
+  --shadow-control: 0 8px 18px rgb(37 99 235 / .18);
+  --shadow-panel: 0 15px 34px rgb(30 41 59 / .1);
+  --shadow-overlay: 0 24px 60px rgb(30 41 59 / .18);
+
+  /* Compatibility aliases removed route-by-route during this migration */
+  --bg: var(--color-canvas);
+  --surface: var(--glass-data);
+  --surface-subtle: rgb(241 245 249 / .78);
+  --text: var(--color-ink);
+  --muted: var(--color-muted);
+  --line: rgb(203 213 225 / .72);
+  --accent: var(--color-primary);
+  --accent-soft: rgb(239 246 255 / .82);
+  --cyan: var(--color-info);
+  --success: var(--color-success);
+  --success-soft: var(--emerald-50);
+  --warning: var(--color-warning);
+  --warning-soft: var(--amber-50);
+  --danger: var(--color-danger);
+  --danger-soft: var(--red-50);
+  --radius-feature: var(--radius-surface);
+  --radius-pill: 999px;
+  --shadow-soft: var(--shadow-panel);
+}
