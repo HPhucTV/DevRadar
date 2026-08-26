@@ -7,5 +7,5 @@ import { localNoLoginEnabled } from "@/lib/deployment-mode";
 export default async function LoginPage() {
   if (localNoLoginEnabled()) redirect("/");
   const { dictionary } = await getI18n();
-  return <main className="auth-page"><div className="page-intro"><p className="eyebrow">{dictionary.auth.accessEyebrow}</p><h1>{dictionary.auth.accessTitle}</h1><p>{dictionary.auth.accessBody}</p></div><LoginForm /><p className="field-help"><Link href="/">{dictionary.auth.back}</Link></p></main>;
+  return <main className="auth-page"><div className="route-header"><p className="route-label">{dictionary.auth.accessEyebrow}</p><h1>{dictionary.auth.accessTitle}</h1><p>{dictionary.auth.accessBody}</p></div><LoginForm /><p className="field-help"><Link href="/">{dictionary.auth.back}</Link></p></main>;
 }

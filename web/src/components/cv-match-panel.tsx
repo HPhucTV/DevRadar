@@ -104,8 +104,8 @@ export function CvMatchPanel() {
   }
 
   return (
-    <>
-      <section className="cv-layout" aria-label={dictionary.cv.ariaLabel}>
+    <div className="workflow-layout">
+      <section className="cv-layout workflow-panel" aria-label={dictionary.cv.ariaLabel}>
         <form className="content-section cv-form cv-upload-card" onSubmit={submitUpload} ref={formRef}>
           <div className="section-heading"><div><p className="eyebrow">{dictionary.cv.sessionEyebrow}</p><h2>{dictionary.cv.startTitle}</h2></div><span>{dictionary.cv.browserNote}</span></div>
           <label className="upload-dropzone">{dictionary.cv.file}<input type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /><small className="field-help">{dictionary.cv.fileHelp}</small></label>
@@ -116,6 +116,6 @@ export function CvMatchPanel() {
       {error ? <ApiErrorState error={error} /> : null}
       {notice ? <p className="status-message" role="status">{notice(dictionary, locale)}</p> : null}
       {generation ? <section className="content-section match-results"><div className="section-heading"><div><p className="eyebrow">{dictionary.cv.rankingEyebrow}</p><h2>{formatNumber(generation.storedMatches, locale)} {dictionary.cv.currentMatches}</h2></div><button type="button" onClick={refreshMatches} disabled={busy}>{dictionary.cv.refreshMatches}</button></div><div className="metric-grid"><div className="metric"><span>{dictionary.cv.scoring}</span><strong>{generation.scoringVersion}</strong><small>{formatNumber(generation.createdMatches, locale)} {dictionary.cv.new} · {formatNumber(generation.reusedMatches, locale)} {dictionary.cv.reused}</small></div><div className="metric"><span>{dictionary.cv.availableJobs}</span><strong>{formatNumber(generation.availableJobs, locale)}</strong><small>{formatNumber(generation.unavailableJobs, locale)} {dictionary.cv.withoutVectors}</small></div><div className="metric"><span>{dictionary.cv.considered}</span><strong>{formatNumber(generation.consideredJobs, locale)}</strong><small>{dictionary.cv.generated} {formatDate(generation.generatedAt, locale)}</small></div></div>{matches.length ? <div className="match-list">{matches.map((match) => { const score = Number(match.overallScore); const evidence = Number(match.evidenceCoverage); return <article className="match-card" key={match.id}><div className="section-heading"><div><p className="eyebrow">{match.job.companyName}</p><h3>{match.job.title}</h3><span>{match.job.location || dictionary.cv.locationMissing}</span></div><strong className="match-score score-tile">{Number.isFinite(score) ? formatPercent(score, locale) : dictionary.cv.percentUnavailable}</strong></div><p className="match-meta evidence-meta">{dictionary.cv.evidence} {Number.isFinite(evidence) ? formatPercent(evidence, locale) : dictionary.cv.percentUnavailable} · {statusLabels[match.job.status] ?? match.job.status} · {match.scoringVersion}</p><div className="tag-columns skill-columns"><div className="matched-skills"><strong>{dictionary.cv.matched}</strong><p>{match.matchedSkills.join(", ") || dictionary.cv.noMatchedSkills}</p></div><div className="missing-skills"><strong>{dictionary.cv.missing}</strong><p>{match.missingSkills.join(", ") || dictionary.cv.noMissingSkills}</p></div></div><ul className="explanation-list">{match.explanation.map((item) => <li key={item}>{item}</li>)}</ul><a href={match.job.sourceUrl} target="_blank" rel="noreferrer">{dictionary.cv.openSource}</a></article>; })}</div> : <div className="api-state empty-state"><strong>{dictionary.cv.noMatchesTitle}</strong><p>{dictionary.cv.noMatchesBody}</p></div>}</section> : null}
-    </>
+    </div>
   );
 }

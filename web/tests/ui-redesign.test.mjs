@@ -174,6 +174,22 @@ test("operator routes use operations and workflow archetypes", async () => {
   assert.doesNotMatch(sources, /credential|proxy|bypass/i);
 });
 
+test("detail, workflow, policy and auth routes use shared surfaces", async () => {
+  const detail = await source("src/app/(dashboard)/jobs/[jobId]/page.tsx");
+  const cv = await source("src/components/cv-match-panel.tsx");
+  const alerts = await source("src/components/alert-rules-panel.tsx");
+  const privacy = await source("src/app/(dashboard)/privacy/page.tsx");
+  const login = await source("src/components/login-form.tsx");
+  assert.match(detail, /detail-inspector-page/);
+  assert.match(detail, /data-surface/);
+  assert.match(cv, /workflow-layout/);
+  assert.match(cv, /match-results/);
+  assert.match(alerts, /workflow-layout/);
+  assert.match(alerts, /rule-actions/);
+  assert.match(privacy, /policy-reader/);
+  assert.match(login, /auth-surface/);
+});
+
 test("primary navigation exposes current route and bounded mobile disclosure", async () => {
   const navigation = await source("src/components/primary-navigation.tsx");
   const shell = await source("src/components/app-shell.tsx");

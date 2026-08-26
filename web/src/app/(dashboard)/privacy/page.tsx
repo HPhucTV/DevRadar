@@ -7,9 +7,9 @@ export const dynamic = "force-dynamic";
 
 export default async function PrivacyPage() {
   const [{ dictionary }, result] = await Promise.all([getI18n(), getPrivacy()]);
-  return <>
-    <section className="page-intro">
-      <p className="eyebrow">{dictionary.privacy.eyebrow}</p>
+  return <div className="policy-reader">
+    <section className="route-header route-header--compact">
+      <p className="route-label">{dictionary.privacy.eyebrow}</p>
       <h1>{dictionary.privacy.title}</h1>
       <p>{dictionary.privacy.body}</p>
     </section>
@@ -36,5 +36,5 @@ export default async function PrivacyPage() {
         </ul>
       </section>
     </>}
-  </>;
+  </div>;
 }
