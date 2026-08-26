@@ -19,7 +19,22 @@ export function PrimaryNavigation() {
     "cv-match": dictionary.routes.cvMatch,
     alerts: dictionary.routes.alerts,
     "source-recipes": dictionary.routes.sourceRecipes,
+    privacy: dictionary.shell.privacy,
   };
+  const groups = [
+    {
+      label: dictionary.shell.coreGroup,
+      ids: ["overview", "jobs", "analytics", "crawler-health"],
+    },
+    {
+      label: dictionary.shell.workflowGroup,
+      ids: ["source-recipes", "cv-match", "alerts"],
+    },
+    {
+      label: dictionary.shell.systemGroup,
+      ids: ["privacy"],
+    },
+  ];
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (event.key === "Escape" && open) {
@@ -48,28 +63,38 @@ export function PrimaryNavigation() {
           <span />
           <span />
         </span>
-        <span>{dictionary.shell.navigationMenu}</span>
+        <span>{open ? dictionary.shell.closeNavigation : dictionary.shell.openNavigation}</span>
       </button>
       <div
         className={`nav-links${open ? " is-open" : ""}`}
         id="primary-navigation-links"
       >
-        {routes.filter((route) => route.showInNav).map((route) => {
-          const isActive = route.path === "/"
-            ? pathname === "/"
-            : pathname === route.path || pathname.startsWith(`${route.path}/`);
-          return (
-            <Link
-              aria-current={isActive ? "page" : undefined}
-              href={route.path}
-              key={route.id}
-              onClick={() => setOpen(false)}
-            >
-              {routeLabels[route.id] ?? route.label}
-            </Link>
-          );
-        })}
+        {groups.map((group) => (
+          <div className="nav-group" key={group.label}>
+            <p>{group.label}</p>
+            <div>
+              {group.ids.map((routeId) => {
+                const route = routes.find((candidate) => candidate.id === routeId);
+                if (!route) return null;
+                const isActive = route.path === "/"
+                  ? pathname === "/"
+                  : pathname === route.path || pathname.startsWith(`${route.path}/`);
+                return (
+                  <Link
+                    aria-current={isActive ? "page" : undefined}
+                    href={route.path}
+                    key={route.id}
+                    onClick={() => setOpen(false)}
+                  >
+                    {routeLabels[route.id] ?? route.label}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
+      {open ? <button aria-label={dictionary.shell.closeNavigation} className="nav-scrim" onClick={() => setOpen(false)} type="button" /> : null}
     </nav>
   );
 }

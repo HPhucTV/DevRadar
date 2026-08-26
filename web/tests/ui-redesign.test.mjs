@@ -41,9 +41,9 @@ test("readable type scale, controls and navigation are bounded", async () => {
   assert.match(css, /letter-spacing:-\.035em/);
   assert.doesNotMatch(css, /15vw|font-size:clamp\(2\.65rem,7vw,5\.4rem\)/);
   assert.doesNotMatch(css, /font-size:\.(?:7\d|8)rem/);
-  assert.match(css, /\.nav-links\{[^}]*flex-wrap:wrap/);
+  assert.doesNotMatch(css, /\.nav-links\{[^}]*flex-wrap:wrap/);
   assert.match(css, /\.nav-links a\[aria-current="page"\]/);
-  assert.match(css, /\.nav-toggle\{[^}]*min-height:var\(--control-min-height\)/);
+  assert.match(css, /\.nav-toggle\{[^}]*min-width:44px/);
   assert.doesNotMatch(css, /\.primary-nav\{[^}]*overflow-x:auto/);
 });
 
@@ -101,6 +101,23 @@ test("shared shell and route surfaces use redesign primitives", async () => {
   assert.match(jobs, /job-card/);
 });
 
+test("C1 shell groups routes in a responsive sidebar", async () => {
+  const shell = await source("src/components/app-shell.tsx");
+  const navigation = await source("src/components/primary-navigation.tsx");
+  const css = await cssBundle();
+  assert.match(shell, /skip-link/);
+  assert.match(shell, /sidebar-shell/);
+  assert.match(shell, /workspace-shell/);
+  assert.match(shell, /workspace-header/);
+  assert.match(navigation, /nav-group/);
+  assert.match(navigation, /aria-current/);
+  assert.match(navigation, /aria-expanded/);
+  assert.match(navigation, /event\.key === "Escape"/);
+  assert.match(css, /grid-template-columns:\s*190px minmax\(0,1fr\)/);
+  assert.match(css, /@media\(max-width:1023px\)/);
+  assert.doesNotMatch(css, /\.nav-links\{[^}]*flex-wrap:wrap/);
+});
+
 test("primary navigation exposes current route and bounded mobile disclosure", async () => {
   const navigation = await source("src/components/primary-navigation.tsx");
   const shell = await source("src/components/app-shell.tsx");
@@ -110,7 +127,8 @@ test("primary navigation exposes current route and bounded mobile disclosure", a
   assert.match(navigation, /aria-expanded=\{open\}/);
   assert.match(navigation, /event\.key === "Escape"/);
   assert.match(navigation, /setOpen\(false\)/);
-  assert.match(navigation, /dictionary\.shell\.navigationMenu/);
+  assert.match(navigation, /dictionary\.shell\.openNavigation/);
+  assert.match(navigation, /dictionary\.shell\.closeNavigation/);
   assert.match(shell, /PrimaryNavigation/);
   assert.doesNotMatch(shell, /routes\.filter/);
 });

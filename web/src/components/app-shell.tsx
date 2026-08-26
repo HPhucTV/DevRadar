@@ -10,17 +10,34 @@ export async function AppShell({ children }: { children: ReactNode }) {
   const noLogin = localNoLoginEnabled();
   const { dictionary } = await getI18n();
   return (
-    <div className="app-shell">
-      <header className="site-header">
-        <Link className="brand-lockup" href="/">
-          <span aria-hidden="true" className="brand-mark">D</span>
-          <span className="brand-copy"><span className="brand">DevRadar</span><span className="eyebrow">{dictionary.shell.subtitle}</span></span>
-        </Link>
-        <div className="header-actions"><span className="phase-badge">{noLogin ? dictionary.shell.phaseLocal : dictionary.shell.phaseSession}</span><LanguageSwitcher /><AuthControls localNoLoginEnabled={noLogin} /></div>
-      </header>
-      <PrimaryNavigation />
-      <main id="main-content">{children}</main>
-      <footer className="site-footer"><Link href="/privacy">{dictionary.shell.privacy}</Link></footer>
+    <div className="app-canvas">
+      <a className="skip-link" href="#main-content">{dictionary.shell.skipToContent}</a>
+      <div aria-hidden="true" className="ambient ambient-one" />
+      <div aria-hidden="true" className="ambient ambient-two" />
+      <div className="app-shell">
+        <aside className="sidebar-shell glass-surface">
+          <Link className="brand-lockup" href="/">
+            <span aria-hidden="true" className="brand-mark">D</span>
+            <span className="brand-copy">
+              <span className="brand">DevRadar</span>
+              <span className="brand-subtitle">{dictionary.shell.subtitle}</span>
+            </span>
+          </Link>
+          <PrimaryNavigation />
+        </aside>
+        <div className="workspace-shell">
+          <header className="workspace-header glass-surface">
+            <span className="phase-badge">
+              {noLogin ? dictionary.shell.phaseLocal : dictionary.shell.phaseSession}
+            </span>
+            <div className="header-actions">
+              <LanguageSwitcher />
+              <AuthControls localNoLoginEnabled={noLogin} />
+            </div>
+          </header>
+          <main id="main-content">{children}</main>
+        </div>
+      </div>
     </div>
   );
 }

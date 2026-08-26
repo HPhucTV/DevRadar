@@ -12,6 +12,12 @@
       "phaseSession": "V6 session",
       "primaryNavigation": "Điều hướng chính",
       "navigationMenu": "Menu điều hướng",
+      "skipToContent": "Bỏ qua đến nội dung chính",
+      "coreGroup": "Dữ liệu",
+      "workflowGroup": "Quy trình",
+      "systemGroup": "Hệ thống",
+      "openNavigation": "Mở điều hướng",
+      "closeNavigation": "Đóng điều hướng",
       "privacy": "Quyền riêng tư & chính sách nguồn"
     },
     "routes": {
@@ -533,6 +539,12 @@
       "phaseSession": "V6 session",
       "primaryNavigation": "Primary navigation",
       "navigationMenu": "Navigation menu",
+      "skipToContent": "Skip to main content",
+      "coreGroup": "Data",
+      "workflowGroup": "Workflows",
+      "systemGroup": "System",
+      "openNavigation": "Open navigation",
+      "closeNavigation": "Close navigation",
       "privacy": "Privacy & source policy"
     },
     "routes": {
