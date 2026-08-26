@@ -528,11 +528,11 @@ export function SourceRecipePanel() {
   }
 
   return (
-    <>
+    <div className="operations-workspace">
       {error ? <ApiErrorState error={error} /> : null}
       {notice ? <p className="status-message" role="status">{notice(dictionary, locale)}</p> : null}
 
-      <section className="content-section source-recipe-policy">
+      <section className="operations-summary glass-surface source-recipe-policy">
         <div className="section-heading">
           <div><p className="eyebrow">{copy.policyEyebrow}</p><h2>{copy.policyTitle}</h2></div>
           <span className="source-badge">{copy.localOnly}</span>
@@ -540,22 +540,22 @@ export function SourceRecipePanel() {
         <p>{copy.policyBody}</p>
       </section>
 
-      <section className="source-recipe-layout">
+      <section className="source-recipe-layout operations-layout">
         <aside>
-          <section className="content-section recipe-catalog-card">
+          <section className="workflow-panel recipe-catalog-card">
             <div className="section-heading"><div><p className="eyebrow">{copy.catalogEyebrow}</p><h2>{copy.catalogTitle}</h2></div><span>{formatNumber(catalog.length, locale)}</span></div>
             <div className="recipe-shortcuts">
               {catalog.map((entry) => <button aria-label={interpolate(copy.useSource, { name: entry.name })} className="button-secondary" key={entry.origin} onClick={() => chooseCatalogEntry(entry)} type="button">{entry.name}</button>)}
             </div>
           </section>
-          <section className="content-section">
+          <section className="workflow-panel operations-list">
             <div className="section-heading"><div><p className="eyebrow">{copy.savedEyebrow}</p><h2>{formatNumber(recipes.length, locale)} {copy.recipeCount}</h2></div><button className="button-secondary" onClick={resetEditor} type="button">{copy.newRecipe}</button></div>
             {busy === "loading" && !recipes.length ? <p className="loading-state" role="status">{copy.loading}</p> : recipes.length ? <div className="recipe-list">{recipes.map((recipe) => <button aria-pressed={recipe.id === selectedId} className={`recipe-list-item${recipe.id === selectedId ? " is-selected" : ""}`} key={recipe.id} onClick={() => chooseRecipe(recipe)} type="button"><span><strong>{recipe.name}</strong><small>{recipe.origin}</small></span><span className={`badge ${recipe.status === "blocked" ? "badge-warning" : recipe.status === "enabled" ? "badge-success" : "badge-info"}`}>{statusLabels[recipe.status] ?? recipe.status}</span></button>)}</div> : <EmptyState message={copy.noRecipes} />}
           </section>
           {selected ? <section className="content-section"><div className="section-heading"><div><p className="eyebrow">{copy.historyEyebrow}</p><h2>{copy.recentRuns}</h2></div><button className="button-secondary" disabled={busy !== null} onClick={() => void loadHistory(selected.id)} type="button">{copy.loadHistory}</button></div>{runs.length ? <div className="recipe-run-list">{runs.map((run) => <article className="recipe-run-row" key={run.id}><strong>{statusLabels[run.status] ?? run.status}</strong><span>{statusLabels[run.coverageStatus] ?? run.coverageStatus}</span><time dateTime={run.requestedAt}>{formatDate(run.requestedAt, locale)}</time></article>)}</div> : <EmptyState message={copy.noRuns} />}</section> : null}
         </aside>
 
-        <section className="content-section source-recipe-editor">
+        <section className="workflow-panel workflow-panel--form source-recipe-editor">
           <div className="section-heading"><div><p className="eyebrow">{copy.configureEyebrow}</p><h2>{selected ? copy.editRecipe : copy.createRecipe}</h2></div>{selected ? <span className="badge badge-info">{statusLabels[selected.status] ?? selected.status}</span> : null}</div>
           <form className="source-recipe-form" onSubmit={saveRecipe}>
             <label htmlFor="source-recipe-name">{copy.name}<input id="source-recipe-name" maxLength={200} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder={copy.namePlaceholder} value={form.name} /></label>
@@ -588,6 +588,6 @@ export function SourceRecipePanel() {
           {selected ? <section className="recipe-operations"><div className="section-heading"><div><p className="eyebrow">{copy.operationsEyebrow}</p><h3>{copy.operationsTitle}</h3></div>{selected.nextRunAt ? <time dateTime={selected.nextRunAt}>{interpolate(copy.nextRun, { date: formatDate(selected.nextRunAt, locale) })}</time> : null}</div><div className="recipe-actions"><button disabled={busy !== null || !canCrawl} onClick={() => void crawlNow()} type="button">{copy.crawlNow}</button>{selected.status === "enabled" ? <button className="button-secondary" disabled={busy !== null} onClick={() => void changeStatus("paused")} type="button">{copy.pause}</button> : <button className="button-secondary" disabled={busy !== null || !canEnable || hasRouteProposal} onClick={() => void changeStatus("enabled")} type="button">{selected.status === "paused" ? copy.resume : copy.enable}</button>}<button className="button-danger" disabled={busy !== null} onClick={() => void retire()} type="button">{copy.retire}</button></div></section> : null}
         </section>
       </section>
-    </>
+    </div>
   );
 }

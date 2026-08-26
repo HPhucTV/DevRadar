@@ -100,3 +100,10 @@
 .trend-table{overflow:hidden;border:1px solid var(--line);border-radius:var(--radius-panel);background:rgb(255 255 255 / .62)}.trend-table .trend-row{display:grid;grid-template-columns:minmax(9rem,1.3fr) repeat(3,minmax(6.5rem,1fr));gap:.65rem;padding:.65rem .75rem;border-top:1px solid var(--line);background:transparent}.trend-table .trend-row:first-child{border-top:0}
 @media(max-width:960px){.overview-layout,.analytics-grid{grid-template-columns:1fr}.metrics-layout{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:700px){.metrics-layout,.explorer-toolbar{grid-template-columns:1fr}.trend-table .trend-row{grid-template-columns:1fr 1fr}.skill-demand-label{align-items:flex-start;flex-direction:column;gap:.2rem}.data-surface{padding:.8rem}}
+
+/* Operations and workflow archetypes */
+.operations-workspace{display:grid;gap:1rem}.operations-summary,.operations-list,.workflow-panel{min-width:0;border:1px solid var(--glass-border);border-radius:var(--radius-surface);padding:1rem;background:var(--glass-panel);box-shadow:inset 0 1px 0 rgb(255 255 255 / .82),var(--shadow-panel);backdrop-filter:blur(18px)}
+.operations-summary.metrics-layout{padding:0;border:0;background:transparent;box-shadow:none;backdrop-filter:none}.operations-layout{align-items:start}.operations-list .source-row,.operations-list .run-card{border-color:rgb(203 213 225 / .66);background:rgb(255 255 255 / .58)}
+.workflow-panel--form{background:rgb(255 255 255 / .68)}.workflow-panel .recipe-preview,.workflow-panel .visual-mapper,.workflow-panel .recipe-operations,.workflow-panel .document-import-card{border-radius:var(--radius-panel);padding:1rem;background:rgb(255 255 255 / .52)}
+.source-recipe-policy{margin:0}.source-recipe-layout{margin-top:0}.recipe-catalog-card{margin:0}.operations-list{margin:0}.source-recipe-editor{margin:0}
+@media(max-width:960px){.operations-layout{grid-template-columns:1fr}.operations-workspace{gap:.75rem}.workflow-panel,.operations-summary,.operations-list{padding:.85rem}}

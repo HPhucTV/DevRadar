@@ -158,6 +158,22 @@ test("core data routes use the approved dense archetypes", async () => {
   assert.match(analytics, /trend-table/);
 });
 
+test("operator routes use operations and workflow archetypes", async () => {
+  const crawler = await source("src/components/ingestion-console.tsx");
+  const sources = await source("src/components/source-recipe-panel.tsx");
+  assert.match(crawler, /operations-workspace/);
+  assert.match(crawler, /operations-summary/);
+  assert.match(crawler, /operations-list/);
+  assert.match(sources, /operations-workspace/);
+  assert.match(sources, /workflow-panel--form/);
+  assert.match(sources, /recipe-preview/);
+  assert.match(sources, /visual-mapper/);
+  assert.match(sources, /recipe-operations/);
+  assert.match(sources, /mapping-viewport/);
+  assert.doesNotMatch(crawler, /requestCrawlRun|method:\s*["']POST["']/);
+  assert.doesNotMatch(sources, /credential|proxy|bypass/i);
+});
+
 test("primary navigation exposes current route and bounded mobile disclosure", async () => {
   const navigation = await source("src/components/primary-navigation.tsx");
   const shell = await source("src/components/app-shell.tsx");

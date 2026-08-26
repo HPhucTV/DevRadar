@@ -5,8 +5,8 @@ export default async function SourcesPage() {
   const { dictionary } = await getI18n();
   return (
     <>
-      <section className="page-intro">
-        <p className="eyebrow">{dictionary.sourceRecipes.pageEyebrow}</p>
+      <section className="route-header route-header--compact">
+        <p className="route-label">{dictionary.sourceRecipes.pageEyebrow}</p>
         <h1>{dictionary.sourceRecipes.pageTitle}</h1>
         <p>{dictionary.sourceRecipes.pageBody}</p>
       </section>
