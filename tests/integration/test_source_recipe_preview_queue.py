@@ -118,6 +118,9 @@ def test_preview_queue_claims_outside_network_transaction_and_creates_no_canonic
             listing_url = recipe.listing_url
             queued = preview.request_preview(session, recipe_id=recipe_id, now=now)  # type: ignore[attr-defined]
             assert queued.status is PreviewStatus.PENDING
+            loaded_after_queue = session.get(SourceRecipe, recipe_id)
+            assert loaded_after_queue is not None
+            assert loaded_after_queue.last_used_at == now
             session.rollback()
             claim = preview.claim_pending_preview(session, now=now)  # type: ignore[attr-defined]
             assert claim is not None

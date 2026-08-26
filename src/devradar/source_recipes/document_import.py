@@ -343,6 +343,7 @@ def import_recipe_document(
         raise DocumentImportError("document_import_acknowledgement_required")
 
     source = ensure_recipe_source(session, recipe)
+    recipe.last_used_at = timestamp
     session.commit()
     session.refresh(recipe)
     session.refresh(source)

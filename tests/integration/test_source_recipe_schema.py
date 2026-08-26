@@ -23,7 +23,10 @@ def test_source_recipe_schema_has_bounded_persistence_contract(
     try:
         inspector = inspect(engine)
         assert {"source_recipes", "source_recipe_previews"} <= set(inspector.get_table_names())
-        recipe_columns = {column["name"] for column in inspector.get_columns("source_recipes")}
+        recipe_columns_by_name = {
+            column["name"]: column for column in inspector.get_columns("source_recipes")
+        }
+        recipe_columns = set(recipe_columns_by_name)
         assert {
             "id",
             "owner_user_id",
@@ -58,7 +61,11 @@ def test_source_recipe_schema_has_bounded_persistence_contract(
             "requests_per_minute",
             "created_at",
             "updated_at",
+            "last_used_at",
         } <= recipe_columns
+        last_used_at = recipe_columns_by_name["last_used_at"]
+        assert last_used_at["nullable"] is True
+        assert getattr(last_used_at["type"], "timezone", False) is True
         preview_columns = {
             column["name"] for column in inspector.get_columns("source_recipe_previews")
         }
@@ -102,5 +109,37 @@ def test_source_recipe_schema_has_bounded_persistence_contract(
             "ck_source_recipe_previews_screenshot_size",
             "ck_source_recipe_previews_expiry",
         } <= preview_checks
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.postgresql
+def test_source_recipe_last_used_migration_round_trip(
+    fresh_postgresql_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(DATABASE_URL_ENV, fresh_postgresql_url)
+    config = Config(str(PROJECT_ROOT / "alembic.ini"))
+    engine = create_engine(fresh_postgresql_url)
+    try:
+        command.upgrade(config, "c5d7e9f1a3b2")
+        assert "last_used_at" not in {
+            column["name"] for column in inspect(engine).get_columns("source_recipes")
+        }
+
+        command.upgrade(config, "e8f2a4c6d901")
+        assert "last_used_at" in {
+            column["name"] for column in inspect(engine).get_columns("source_recipes")
+        }
+
+        command.downgrade(config, "c5d7e9f1a3b2")
+        assert "last_used_at" not in {
+            column["name"] for column in inspect(engine).get_columns("source_recipes")
+        }
+
+        command.upgrade(config, "e8f2a4c6d901")
+        assert "last_used_at" in {
+            column["name"] for column in inspect(engine).get_columns("source_recipes")
+        }
     finally:
         engine.dispose()

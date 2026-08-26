@@ -137,6 +137,9 @@ def test_document_import_is_idempotent_incomplete_and_health_neutral(
             assert first.items_missing == first.items_removed == 0
             assert replay.run_id == first.run_id
             assert replay.reused is True
+            loaded_after_import = session.get(SourceRecipe, recipe.id)
+            assert loaded_after_import is not None
+            assert loaded_after_import.last_used_at == now
 
             loaded_recipe = session.get(SourceRecipe, recipe.id)
             assert loaded_recipe is not None

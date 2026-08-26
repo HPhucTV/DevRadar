@@ -473,6 +473,15 @@ Việt/Anh tại `/sources`. Full Python/PostgreSQL/web/static/runtime/secret ga
 acceptance được ghi tại [V6-021-local-document-import.md](evidence/V6-021-local-document-import.md), không
 live-fetch TopCV/Vieclam24h hoặc claim scheduled access.
 
+### V6-023 closeout (Done)
+
+[V6-023 evidence](evidence/V6-023-source-recipe-identity-purge.md) khóa stable RCP-XXXXXXXX,
+lastUsedAt, dashboard deep selection và typed-confirmation transactional purge. Existing DELETE vẫn
+chỉ retire/giữ audit; new purge command chỉ xóa graph của owned retired recipe, chặn preview/run active và
+giữ ResumeProfile/AlertRule cùng graph khác. Full default/PostgreSQL/static/web/Compose, rollback,
+concurrency, disposable API replay/purge và four-width browser gates pass. Task không đổi Source Recipe
+local-only/no-bypass policy hoặc các V6 provider/public gate còn mở.
+
 ## 9. Quy tắc cập nhật roadmap
 
 - Chỉ đổi status khi kiểm tra exit criteria và link evidence cụ thể.

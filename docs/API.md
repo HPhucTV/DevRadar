@@ -104,7 +104,8 @@ V1 dùng page-based pagination vì dataset portfolio còn bounded và UI cần t
 | `GET /api/v1/source-catalog` | Mười listing hint cùng versioned terms notice | V6-020 — implemented | localhost owner/read |
 | `GET /api/v1/source-recipes` | List recipe owner-local | V6-020 — implemented | localhost owner/read |
 | `POST /api/v1/source-recipes` | Persist bounded listing URL/seniority/schedule draft | V6-020 — implemented | localhost owner/write |
-| `GET/PATCH/DELETE /api/v1/source-recipes/{recipeId}` | Đọc, đổi lifecycle/lịch hoặc retire recipe | V6-020 — implemented | localhost owner |
+| `GET/PATCH/DELETE /api/v1/source-recipes/{recipeId}` | Đọc, đổi lifecycle/lịch hoặc retire recipe (DELETE không xóa graph) | V6-020 — implemented | localhost owner |
+| `POST /api/v1/source-recipes/{recipeId}/purge` | Xóa vĩnh viễn recipe-derived graph sau retire + typed confirmation | V6-023 — implemented | localhost owner; session + CSRF |
 | `POST /api/v1/source-recipes/{recipeId}/previews` | Queue bounded non-canonical preview | V6-020 — implemented | localhost owner/write |
 | `GET /api/v1/source-recipes/{recipeId}/previews/{previewId}` | Poll preview/candidates/mapping artifact | V6-020 — implemented | localhost owner/read |
 | `POST /api/v1/source-recipes/{recipeId}/previews/{previewId}/mapping` | Lưu opaque visual mapping và re-preview | V6-020 — implemented | localhost owner/write |

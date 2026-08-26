@@ -78,6 +78,7 @@ test("source recipe mapper stays operable at narrow widths", async () => {
   assert.match(css, /\.mapping-viewport\{[^}]*overflow:auto/);
   assert.match(css, /\.mapping-overlay-button\{[^}]*min-width:44px[^}]*min-height:44px/);
   assert.match(css, /\.recipe-shortcuts button\{[^}]*min-height:var\(--control-min-height\)/);
+  assert.match(css, /\.recipe-view-filters button\{[^}]*min-height:var\(--control-min-height\)/);
   assert.match(css, /@media\(max-width:420px\)/);
   assert.match(css, /\.source-recipe-layout[^}]*grid-template-columns:1fr/);
   assert.match(panel, /aria-label/);

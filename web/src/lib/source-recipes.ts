@@ -17,6 +17,7 @@ export type SourceRecipeStatus =
 
 export type SourceRecipe = {
   id: string;
+  recipeCode: string;
   sourceId: string | null;
   name: string;
   status: SourceRecipeStatus;
@@ -39,6 +40,13 @@ export type SourceRecipe = {
   blockReason: string | null;
   cooldownUntil: string | null;
   nextRunAt: string | null;
+  lastUsedAt: string | null;
+};
+
+export type SourceRecipePurgeData = {
+  recipeId: string;
+  sourceId: string | null;
+  deleted: Record<string, number>;
 };
 
 export type SourceCatalogEntry = {
@@ -140,6 +148,7 @@ function isRecipe(value: unknown): value is SourceRecipe {
   return (
     isRecord(value) &&
     typeof value.id === "string" &&
+    typeof value.recipeCode === "string" &&
     (typeof value.sourceId === "string" || value.sourceId === null) &&
     typeof value.name === "string" &&
     typeof value.status === "string" &&
@@ -156,6 +165,7 @@ function isRecipe(value: unknown): value is SourceRecipe {
     Array.isArray(value.seniorityFilter) &&
     typeof value.hasMapping === "boolean" &&
     (typeof value.cooldownUntil === "string" || value.cooldownUntil === null)
+    && (typeof value.lastUsedAt === "string" || value.lastUsedAt === null)
   );
 }
 
@@ -378,6 +388,23 @@ export async function retireSourceRecipe(recipeId: string): Promise<ApiResult<nu
   } catch {
     return failure(503, null, "DevRadar API is not reachable.");
   }
+}
+
+export function purgeSourceRecipe(
+  recipeId: string,
+  confirmationCode: string,
+): Promise<ApiResult<DataEnvelope<SourceRecipePurgeData>>> {
+  return request(
+    `/api/devradar/source-recipes/${encodeURIComponent(recipeId)}/purge`,
+    { method: "POST", body: JSON.stringify({ confirmationCode }) },
+    (value): value is DataEnvelope<SourceRecipePurgeData> => {
+      if (!isRecord(value) || !isRecord(value.data) || !isRecord(value.data.deleted)) return false;
+      return typeof value.data.recipeId === "string" &&
+        (typeof value.data.sourceId === "string" || value.data.sourceId === null) &&
+        Object.values(value.data.deleted).every(isNonNegativeInteger);
+    },
+    "Source recipe could not be purged.",
+  );
 }
 
 export function requestSourcePreview(

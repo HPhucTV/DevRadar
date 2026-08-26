@@ -250,6 +250,12 @@ Source: owner_authorized_local ↔ paused → retired
 `blocked` là technical stop cho access/challenge/policy failure và không tự retry. `quarantined` là health
 control tạm thời; `paused` là quyết định operator. Chỉ complete success mới phục hồi `healthy`.
 
+`recipe_code` là projection `RCP-` + tám hex đầu UUID, dùng để đối chiếu/confirm và không phải secret.
+`last_used_at` chỉ cập nhật khi preview, crawl request hoặc document import được chấp nhận; config PATCH
+không được coi là usage. `retired` giữ audit graph. Purge là command riêng, irreversible và xóa recipe,
+source, runs, snapshots, jobs cùng derived rows trong một PostgreSQL transaction; ResumeProfile/AlertRule
+không thuộc graph purge.
+
 ### 5.3. Extraction lifecycle
 
 ```text

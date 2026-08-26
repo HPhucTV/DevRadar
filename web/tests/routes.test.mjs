@@ -76,6 +76,7 @@ test("sources route owns the complete recipe contract", async () => {
     "POST /api/devradar/source-recipes",
     "PATCH /api/devradar/source-recipes/{recipeId}",
     "DELETE /api/devradar/source-recipes/{recipeId}",
+    "POST /api/devradar/source-recipes/{recipeId}/purge",
     "POST /api/devradar/source-recipes/{recipeId}/previews",
     "GET /api/devradar/source-recipes/{recipeId}/previews/{previewId}",
     "POST /api/devradar/source-recipes/{recipeId}/previews/{previewId}/mapping",

@@ -395,6 +395,7 @@ class SourceRecipe(Base):
     config_version: Mapped[str] = mapped_column(String(100))
     block_reason: Mapped[str | None] = mapped_column(String(200))
     cooldown_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     item_budget: Mapped[int] = mapped_column(Integer, default=500, server_default=text("500"))
     page_budget: Mapped[int] = mapped_column(Integer, default=20, server_default=text("20"))
     request_budget: Mapped[int] = mapped_column(Integer, default=100, server_default=text("100"))

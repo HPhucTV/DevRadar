@@ -125,6 +125,9 @@ def test_due_recipe_is_enqueued_once_with_stable_slot(
             assert first is not None
             assert first.recipe_id == recipe.id
             assert first.slot == expected_slot
+            loaded_after_schedule = session.get(SourceRecipe, recipe.id)
+            assert loaded_after_schedule is not None
+            assert loaded_after_schedule.last_used_at == now
             assert first.trigger_key == (
                 f"scheduled:recipe:{recipe.id}:{expected_slot.isoformat()}"
             )
@@ -181,6 +184,9 @@ def test_manual_recipe_request_is_owner_bound_and_idempotent(
             assert first.crawl_run.id == second.crawl_run.id
             assert first.crawl_run.requested_by == f"recipe:{recipe.owner_user_id}"
             assert first.crawl_run.config_version == recipe_config_hash(recipe)
+            loaded_after_manual = session.get(SourceRecipe, recipe.id)
+            assert loaded_after_manual is not None
+            assert loaded_after_manual.last_used_at == now
             recipe.seniority_filter = ["senior"]
             session.commit()
             with pytest.raises(RunRequestError) as changed_request:

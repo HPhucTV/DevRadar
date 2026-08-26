@@ -184,6 +184,7 @@ def claim_due_source_recipe(
             session.add(crawl_run)
             recipe.next_run_at = next_source_recipe_run_at(recipe, slot)
             recipe.updated_at = utc_now
+            recipe.last_used_at = utc_now
             session.flush()
             claim = SourceRecipeScheduleClaim(
                 recipe_id=recipe.id,

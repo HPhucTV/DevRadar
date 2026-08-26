@@ -14,6 +14,10 @@ bypass technical access barrier.
 `terms_notice`; catalog không phải approval, permission hoặc source-specific implementation. URL ngoài
 catalog nhận notice `not_reviewed`.
 
+Recipe có stable code `RCP-XXXXXXXX` và nullable `last_used_at` để operator đối chiếu cùng một recipe qua
+nhiều run. `DELETE` chỉ retire. Physical purge yêu cầu recipe đã retired, không có preview/run active,
+exact confirmation code và xóa graph theo dependency order trong một transaction; purge không backup/undo.
+
 ### 2.1. Terms notice và owner acknowledgement
 
 - `terms_notice` có `not_reviewed`, `no_specific_restriction_found` hoặc `restricted_terms`, cùng version,

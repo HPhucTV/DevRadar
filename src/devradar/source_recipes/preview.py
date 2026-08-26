@@ -160,6 +160,7 @@ def request_preview(
     recipe.block_reason = None
     recipe.cooldown_until = None
     recipe.updated_at = requested_at
+    recipe.last_used_at = requested_at
     session.add(preview)
     session.commit()
     return preview

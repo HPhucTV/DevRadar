@@ -13,6 +13,7 @@ def test_source_recipe_openapi_publishes_only_bounded_resource_contracts() -> No
         "/api/v1/source-catalog": {"get"},
         "/api/v1/source-recipes": {"get", "post"},
         "/api/v1/source-recipes/{recipeId}": {"get", "patch", "delete"},
+        "/api/v1/source-recipes/{recipeId}/purge": {"post"},
         "/api/v1/source-recipes/{recipeId}/previews": {"post"},
         "/api/v1/source-recipes/{recipeId}/previews/{previewId}": {"get"},
         "/api/v1/source-recipes/{recipeId}/previews/{previewId}/mapping": {"post"},
@@ -29,6 +30,7 @@ def test_source_recipe_openapi_publishes_only_bounded_resource_contracts() -> No
         "SourceRecipePreviewRequest",
         "SourceRecipeMappingRequest",
         "SourceRecipeCrawlRequest",
+        "SourceRecipePurgeRequest",
     ):
         assert schemas[schema_name]["additionalProperties"] is False
     serialized_inputs = repr(
@@ -48,6 +50,11 @@ def test_source_recipe_openapi_publishes_only_bounded_resource_contracts() -> No
     preview_properties = schemas["SourceRecipePreviewData"]["properties"]
     assert preview_properties["proposedHosts"]["items"]["type"] == "string"
     assert preview_properties["proposedPathPrefixes"]["items"]["type"] == "string"
+    recipe_properties = schemas["SourceRecipeData"]["properties"]
+    assert recipe_properties["recipeCode"]["type"] == "string"
+    assert "lastUsedAt" in recipe_properties
+    purge_code = schemas["SourceRecipePurgeRequest"]["properties"]["confirmationCode"]
+    assert purge_code["pattern"] == "^RCP-[0-9A-F]{8}$"
 
     import_operation = document["paths"]["/api/v1/source-recipes/{recipeId}/document-imports"][
         "post"

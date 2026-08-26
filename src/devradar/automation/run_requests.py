@@ -142,6 +142,7 @@ def request_source_recipe_run(
         adapter_version="pending",
         config_version=config_hash,
     )
+    recipe.last_used_at = utc_now
     session.add(crawl_run)
     try:
         session.commit()

@@ -8,7 +8,9 @@ import {
   type FormEvent,
   type SyntheticEvent,
 } from "react";
+import { useRouter } from "next/navigation";
 import { ApiErrorState, EmptyState } from "@/components/api-state";
+import { RecipePurgeDialog } from "@/components/recipe-purge-dialog";
 import type { Dictionary } from "@/i18n/dictionaries";
 import { useI18n } from "@/i18n/locale-provider";
 import { formatDate, formatNumber, formatPercent, interpolate, type Locale } from "@/i18n/locale";
@@ -21,6 +23,7 @@ import {
   importSourceDocument,
   listSourceCrawls,
   listSourceRecipes,
+  purgeSourceRecipe,
   requestSourceCrawl,
   requestSourcePreview,
   retireSourceRecipe,
@@ -35,6 +38,7 @@ import {
   type SourceRecipeMappingInput,
   type SourceRecipePreview,
 } from "@/lib/source-recipes";
+import { isCollectorRecipe, recipeDisplayName, sortRecipes } from "@/lib/recipe-identity";
 
 export const PREVIEW_POLL_INTERVAL_MS = 1_500;
 export const PREVIEW_POLL_WINDOW_MS = 45_000;
@@ -122,13 +126,24 @@ function mappingButtonStyle(
   };
 }
 
-export function SourceRecipePanel() {
+type RecipeView = "active" | "collector" | "retired" | "all";
+
+export function SourceRecipePanel({
+  initialRecipeId = null,
+  initialView = "active",
+}: {
+  initialRecipeId?: string | null;
+  initialView?: RecipeView;
+}) {
+  const router = useRouter();
   const { locale, dictionary } = useI18n();
   const copy = dictionary.sourceRecipes;
   const statusLabels = dictionary.status as Record<string, string>;
   const [recipes, setRecipes] = useState<SourceRecipe[]>([]);
   const [catalog, setCatalog] = useState<SourceCatalogEntry[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [recipeView, setRecipeView] = useState<RecipeView>(initialView);
+  const [purgeOpen, setPurgeOpen] = useState(false);
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
   const [acknowledged, setAcknowledged] = useState(false);
   const [preview, setPreview] = useState<SourceRecipePreview | null>(null);
@@ -148,6 +163,16 @@ export function SourceRecipePanel() {
     () => recipes.find((recipe) => recipe.id === selectedId) ?? null,
     [recipes, selectedId],
   );
+  const visibleRecipes = useMemo(() => {
+    const filtered = recipes.filter((recipe) => {
+      if (recipe.id === selectedId) return true;
+      if (recipeView === "all") return true;
+      if (recipeView === "collector") return isCollectorRecipe(recipe) && recipe.status !== "retired";
+      if (recipeView === "retired") return recipe.status === "retired";
+      return recipe.status !== "retired";
+    });
+    return sortRecipes(filtered, selectedId);
+  }, [recipeView, recipes, selectedId]);
   const currentMappingField = MAPPING_STEPS[mappingStep] ?? null;
   const hasRouteProposal = Boolean(
     preview && (preview.proposedHosts.length > 0 || preview.proposedPathPrefixes.length > 0),
@@ -164,7 +189,20 @@ export function SourceRecipePanel() {
     let active = true;
     void Promise.all([listSourceRecipes(), getSourceCatalog()]).then(([recipeResult, catalogResult]) => {
       if (!active) return;
-      if (recipeResult.kind === "success") setRecipes(recipeResult.value.data);
+      if (recipeResult.kind === "success") {
+        setRecipes(recipeResult.value.data);
+        const initial = initialRecipeId
+          ? recipeResult.value.data.find((recipe) => recipe.id === initialRecipeId)
+          : null;
+        if (initial) {
+          chooseRecipe(initial);
+          requestAnimationFrame(() => {
+            document.getElementById(`recipe-${initial.id}`)?.scrollIntoView({ block: "nearest" });
+          });
+        } else if (initialRecipeId) {
+          setNotice(() => (messages: Dictionary) => messages.sourceRecipes.deepLinkMissing);
+        }
+      }
       else setError(recipeResult);
       if (catalogResult.kind === "success") setCatalog(catalogResult.value.data.entries);
       else if (recipeResult.kind === "success") setError(catalogResult);
@@ -173,7 +211,7 @@ export function SourceRecipePanel() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [initialRecipeId]);
 
   useEffect(() => {
     if (!previewPoll) return;
@@ -506,9 +544,33 @@ export function SourceRecipePanel() {
     const result = await retireSourceRecipe(selected.id);
     if (result.kind === "error") setError(result);
     else {
-      setRecipes((current) => current.filter((item) => item.id !== selected.id));
-      resetEditor();
+      setRecipes((current) => current.map((item) => item.id === selected.id
+        ? { ...item, status: "retired", nextRunAt: null }
+        : item));
+      setRecipeView("retired");
       setNotice(() => (messages: Dictionary) => messages.sourceRecipes.retired);
+    }
+    setBusy(null);
+  }
+
+  async function purge(confirmationCode: string) {
+    if (!selected || selected.status !== "retired") return;
+    setBusy("purge");
+    setError(null);
+    const targetId = selected.id;
+    const result = await purgeSourceRecipe(targetId, confirmationCode);
+    if (result.kind === "error") setError(result);
+    else {
+      setRecipes((current) => current.filter((item) => item.id !== targetId));
+      setPurgeOpen(false);
+      resetEditor();
+      router.replace(`/sources?view=${recipeView}`);
+      setNotice(() => (messages: Dictionary, currentLocale: Locale) =>
+        interpolate(messages.sourceRecipes.purged, {
+          jobs: formatNumber(result.value.data.deleted.jobs ?? 0, currentLocale),
+          runs: formatNumber(result.value.data.deleted.crawlRuns ?? 0, currentLocale),
+        }),
+      );
     }
     setBusy(null);
   }
@@ -550,7 +612,8 @@ export function SourceRecipePanel() {
           </section>
           <section className="workflow-panel operations-list">
             <div className="section-heading"><div><p className="eyebrow">{copy.savedEyebrow}</p><h2>{formatNumber(recipes.length, locale)} {copy.recipeCount}</h2></div><button className="button-secondary" onClick={resetEditor} type="button">{copy.newRecipe}</button></div>
-            {busy === "loading" && !recipes.length ? <p className="loading-state" role="status">{copy.loading}</p> : recipes.length ? <div className="recipe-list">{recipes.map((recipe) => <button aria-pressed={recipe.id === selectedId} className={`recipe-list-item${recipe.id === selectedId ? " is-selected" : ""}`} key={recipe.id} onClick={() => chooseRecipe(recipe)} type="button"><span><strong>{recipe.name}</strong><small>{recipe.origin}</small></span><span className={`badge ${recipe.status === "blocked" ? "badge-warning" : recipe.status === "enabled" ? "badge-success" : "badge-info"}`}>{statusLabels[recipe.status] ?? recipe.status}</span></button>)}</div> : <EmptyState message={copy.noRecipes} />}
+            <div className="recipe-view-filters" role="group" aria-label={copy.recipeViewLabel}>{(["active", "collector", "retired", "all"] as RecipeView[]).map((view) => <button aria-pressed={recipeView === view} className="button-secondary" key={view} onClick={() => setRecipeView(view)} type="button">{(copy.recipeViews as Record<string, string>)[view]}</button>)}</div>
+            {busy === "loading" && !recipes.length ? <p className="loading-state" role="status">{copy.loading}</p> : visibleRecipes.length ? <div className="recipe-list">{visibleRecipes.map((recipe) => <button aria-pressed={recipe.id === selectedId} className={`recipe-list-item${recipe.id === selectedId ? " is-selected" : ""}`} id={`recipe-${recipe.id}`} key={recipe.id} onClick={() => chooseRecipe(recipe)} title={recipe.name} type="button"><span className="recipe-identity"><span><strong>{recipeDisplayName(recipe, copy.seniorityLabels as Record<string, string>)}</strong>{isCollectorRecipe(recipe) ? <span className="badge badge-info">{copy.localCollector}</span> : null}</span><small><code>{recipe.recipeCode}</code> · {recipe.listingUrl}</small></span><span className="recipe-scope"><strong>{copy.seniority}</strong><small>{recipe.seniorityFilter.map((value) => (copy.seniorityLabels as Record<string, string>)[value] ?? value).join(", ")}</small></span><span className="recipe-last-used"><strong>{copy.lastUsed}</strong><small>{recipe.lastUsedAt ? formatDate(recipe.lastUsedAt, locale) : copy.neverUsed}</small></span><span className={`badge ${recipe.status === "blocked" ? "badge-warning" : recipe.status === "enabled" ? "badge-success" : "badge-info"}`}>{statusLabels[recipe.status] ?? recipe.status}</span></button>)}</div> : <EmptyState message={copy.noRecipes} />}
           </section>
           {selected ? <section className="content-section"><div className="section-heading"><div><p className="eyebrow">{copy.historyEyebrow}</p><h2>{copy.recentRuns}</h2></div><button className="button-secondary" disabled={busy !== null} onClick={() => void loadHistory(selected.id)} type="button">{copy.loadHistory}</button></div>{runs.length ? <div className="recipe-run-list">{runs.map((run) => <article className="recipe-run-row" key={run.id}><strong>{statusLabels[run.status] ?? run.status}</strong><span>{statusLabels[run.coverageStatus] ?? run.coverageStatus}</span><time dateTime={run.requestedAt}>{formatDate(run.requestedAt, locale)}</time></article>)}</div> : <EmptyState message={copy.noRuns} />}</section> : null}
         </aside>
@@ -585,9 +648,10 @@ export function SourceRecipePanel() {
             <img alt={copy.mapperImageAlt} onLoad={captureImageSize} src={preview.screenshotDataUrl} />
             <div className="mapping-overlay">{preview.elements.map((element) => <button aria-label={interpolate(copy.chooseElement, { text: element.textSummary || element.tag })} aria-pressed={currentMappingField ? mapping[currentMappingField] === element.elementId : false} className="mapping-overlay-button" key={element.elementId} onClick={() => selectMappingElement(element.elementId)} style={mappingButtonStyle(element, imageSize)} title={element.textSummary} type="button"><span>{element.textSummary || element.tag}</span></button>)}</div></div></div>{currentMappingField === "locationElementId" ? <button className="button-secondary" onClick={markOptionalAbsent} type="button">{copy.locationAbsent}</button> : null}{currentMappingField === "paginationElementId" ? <button className="button-secondary" onClick={markOptionalAbsent} type="button">{copy.singlePage}</button> : null}<div className="mapping-summary">{MAPPING_STEPS.map((field) => <span className={mapping[field] ? "is-complete" : ""} key={field}>{mappingLabel(field)}</span>)}</div><button className="button-primary" disabled={busy !== null} onClick={() => void submitMapping()} type="button">{busy === "mapping" ? copy.savingMapping : copy.saveMapping}</button></section> : null}
 
-          {selected ? <section className="recipe-operations"><div className="section-heading"><div><p className="eyebrow">{copy.operationsEyebrow}</p><h3>{copy.operationsTitle}</h3></div>{selected.nextRunAt ? <time dateTime={selected.nextRunAt}>{interpolate(copy.nextRun, { date: formatDate(selected.nextRunAt, locale) })}</time> : null}</div><div className="recipe-actions"><button disabled={busy !== null || !canCrawl} onClick={() => void crawlNow()} type="button">{copy.crawlNow}</button>{selected.status === "enabled" ? <button className="button-secondary" disabled={busy !== null} onClick={() => void changeStatus("paused")} type="button">{copy.pause}</button> : <button className="button-secondary" disabled={busy !== null || !canEnable || hasRouteProposal} onClick={() => void changeStatus("enabled")} type="button">{selected.status === "paused" ? copy.resume : copy.enable}</button>}<button className="button-danger" disabled={busy !== null} onClick={() => void retire()} type="button">{copy.retire}</button></div></section> : null}
+          {selected ? <section className="recipe-operations"><div className="section-heading"><div><p className="eyebrow">{copy.operationsEyebrow}</p><h3>{copy.operationsTitle}</h3></div>{selected.nextRunAt ? <time dateTime={selected.nextRunAt}>{interpolate(copy.nextRun, { date: formatDate(selected.nextRunAt, locale) })}</time> : null}</div><div className="recipe-actions"><button disabled={busy !== null || !canCrawl} onClick={() => void crawlNow()} type="button">{copy.crawlNow}</button>{selected.status === "enabled" ? <button className="button-secondary" disabled={busy !== null} onClick={() => void changeStatus("paused")} type="button">{copy.pause}</button> : selected.status !== "retired" ? <button className="button-secondary" disabled={busy !== null || !canEnable || hasRouteProposal} onClick={() => void changeStatus("enabled")} type="button">{selected.status === "paused" ? copy.resume : copy.enable}</button> : null}{selected.status === "retired" ? <button className="button-danger recipe-purge-action" disabled={busy !== null} onClick={() => setPurgeOpen(true)} type="button">{copy.purge}</button> : <button className="button-danger" disabled={busy !== null} onClick={() => void retire()} type="button">{copy.retire}</button>}</div></section> : null}
         </section>
       </section>
+      {selected ? <RecipePurgeDialog busy={busy === "purge"} busyLabel={copy.purging} cancelLabel={copy.purgeCancel} confirmLabel={copy.purgeConfirmAction} description={copy.purgeDescription} inputLabel={copy.purgeInputLabel} onClose={() => setPurgeOpen(false)} onConfirm={(confirmationCode) => void purge(confirmationCode)} open={purgeOpen} recipeCode={selected.recipeCode} title={copy.purgeTitle} /> : null}
     </div>
   );
 }

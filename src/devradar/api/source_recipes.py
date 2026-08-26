@@ -41,6 +41,7 @@ from devradar.source_recipes.catalog import (
     ResolvedTermsNotice,
     resolve_terms_notice,
 )
+from devradar.source_recipes.identity import recipe_code
 from devradar.source_recipes.models import (
     PreviewStatus,
     RecipeScheduleKind,
@@ -52,6 +53,7 @@ from devradar.source_recipes.models import (
     TermsNotice,
 )
 from devradar.source_recipes.preview import request_preview
+from devradar.source_recipes.purge import RecipePurgeError, purge_source_recipe
 from devradar.source_recipes.scheduler import (
     next_source_recipe_run_at,
     source_recipe_schedule_slot,
@@ -127,6 +129,7 @@ class SourceRecipePatch(ApiModel):
 
 class SourceRecipeData(ApiModel):
     id: UUID
+    recipe_code: str
     source_id: UUID | None
     name: str
     status: RecipeStatus
@@ -151,6 +154,35 @@ class SourceRecipeData(ApiModel):
     next_run_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    last_used_at: datetime | None
+
+
+class SourceRecipePurgeRequest(ApiModel):
+    confirmation_code: str = Field(
+        min_length=12,
+        max_length=12,
+        pattern=r"^RCP-[0-9A-F]{8}$",
+    )
+
+
+class SourceRecipePurgeDeletedData(ApiModel):
+    source_recipes: int
+    source_recipe_previews: int
+    sources: int
+    crawl_runs: int
+    raw_job_snapshots: int
+    jobs: int
+    job_changes: int
+    extraction_results: int
+    job_embeddings: int
+    job_matches: int
+    alert_deliveries: int
+
+
+class SourceRecipePurgeData(ApiModel):
+    recipe_id: UUID
+    source_id: UUID | None
+    deleted: SourceRecipePurgeDeletedData
 
 
 class SourceRecipePreviewRequest(ApiModel):
@@ -245,6 +277,7 @@ SourceRecipeListResponse = ListResponse[SourceRecipeData]
 SourceRecipePreviewResponse = DataResponse[SourceRecipePreviewData]
 SourceRecipeCrawlResponse = DataResponse[SourceRecipeCrawlData]
 SourceRecipeCrawlListResponse = ListResponse[SourceRecipeCrawlData]
+SourceRecipePurgeResponse = DataResponse[SourceRecipePurgeData]
 
 
 def _ack_required(recipe: SourceRecipe, notice: ResolvedTermsNotice) -> bool:
@@ -282,6 +315,7 @@ def _recipe_data(recipe: SourceRecipe) -> SourceRecipeData:
     notice = resolve_terms_notice(recipe.listing_url)
     return SourceRecipeData(
         id=recipe.id,
+        recipe_code=recipe_code(recipe.id),
         source_id=recipe.source_id,
         name=recipe.name,
         status=recipe.status,
@@ -306,6 +340,7 @@ def _recipe_data(recipe: SourceRecipe) -> SourceRecipeData:
         next_run_at=recipe.next_run_at,
         created_at=recipe.created_at,
         updated_at=recipe.updated_at,
+        last_used_at=recipe.last_used_at,
     )
 
 
@@ -745,6 +780,53 @@ def delete_source_recipe(
     recipe.status = RecipeStatus.RETIRED
     recipe.updated_at = datetime.now(UTC)
     session.commit()
+
+
+@router.post(
+    "/source-recipes/{recipeId}/purge",
+    response_model=SourceRecipePurgeResponse,
+    dependencies=[Depends(require_source_recipes_enabled)],
+    responses={
+        **ERROR_RESPONSES,
+        401: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+        422: {"model": ErrorResponse},
+    },
+)
+def purge_owned_source_recipe(
+    request: SourceRecipePurgeRequest,
+    recipe_id: Annotated[UUID, Path(alias="recipeId")],
+    context: CsrfContext,
+    session: DatabaseSession,
+) -> SourceRecipePurgeResponse:
+    try:
+        result = purge_source_recipe(
+            session,
+            owner_user_id=context.user.id,
+            recipe_id=recipe_id,
+            confirmation_code=request.confirmation_code,
+        )
+    except RecipePurgeError as error:
+        status_code = (
+            status.HTTP_404_NOT_FOUND
+            if error.code == "source_recipe_not_found"
+            else status.HTTP_409_CONFLICT
+            if error.code in {"recipe_purge_requires_retired", "recipe_purge_active"}
+            else status.HTTP_422_UNPROCESSABLE_CONTENT
+        )
+        raise ApiContractError(
+            status_code,
+            error.code,
+            "Source recipe purge could not be completed.",
+        ) from None
+    return SourceRecipePurgeResponse(
+        data=SourceRecipePurgeData(
+            recipe_id=result.recipe_id,
+            source_id=result.source_id,
+            deleted=SourceRecipePurgeDeletedData(**vars(result.deleted)),
+        )
+    )
 
 
 @router.post(

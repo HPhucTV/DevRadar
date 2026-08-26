@@ -24,6 +24,30 @@ test("source recipe BFF surface exists and uses bounded backend paths", async ()
   assert.doesNotMatch(bff, /proxyUrl|authorization|outboundUrl|bypass|captcha.?solve/i);
 });
 
+test("purge BFF accepts only one uppercase confirmation code", async () => {
+  const route = await source("src/app/api/devradar/source-recipes/[recipeId]/purge/route.ts");
+  assert.match(route, /confirmationCode/);
+  assert.match(route, /\^RCP-\[0-9A-F\]\{8\}\$/);
+  assert.match(route, /Object\.keys\(value\)/);
+  assert.match(route, /\/source-recipes\/\$\{recipeId\}\/purge/);
+  assert.match(route, /method:\s*["']POST["']/);
+  assert.doesNotMatch(route, /cookies|selector|outboundUrl|listingUrl/i);
+});
+
+test("purge dialog requires typed confirmation and stays keyboard dismissible", async () => {
+  const dialog = await source("src/components/recipe-purge-dialog.tsx");
+  const panel = await source("src/components/source-recipe-panel.tsx");
+  assert.match(dialog, /<dialog/);
+  assert.match(dialog, /showModal\(\)/);
+  assert.match(dialog, /confirmation === recipeCode/);
+  assert.match(dialog, /aria-describedby/);
+  assert.match(dialog, /onCancel/);
+  assert.match(dialog, /event\.key === "Escape"/);
+  assert.match(panel, /purgeSourceRecipe/);
+  assert.match(panel, /status === "retired"/);
+  assert.match(panel, /recipe-purge-action/);
+});
+
 test("document import BFF validates and rebuilds one bounded multipart upload", async () => {
   const route = await source(
     "src/app/api/devradar/source-recipes/[recipeId]/document-imports/route.ts",
