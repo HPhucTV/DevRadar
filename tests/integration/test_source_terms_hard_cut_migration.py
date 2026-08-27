@@ -1,29 +1,19 @@
 from __future__ import annotations
 
+import ast
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import MetaData, create_engine, inspect, text
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
-from devradar.auth.models import User
-from devradar.catalog.models import Job, JobChange, JobChangeType, JobStatus
-from devradar.ingestion.models import (
-    CoverageStatus,
-    CrawlRun,
-    CrawlRunStatus,
-    CrawlTriggerType,
-    ParseStatus,
-    RawJobSnapshot,
-    Source,
-    SourceApprovalStatus,
-)
+from devradar.catalog.models import Job
 from devradar.platform.database import DATABASE_URL_ENV
-from devradar.source_recipes.models import RecipeStatus, SourceRecipe, TermsNotice
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PREVIOUS_REVISION = "e8f2a4c6d901"
@@ -49,6 +39,17 @@ def _alembic_config() -> Config:
     return Config(str(PROJECT_ROOT / "alembic.ini"))
 
 
+def test_historical_seed_does_not_import_terms_orm_models() -> None:
+    module = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    imported_names = {
+        alias.name
+        for node in ast.walk(module)
+        if isinstance(node, ast.ImportFrom)
+        for alias in node.names
+    }
+    assert {"Source", "SourceRecipe", "TermsNotice", "User"}.isdisjoint(imported_names)
+
+
 def _table_counts(session: Session, table_names: tuple[str, ...]) -> dict[str, int]:
     return {
         table_name: int(session.execute(text(f'SELECT count(*) FROM "{table_name}"')).scalar_one())
@@ -63,114 +64,132 @@ def _table_ids(session: Session, table_names: tuple[str, ...]) -> dict[str, set[
     }
 
 
-def _seed_graph(session: Session) -> dict[str, UUID]:
+def _seed_graph(engine: Engine) -> dict[str, UUID]:
     now = datetime.now(UTC)
-    owner = User(username="terms-hard-cut-owner", password_hash="a" * 64)
-    source = Source(
-        name="Terms hard cut source",
-        base_url="https://jobs.example.test",
-        adapter_key="terms_hard_cut",
-        approval_status=SourceApprovalStatus.APPROVED,
-        rate_limit_policy={"requests_per_second": 0.5, "concurrency": 1},
-        allowed_hosts=["jobs.example.test"],
-        terms_reviewed_at=now,
-        robots_reviewed_at=now,
+    owner_id, source_id, recipe_id, crawl_run_id, snapshot_id, job_id, change_id = (
+        uuid4() for _ in range(7)
     )
-    session.add_all([owner, source])
-    session.flush()
+    tables = MetaData()
+    tables.reflect(bind=engine, only=("auth_users", *PRESERVED_TABLES))
 
-    recipe = SourceRecipe(
-        owner_user_id=owner.id,
-        source_id=source.id,
-        name="Terms hard cut recipe",
-        status=RecipeStatus.ENABLED,
-        listing_url="https://jobs.example.test/listings",
-        origin="https://jobs.example.test",
-        allowed_hosts=["jobs.example.test"],
-        allowed_path_prefixes=["/"],
-        terms_notice=TermsNotice.RESTRICTED_TERMS,
-        terms_notice_version="terms-hard-cut-v1",
-        terms_evidence_url="https://jobs.example.test/terms",
-        terms_reviewed_at=now,
-        terms_acknowledged_at=now,
-        field_mapping={},
-        pagination_mapping={},
-        seniority_filter=["all"],
-        config_version="terms-hard-cut-v1",
-        item_budget=10,
-        page_budget=1,
-        request_budget=10,
-        byte_budget=100_000,
-        time_budget_seconds=60,
-        requests_per_minute=2,
-    )
-    session.add(recipe)
-    session.flush()
-
-    crawl_run = CrawlRun(
-        source_id=source.id,
-        trigger_type=CrawlTriggerType.MANUAL,
-        status=CrawlRunStatus.SUCCEEDED,
-        coverage_status=CoverageStatus.COMPLETE,
-        started_at=now,
-        finished_at=now + timedelta(seconds=1),
-        pages_found=1,
-        items_found=1,
-        adapter_version="terms-hard-cut-v1",
-        config_version="terms-hard-cut-v1",
-    )
-    session.add(crawl_run)
-    session.flush()
-
-    snapshot = RawJobSnapshot(
-        crawl_run_id=crawl_run.id,
-        source_id=source.id,
-        source_url="https://jobs.example.test/listings/1",
-        external_id="terms-hard-cut-1",
-        fetched_at=now,
-        http_status=200,
-        content_type="application/json",
-        raw_content_hash="b" * 64,
-        raw_content='{"title":"Backend Engineer"}',
-        parse_status=ParseStatus.PARSED,
-    )
-    session.add(snapshot)
-    session.flush()
-
-    job = Job(
-        source_id=source.id,
-        external_id="terms-hard-cut-1",
-        canonical_url=snapshot.source_url,
-        title="Backend Engineer",
-        company_name="Example",
-        levels=["mid"],
-        first_seen_at=now,
-        last_seen_at=now,
-        status=JobStatus.ACTIVE,
-        current_snapshot_id=snapshot.id,
-        job_content_hash="c" * 64,
-    )
-    session.add(job)
-    session.flush()
-    change = JobChange(
-        job_id=job.id,
-        crawl_run_id=crawl_run.id,
-        to_snapshot_id=snapshot.id,
-        field_name="job",
-        old_value=None,
-        new_value={"created": True},
-        change_type=JobChangeType.CREATED,
-        detected_at=now,
-    )
-    session.add(change)
-    session.commit()
+    with engine.begin() as connection:
+        connection.execute(
+            tables.tables["auth_users"].insert(),
+            {"id": owner_id, "username": "terms-hard-cut-owner", "password_hash": "a" * 64},
+        )
+        connection.execute(
+            tables.tables["sources"].insert(),
+            {
+                "id": source_id,
+                "name": "Terms hard cut source",
+                "base_url": "https://jobs.example.test",
+                "adapter_key": "terms_hard_cut",
+                "approval_status": "approved",
+                "rate_limit_policy": {"requests_per_second": 0.5, "concurrency": 1},
+                "allowed_hosts": ["jobs.example.test"],
+                "terms_reviewed_at": now,
+                "robots_reviewed_at": now,
+            },
+        )
+        connection.execute(
+            tables.tables["source_recipes"].insert(),
+            {
+                "id": recipe_id,
+                "owner_user_id": owner_id,
+                "source_id": source_id,
+                "name": "Terms hard cut recipe",
+                "status": "enabled",
+                "listing_url": "https://jobs.example.test/listings",
+                "origin": "https://jobs.example.test",
+                "allowed_hosts": ["jobs.example.test"],
+                "allowed_path_prefixes": ["/"],
+                "terms_notice": "restricted_terms",
+                "terms_notice_version": "terms-hard-cut-v1",
+                "terms_evidence_url": "https://jobs.example.test/terms",
+                "terms_reviewed_at": now,
+                "terms_acknowledged_at": now,
+                "field_mapping": {},
+                "pagination_mapping": {},
+                "seniority_filter": ["all"],
+                "config_version": "terms-hard-cut-v1",
+                "item_budget": 10,
+                "page_budget": 1,
+                "request_budget": 10,
+                "byte_budget": 100_000,
+                "time_budget_seconds": 60,
+                "requests_per_minute": 2,
+            },
+        )
+        connection.execute(
+            tables.tables["crawl_runs"].insert(),
+            {
+                "id": crawl_run_id,
+                "source_id": source_id,
+                "trigger_type": "manual",
+                "status": "succeeded",
+                "coverage_status": "complete",
+                "started_at": now,
+                "finished_at": now + timedelta(seconds=1),
+                "pages_found": 1,
+                "items_found": 1,
+                "adapter_version": "terms-hard-cut-v1",
+                "config_version": "terms-hard-cut-v1",
+            },
+        )
+        connection.execute(
+            tables.tables["raw_job_snapshots"].insert(),
+            {
+                "id": snapshot_id,
+                "crawl_run_id": crawl_run_id,
+                "source_id": source_id,
+                "source_url": "https://jobs.example.test/listings/1",
+                "external_id": "terms-hard-cut-1",
+                "fetched_at": now,
+                "http_status": 200,
+                "content_type": "application/json",
+                "raw_content_hash": "b" * 64,
+                "raw_content": '{"title":"Backend Engineer"}',
+                "parse_status": "parsed",
+            },
+        )
+        connection.execute(
+            tables.tables["jobs"].insert(),
+            {
+                "id": job_id,
+                "source_id": source_id,
+                "external_id": "terms-hard-cut-1",
+                "canonical_url": "https://jobs.example.test/listings/1",
+                "title": "Backend Engineer",
+                "company_name": "Example",
+                "levels": ["mid"],
+                "first_seen_at": now,
+                "last_seen_at": now,
+                "status": "active",
+                "current_snapshot_id": snapshot_id,
+                "job_content_hash": "c" * 64,
+            },
+        )
+        connection.execute(
+            tables.tables["job_changes"].insert(),
+            {
+                "id": change_id,
+                "job_id": job_id,
+                "crawl_run_id": crawl_run_id,
+                "to_snapshot_id": snapshot_id,
+                "field_name": "job",
+                "old_value": None,
+                "new_value": {"created": True},
+                "change_type": "created",
+                "detected_at": now,
+            },
+        )
     return {
-        "recipe_id": recipe.id,
-        "source_id": source.id,
-        "crawl_run_id": crawl_run.id,
-        "snapshot_id": snapshot.id,
-        "job_id": job.id,
-        "change_id": change.id,
+        "recipe_id": recipe_id,
+        "source_id": source_id,
+        "crawl_run_id": crawl_run_id,
+        "snapshot_id": snapshot_id,
+        "job_id": job_id,
+        "change_id": change_id,
     }
 
 
@@ -185,7 +204,7 @@ def test_source_terms_hard_cut_preserves_canonical_graph(
     engine = create_engine(fresh_postgresql_url)
     try:
         with Session(engine) as session:
-            ids = _seed_graph(session)
+            ids = _seed_graph(engine)
             before = _table_counts(session, PRESERVED_TABLES)
             before_ids = _table_ids(session, PRESERVED_TABLES)
 
