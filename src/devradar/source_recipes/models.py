@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, time
+from datetime import datetime, time
 from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
@@ -41,12 +41,6 @@ class SourceRecipeError(ValueError):
         self.code = code
 
 
-class TermsNotice(StrEnum):
-    NOT_REVIEWED = "not_reviewed"
-    NO_SPECIFIC_RESTRICTION_FOUND = "no_specific_restriction_found"
-    RESTRICTED_TERMS = "restricted_terms"
-
-
 class RecipeStatus(StrEnum):
     DRAFT = "draft"
     PREVIEWING = "previewing"
@@ -78,11 +72,6 @@ class SourceRecipeDraft:
     origin: str
     allowed_hosts: tuple[str, ...]
     allowed_path_prefixes: tuple[str, ...]
-    terms_notice: TermsNotice
-    terms_notice_version: str
-    terms_evidence_url: str | None
-    terms_reviewed_on: date | None
-    terms_acknowledged: bool
     seniority_filter: tuple[str, ...]
     schedule_kind: RecipeScheduleKind
     schedule_local_time: time | None
@@ -103,7 +92,6 @@ class SourceRecipeDraft:
         name: str,
         listing_url: str,
         seniority_filter: list[str] | tuple[str, ...],
-        acknowledged_notice_version: str | None,
         allowed_hosts: list[str] | tuple[str, ...] | None = None,
         allowed_path_prefixes: list[str] | tuple[str, ...] | None = None,
         schedule_kind: RecipeScheduleKind = RecipeScheduleKind.MANUAL,
@@ -118,7 +106,6 @@ class SourceRecipeDraft:
         requests_per_minute: int = 2,
     ) -> SourceRecipeDraft:
         from devradar.catalog.models import JobLevel
-        from devradar.source_recipes.catalog import resolve_terms_notice
         from devradar.source_recipes.policy import (
             normalize_allowed_host,
             normalize_listing_url,
@@ -203,26 +190,12 @@ class SourceRecipeDraft:
             if not isinstance(budget_value, int) or not minimum <= budget_value <= maximum:
                 raise SourceRecipeError("recipe_budget_invalid")
 
-        notice = resolve_terms_notice(normalized_url.url)
-        if (
-            acknowledged_notice_version is not None
-            and acknowledged_notice_version != notice.version
-        ):
-            raise SourceRecipeError("terms_notice_acknowledgement_stale")
-        terms_acknowledged = (
-            not notice.acknowledgement_required or acknowledged_notice_version == notice.version
-        )
         return cls(
             name=normalized_name,
             listing_url=normalized_url.url,
             origin=normalized_url.origin,
             allowed_hosts=tuple(hosts),
             allowed_path_prefixes=tuple(path_prefixes),
-            terms_notice=notice.notice,
-            terms_notice_version=notice.version,
-            terms_evidence_url=notice.evidence_url,
-            terms_reviewed_on=notice.reviewed_on,
-            terms_acknowledged=terms_acknowledged,
             seniority_filter=normalized_seniority,
             schedule_kind=normalized_schedule,
             schedule_local_time=schedule_local_time,
@@ -244,10 +217,6 @@ class SourceRecipe(Base):
             "status IN ('draft', 'previewing', 'preview_ready', 'enabled', 'paused', "
             "'blocked', 'retired')",
             name="ck_source_recipes_status",
-        ),
-        CheckConstraint(
-            "terms_notice IN ('not_reviewed', 'no_specific_restriction_found', 'restricted_terms')",
-            name="ck_source_recipes_terms_notice",
         ),
         CheckConstraint(
             "(schedule_kind IN ('manual', 'every_6_hours') "
@@ -335,21 +304,6 @@ class SourceRecipe(Base):
     origin: Mapped[str] = mapped_column(String(512))
     allowed_hosts: Mapped[list[str]] = mapped_column(JSONB)
     allowed_path_prefixes: Mapped[list[str]] = mapped_column(JSONB)
-    terms_notice: Mapped[TermsNotice] = mapped_column(
-        Enum(
-            TermsNotice,
-            name="source_recipe_terms_notice",
-            native_enum=False,
-            create_constraint=False,
-            validate_strings=True,
-            values_callable=_enum_values,
-            length=32,
-        )
-    )
-    terms_notice_version: Mapped[str] = mapped_column(String(64))
-    terms_evidence_url: Mapped[str | None] = mapped_column(String(2048))
-    terms_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    terms_acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     parser_version: Mapped[str] = mapped_column(
         String(100),
         default="source-recipe-parser-v1",

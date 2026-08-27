@@ -8,7 +8,6 @@ from devradar.source_recipes.models import (
     SourceRecipeDraft,
     SourceRecipeError,
     SourceRecipePreview,
-    TermsNotice,
 )
 
 __all__ = (
@@ -19,5 +18,4 @@ __all__ = (
     "SourceRecipeDraft",
     "SourceRecipeError",
     "SourceRecipePreview",
-    "TermsNotice",
 )

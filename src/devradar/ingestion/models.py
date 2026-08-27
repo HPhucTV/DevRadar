@@ -109,9 +109,8 @@ class Source(Base):
             name="ck_sources_rate_limit_policy_object",
         ),
         CheckConstraint(
-            "approval_status <> 'approved' OR "
-            "(terms_reviewed_at IS NOT NULL AND robots_reviewed_at IS NOT NULL)",
-            name="ck_sources_approved_has_policy_reviews",
+            "approval_status <> 'approved' OR robots_reviewed_at IS NOT NULL",
+            name="ck_sources_approved_has_robots_review",
         ),
         CheckConstraint(
             "consecutive_failures >= 0",
@@ -162,7 +161,6 @@ class Source(Base):
     crawl_frequency: Mapped[str | None] = mapped_column(String(100))
     rate_limit_policy: Mapped[dict[str, Any]] = mapped_column(JSONB)
     allowed_hosts: Mapped[list[str]] = mapped_column(JSONB)
-    terms_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     robots_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_crawled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

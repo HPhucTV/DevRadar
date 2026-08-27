@@ -247,7 +247,7 @@ def test_migration_and_domain_invariants_on_postgresql(
                 rate_limit_policy={"concurrency": 1},
                 allowed_hosts=["example.test"],
             ),
-            "ck_sources_approved_has_policy_reviews",
+            "ck_sources_approved_has_robots_review",
         )
 
         _assert_constraint_rejects(

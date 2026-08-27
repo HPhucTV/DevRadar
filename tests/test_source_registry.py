@@ -3,10 +3,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import date
+from typing import cast
 
 import pytest
+from sqlalchemy import Table
 
-from devradar.ingestion.models import SourceApprovalStatus
+from devradar.ingestion.models import Source, SourceApprovalStatus
 from devradar.ingestion.source_registry import (
     DiscoveryMode,
     FetchPolicy,
@@ -44,7 +46,6 @@ def _config() -> SourceConfig:
         policy_review=PolicyReview(
             scope=PolicyScope.PERMISSION_REQUIRED,
             robots_reviewed_at=date(2026, 8, 24),
-            terms_reviewed_at=date(2026, 8, 24),
             next_review_at=date(2026, 11, 24),
         ),
         config_version="recipe-config-v1",
@@ -81,3 +82,17 @@ def test_fetch_policy_requires_throttle_and_public_host_boundary() -> None:
         replace(_policy(), requests_per_minute=None)
     with pytest.raises(ValueError, match="hostnames"):
         replace(_policy(), allowed_hosts=("127.0.0.1",))
+
+
+def test_source_metadata_requires_only_robots_review_for_approval() -> None:
+    source_table = cast(Table, Source.__table__)
+    checks = {
+        constraint.name: str(constraint.sqltext)
+        for constraint in source_table.constraints
+        if constraint.name is not None and hasattr(constraint, "sqltext")
+    }
+
+    assert "terms_reviewed_at" not in source_table.columns
+    assert checks["ck_sources_approved_has_robots_review"] == (
+        "approval_status <> 'approved' OR robots_reviewed_at IS NOT NULL"
+    )

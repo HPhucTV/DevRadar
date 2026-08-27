@@ -2,10 +2,17 @@ from __future__ import annotations
 
 import importlib
 from datetime import time
+from uuid import uuid4
 
 import pytest
 
-from devradar.source_recipes.models import RecipeScheduleKind, RecipeStatus, SourceRecipeDraft
+from devradar.source_recipes.models import (
+    RecipeScheduleKind,
+    RecipeStatus,
+    SourceRecipe,
+    SourceRecipeDraft,
+)
+from devradar.source_recipes.service import recipe_config_hash
 
 
 def _draft(**overrides: object) -> SourceRecipeDraft:
@@ -13,7 +20,6 @@ def _draft(**overrides: object) -> SourceRecipeDraft:
         "name": "Example jobs",
         "listing_url": "https://example.test/jobs?q=python",
         "seniority_filter": ["senior", "intern", "fresher"],
-        "acknowledged_notice_version": None,
     }
     values.update(overrides)
     return SourceRecipeDraft.from_input(**values)  # type: ignore[arg-type]
@@ -32,6 +38,44 @@ def test_recipe_draft_normalizes_identity_and_canonical_seniority_order() -> Non
     assert draft.schedule_local_time is None
     assert draft.schedule_weekday is None
     assert draft.timezone == "Asia/Ho_Chi_Minh"
+
+
+def _recipe_for_config_hash() -> SourceRecipe:
+    return SourceRecipe(
+        id=uuid4(),
+        listing_url="https://example.test/jobs",
+        allowed_hosts=["example.test"],
+        allowed_path_prefixes=["/jobs"],
+        byte_budget=2_000_000,
+        config_version="source-recipe-config-v2",
+        field_mapping={},
+        item_budget=500,
+        page_budget=20,
+        pagination_mapping={},
+        parser_version="source-recipe-parser-v1",
+        request_budget=100,
+        requests_per_minute=2,
+        seniority_filter=["intern"],
+        time_budget_seconds=600,
+    )
+
+
+def test_recipe_draft_and_config_hash_hard_cut_terms_inputs() -> None:
+    draft = SourceRecipeDraft.from_input(
+        name="TopCV Intern",
+        listing_url="https://www.topcv.vn/viec-lam",
+        seniority_filter=["intern"],
+    )
+    recipe = _recipe_for_config_hash()
+
+    assert not hasattr(draft, "terms_notice")
+    assert "terms_notice" not in SourceRecipe.__table__.columns
+    first_hash = recipe_config_hash(recipe)
+    recipe.terms_notice_version = "historical-value"  # type: ignore[attr-defined]
+    assert recipe_config_hash(recipe) == first_hash
+
+    recipe.allowed_path_prefixes = ["/viec-lam"]
+    assert recipe_config_hash(recipe) != first_hash
 
 
 @pytest.mark.parametrize("seniority", [[], ["all", "senior"], ["unknown"]])

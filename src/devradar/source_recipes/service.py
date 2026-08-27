@@ -64,7 +64,6 @@ def ensure_recipe_source(session: Session, recipe: SourceRecipe) -> Source:
                 "concurrency": 1,
             },
             allowed_hosts=list(recipe.allowed_hosts),
-            terms_reviewed_at=recipe.terms_reviewed_at,
         )
         session.add(source)
         session.flush()
@@ -78,7 +77,6 @@ def ensure_recipe_source(session: Session, recipe: SourceRecipe) -> Source:
         "concurrency": 1,
     }
     source.allowed_hosts = list(recipe.allowed_hosts)
-    source.terms_reviewed_at = recipe.terms_reviewed_at
     return source
 
 
@@ -120,7 +118,6 @@ def recipe_config_hash(recipe: SourceRecipe) -> str:
         "request_budget": recipe.request_budget,
         "requests_per_minute": recipe.requests_per_minute,
         "seniority_filter": recipe.seniority_filter,
-        "terms_notice_version": recipe.terms_notice_version,
         "time_budget_seconds": recipe.time_budget_seconds,
     }
     encoded = json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":"))

@@ -37,12 +37,11 @@ class IdentityStrategy(StrEnum):
 class PolicyReview:
     scope: PolicyScope
     robots_reviewed_at: date
-    terms_reviewed_at: date
     next_review_at: date
 
     def __post_init__(self) -> None:
-        if self.next_review_at <= max(self.robots_reviewed_at, self.terms_reviewed_at):
-            raise ValueError("next_review_at must be after completed policy reviews")
+        if self.next_review_at <= self.robots_reviewed_at:
+            raise ValueError("next_review_at must be after completed policy review")
 
 
 def _validate_host(host: str) -> None:
