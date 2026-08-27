@@ -227,5 +227,5 @@ def test_compose_and_web_smoke_cover_local_recipe_worker() -> None:
     assert "DEVRADAR_CUSTOM_SOURCE_POLL_SECONDS" not in environment
     assert '"/sources"' in smoke
     assert '"/api/devradar/privacy"' in smoke
-    assert '"privacy-v2"' in smoke
+    assert '"privacy-v3"' in smoke
     assert smoke.count("-UseBasicParsing") == 2
