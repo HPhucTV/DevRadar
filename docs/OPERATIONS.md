@@ -113,8 +113,9 @@ PostgreSQL test hiện dùng `DEVRADAR_TEST_DATABASE_URL`, tạo database tên n
 
 ### 4.3. End-to-end và acceptance
 
-- V6-020 local: create recipe → acknowledge notice → preview/map → enable → Crawl now → provenance/history.
-- V6-021 local: import một controlled fixture HTML/JSON/CSV vào recipe đã acknowledge, xác minh provenance,
+- V6-025 local: create recipe → preview/map → enable → Crawl now → provenance/history.
+- V6-025 local: import một controlled fixture HTML/JSON/CSV vào recipe, mở source-filtered Jobs bằng
+  server-derived `sourceId`, xác minh provenance,
   idempotency, incomplete coverage và remote block/health state không đổi; không live-fetch TopCV/Vieclam24h.
 - V2: nhiều scheduled fixture cycles phát hiện new/update/missing/removed/reactivated, duplicate slot không process lại, partial/anomaly không false removal và quarantine recovery đúng policy.
 - V3: deterministic extraction + LLM fallback trên labeled suite; fixed local model backfill; keyword/semantic comparison và skill trend có denominator/coverage.
@@ -128,7 +129,7 @@ PostgreSQL test hiện dùng `DEVRADAR_TEST_DATABASE_URL`, tạo database tên n
 |---|---|
 | Replay cùng snapshot | Không duplicate Job hoặc JobChange; metric idempotent. |
 | Crawl network/parser fail | Run `partial/failed`; không tăng missing count. |
-| Recipe chưa preview/current acknowledgement | Không enable hoặc enqueue; không outbound crawl. |
+| Recipe chưa có current successful preview | Không enable hoặc enqueue; không outbound crawl. |
 | Local document import | Đúng một UTF-8 HTML/JSON/CSV bounded file; không network/file retention, coverage incomplete và không đổi remote health/removal state. |
 | Duplicate schedule/API trigger hoặc hai worker claim | Một trigger/pending row chỉ được process một lần; replay trả history hiện hữu. |
 | Redirect/private address | Bị chặn và ghi safe policy error; không follow. |
@@ -419,13 +420,13 @@ prune, rotation, RPO/RTO hoặc GET check/alert evidence; các gate đó vẫn m
 - backup + restore evidence, migration rollback/forward plan;
 - vulnerability/reachability review và no unresolved reachable critical/high issue;
 - alerting, runbook và rollback được diễn tập;
-- Terms/privacy notice phù hợp dữ liệu đang xử lý.
+- Privacy notice phù hợp dữ liệu đang xử lý.
 
 ## 12. Runbook tối thiểu
 
 Trước public deployment phải có procedure được kiểm thử cho:
 
-- source degraded/quarantined hoặc terms thay đổi;
+- source degraded/quarantined hoặc technical route/config thay đổi;
 - parser regression gây dữ liệu sai;
 - database migration/persistence failure;
 - LLM provider outage/cost spike/model regression;

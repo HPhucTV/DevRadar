@@ -101,7 +101,7 @@ V1 dùng page-based pagination vì dataset portfolio còn bounded và UI cần t
 | `GET /api/v1/crawl-runs` | List crawl runs | V1 — implemented | operator/read |
 | `GET /api/v1/crawl-runs/{runId}` | Run detail, metric và safe error | V1 — implemented | operator/read |
 | `GET /api/v1/jobs/{jobId}/changes` | Lịch sử thay đổi | V2 — implemented | local/read |
-| `GET /api/v1/source-catalog` | Mười listing hint cùng versioned terms notice | V6-020 — implemented | localhost owner/read |
+| `GET /api/v1/source-catalog` | Mười bounded listing hint (`source-catalog-v2`) | V6-025 — implemented | localhost owner/read |
 | `GET /api/v1/source-recipes` | List recipe owner-local | V6-020 — implemented | localhost owner/read |
 | `POST /api/v1/source-recipes` | Persist bounded listing URL/seniority/schedule draft | V6-020 — implemented | localhost owner/write |
 | `GET/PATCH/DELETE /api/v1/source-recipes/{recipeId}` | Đọc, đổi lifecycle/lịch hoặc retire recipe (DELETE không xóa graph) | V6-020 — implemented | localhost owner |
@@ -109,8 +109,8 @@ V1 dùng page-based pagination vì dataset portfolio còn bounded và UI cần t
 | `POST /api/v1/source-recipes/{recipeId}/previews` | Queue bounded non-canonical preview | V6-020 — implemented | localhost owner/write |
 | `GET /api/v1/source-recipes/{recipeId}/previews/{previewId}` | Poll preview/candidates/mapping artifact | V6-020 — implemented | localhost owner/read |
 | `POST /api/v1/source-recipes/{recipeId}/previews/{previewId}/mapping` | Lưu opaque visual mapping và re-preview | V6-020 — implemented | localhost owner/write |
-| `GET/POST /api/v1/source-recipes/{recipeId}/crawl-runs` | History hoặc enqueue manual run | V6-020 — implemented | localhost owner; current preview/notice |
-| `POST /api/v1/source-recipes/{recipeId}/document-imports` | Import bounded HTML/JSON/CSV không network | V6-021 — implemented | localhost owner/write; current notice |
+| `GET/POST /api/v1/source-recipes/{recipeId}/crawl-runs` | History hoặc enqueue manual run | V6-025 — implemented | localhost owner; current preview |
+| `POST /api/v1/source-recipes/{recipeId}/document-imports` | Import bounded HTML/JSON/CSV không network | V6-025 — implemented | localhost owner/write |
 | `GET /api/v1/skills` | Taxonomy và frequency có denominator/coverage | V3 — implemented | local/read |
 | `GET /api/v1/skill-trends` | Bounded cohort/time-window trend | V3 — implemented | local/read |
 | `POST /api/v1/resume-profiles` | Idempotent upload/tạo profile | V5-003 — implemented | owner/write; session khi auth bật |
@@ -132,10 +132,9 @@ Hai endpoint `agent-runs` từng được đề xuất cho V4 nhưng chưa imple
 
 V2 Source summary bổ sung `consecutiveFailures` và safe `healthReasonCode`; Source detail bổ sung `baselineItemsFound` và `quarantinedAt`. Response không trả rate policy, allowed hosts nội bộ, request payload hoặc raw error. `healthStatus=quarantined` luôn có `quarantinedAt`; các status khác trả `null`.
 
-`GET /privacy` là read-only policy contract. Response cố định `privacy-v2`: không giữ CV file gốc mặc định,
+`GET /privacy` là read-only policy contract. Response cố định `privacy-v3`: không giữ CV file gốc mặc định,
 ResumeProfile TTL 24 giờ, owner deletion được hỗ trợ, không gửi CV/JD tới external LLM, deterministic extraction
-đứng trước model fallback, Source Recipe chỉ chạy localhost, terms warning có exact-version owner
-acknowledgement và access-control bypass luôn `false`.
+đứng trước model fallback, Source Recipe chỉ chạy localhost và access-control bypass luôn `false`.
 Endpoint không trả secret, database configuration, raw CV/JD hoặc URL nội bộ.
 
 ## 6. Resource contracts cốt lõi
@@ -209,7 +208,7 @@ Source response chỉ trả identity, adapter key, approval/health và review/la
 
 Generic `POST /crawl-runs` đã bị xóa. Manual request chỉ đi qua
 `POST /source-recipes/{recipeId}/crawl-runs`, không nhận URL/config override và yêu cầu recipe `enabled`,
-current successful preview, current terms acknowledgement, không cooldown/block. `Idempotency-Key` là bắt
+current successful preview và không cooldown/block. `Idempotency-Key` là bắt
 buộc; raw key không được persist/log. `source-recipe-worker` claim ngoài HTTP lifecycle bằng PostgreSQL row
 lock; transient retry giữ relation qua `retryOfRunId`.
 
@@ -404,7 +403,7 @@ phép nhưng wildcard `*` bị cấm.
 - Semantic search giữ model/hash compatibility, status/source/skill filter và safe `503` khi local model unavailable.
 - Skill/trend response giữ cohort denominator, analyzed coverage, bounded window và stable ordering.
 - URL không được truyền theo từng run; chỉ immutable normalized URL trong owner-local recipe được fetch.
-- Preview/mapping/acknowledgement gate, cross-owner access và idempotency retry không tạo hai run.
+- Preview/mapping gate, cross-owner access và idempotency retry không tạo hai run.
 - ResumeProfile/Match của owner khác trả `404/403` theo policy; auth mode suy ra owner từ session, không
   từ header hoặc profile ID.
 - AlertRule/dispatch của owner khác trả `404`; delete rule đã xóa lặp lại trả `204`.
@@ -419,16 +418,14 @@ local no-login vẫn kiểm Origin. Mọi query owner-scoped và cross-owner tr�
 
 Create dùng `name`, immutable `listingUrl`, `seniority`, fixed schedule/timezone/local time/weekday và
 bounded budgets. Create không nhận `allowedHosts` hoặc `allowedPathPrefixes`; boundary ban đầu luôn được
-derive từ normalized listing URL. Response trả hai boundary field này cùng `termsNotice`,
-version/evidence/review date, acknowledgement state, lifecycle, block/cooldown/next-run và safe mapping
-summary. Request không có credential, cookie, proxy, auth header, raw selector/HTML, script, CAPTCHA solver
+derive từ normalized listing URL. Response trả hai boundary field này cùng lifecycle,
+block/cooldown/next-run và safe mapping summary. Request không có credential, cookie, proxy, auth header,
+raw selector/HTML, script, CAPTCHA solver
 hoặc URL override.
 
-Response luôn resolve notice hiện hành từ catalog. Nếu catalog đổi version, `termsAcknowledged=false` và
-`termsAcknowledgementRequired=true` cho tới khi PATCH gửi exact version mới, kể cả khi loại notice mới
-thường không cần acknowledgement. PATCH version cũ trả `409 terms_notice_acknowledgement_stale`; PATCH
-version hiện hành cập nhật atomically notice/version/evidence/review/ack timestamp và Source review date.
-Preview, enable và run tiếp tục fail closed trong khoảng drift này.
+Catalog trả đúng `name`, `origin`, `listingHint`; lựa chọn nguồn nằm ngoài phạm vi đánh giá pháp lý của
+DevRadar. [ADR-029](decisions/0029-remove-source-terms-acknowledgement-retain-technical-barriers.md) loại bỏ
+terms state khỏi request/response nhưng không thay đổi technical access barrier.
 
 Preview response có status, tối đa năm candidate với typed provenance/confidence/warnings, optional bounded
 screenshot và opaque element map; không tạo canonical data. `proposedHosts` và `proposedPathPrefixes` chỉ
@@ -449,8 +446,8 @@ trả `409 preview_hosts_confirmation_required`; UI không có arbitrary host/pa
 
 Manual run bind idempotency với `sourceId + configHash`; reuse cùng key sau khi recipe config đổi trả
 `409 idempotency_conflict`. Pending run lưu full config hash của URL/boundary/mapping/seniority/parser,
-budget/rate và notice version. Worker chuyển pending run thành terminal `cancelled` nếu recipe bị
-pause/retire, notice drift hoặc config không còn khớp; run này không đi vào adapter và không tạo health hay
+budget/rate. Worker chuyển pending run thành terminal `cancelled` nếu recipe bị
+pause/retire hoặc config không còn khớp; run này không đi vào adapter và không tạo health hay
 absence/removal signal.
 
 ### 11.1. Local document import
@@ -460,9 +457,10 @@ absence/removal signal.
 URL/header/cookie/proxy/credential/selector/code và không thực hiện outbound request. Candidate URL phải là
 HTTPS, không credential/custom port và đúng recipe origin hostname.
 
-Response `data` gồm `crawlRunId`, `jobsFound`, `jobsNew`, `jobsUpdated`, `jobsUnchanged`,
+Response `data` gồm server-derived `sourceId`, `crawlRunId`, `jobsFound`, `jobsNew`, `jobsUpdated`, `jobsUnchanged`,
 `itemsFilteredOut`, `coverage="incomplete"` và `documentHashPrefix`; không echo filename hoặc raw content.
-Import cần current notice acknowledgement, cho phép recipe đang `blocked` nhưng từ chối `retired`, không
+Client dùng `sourceId` để mở `/jobs?sourceId=<uuid>`; không suy đoán identity từ URL/name/hostname.
+Import cho phép recipe đang `blocked` nhưng từ chối `retired`, không
 đổi preview/block/enable state, remote source health hoặc absence/removal lifecycle. Lỗi size/type/content/
 challenge/route/idempotency dùng safe error envelope `413|415|422|409`; feature bị tắt trả `404`.
 Distinct candidate vượt `itemBudget`, field vượt storage bound hoặc run kết thúc `partial|failed` không

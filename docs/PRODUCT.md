@@ -77,12 +77,12 @@ Các mục `Candidate` không phải deliverable hoặc acceptance criterion cho
 
 - Operator local dán một HTTPS listing URL, chọn seniority và lưu thành `SourceRecipe`; request crawl
   không nhận URL/config override theo từng run.
-- Hệ thống hiển thị versioned `terms_notice`. Owner acknowledgement đúng version cho phép tiếp tục
-  bounded local workflow nhưng không phải permission hoặc legal certification.
+- Lựa chọn nguồn nằm ngoài phạm vi đánh giá pháp lý của DevRadar; hệ thống không đưa ra permission hoặc
+  legal certification và chỉ áp dụng technical policy theo [ADR-029](decisions/0029-remove-source-terms-acknowledgement-retain-technical-barriers.md).
 - Preview dùng structured data/HTTP trước, isolated Playwright fallback sau; cần 3–5 candidate hợp lệ
   hoặc visual mapping trước khi recipe được `enabled`.
 - CAPTCHA, authentication, paywall, anti-bot, access denial, SSRF hoặc redirect escape luôn dừng ở
-  `blocked`; owner acknowledgement không override technical barrier.
+  `blocked`; không có UI hoặc config để override technical barrier.
 - Mỗi lần fetch tạo `RawJobSnapshot` có URL, thời gian, status và content hash.
 - Dữ liệu hợp lệ được chuẩn hóa thành `Job` mà không làm mất raw value hoặc provenance.
 - Rerun cùng input không tạo thêm `Job`, snapshot logic hoặc change event giả.
@@ -177,7 +177,7 @@ Các con số về accuracy/latency/cost cho V3–V6 không được bịa trư�
 
 ## 8. Non-goals
 
-- crawl site private, bypass CAPTCHA/auth/anti-bot hoặc vi phạm điều khoản;
+- crawl site private hoặc bypass CAPTCHA/auth/paywall/anti-bot/access control;
 - hỗ trợ 20+ source trong MVP;
 - multi-country normalization, currency conversion hoặc tax/cost-of-living comparison ở V1;
 - tự động apply job, gửi CV hoặc nhắn recruiter;
@@ -192,6 +192,5 @@ Các con số về accuracy/latency/cost cho V3–V6 không được bịa trư�
 - V1 giữ salary gốc và normalized amount/period/currency khi có thể; không tự quy đổi.
 - Portfolio ban đầu là single-operator. Source Recipe chỉ chạy trong `LOCALHOST_SERVICE`; chức năng ghi
   dữ liệu nhạy cảm không được public nếu chưa qua auth/privacy gate.
-- Catalog mười nguồn chỉ là shortcut URL và evidence cho `terms_notice`, không phải adapter, permission
-  hay cam kết nguồn sẽ crawl thành công. URL ngoài catalog dùng notice `not_reviewed`; restricted notice
-  có thể được owner acknowledgement nhưng technical access barrier vẫn fail-closed.
+- Catalog mười nguồn chỉ là shortcut URL, không phải adapter, permission, legal assessment hay cam kết
+  nguồn sẽ crawl thành công. Catalog và URL ngoài catalog đi qua cùng technical access barrier fail-closed.

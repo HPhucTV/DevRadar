@@ -102,10 +102,13 @@ migrate PostgreSQL, bật API/web/crawler worker trong localhost no-login mode, 
 Nó không tự enable hoặc crawl URL và không xóa volume. Workflow nằm tại
 `http://127.0.0.1:3000/sources`.
 
-Trong `/sources`, chọn recipe đã xác nhận notice rồi dùng **Nhập tệp** với HTML, JSON hoặc CSV UTF-8 tối
+Trong `/sources`, chọn recipe rồi dùng **Nhập tệp** với HTML, JSON hoặc CSV UTF-8 tối
 đa 2 MiB. Đây là đường import thủ công, không fetch URL và không tự động crawl theo lịch. Nó hữu ích khi
 operator mở được TopCV/Vieclam24h trong browser nhưng remote crawler bị access denial; DevRadar vẫn không
 bypass CAPTCHA, login, paywall, `401/403` hoặc anti-bot.
+
+Khi import hoàn tất, nút **Xem các việc làm vừa nhập** mở `/jobs?sourceId=<uuid>` để hiển thị đúng Jobs của
+source vừa persist; `sourceId` do server trả về, UI không suy đoán từ URL hoặc tên recipe.
 
 ### Chạy thủ công cho development
 
@@ -176,7 +179,7 @@ DevRadar/
 ## 🛡 Safety boundary
 
 - Runtime URL ingestion chỉ bật trong localhost bằng `DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED=true`.
-- `terms_notice` luôn hiển thị cùng version/evidence. Owner có thể acknowledgement đúng version để tiếp tục local; thao tác này không phải legal certification.
+- Lựa chọn nguồn nằm ngoài phạm vi đánh giá pháp lý của DevRadar; runtime chỉ khóa technical barrier theo [ADR-029](docs/decisions/0029-remove-source-terms-acknowledgement-retain-technical-barriers.md).
 - CAPTCHA, authentication, paywall, anti-bot hoặc access denial chuyển recipe sang `blocked`; hệ thống không cung cấp bypass.
 - Mọi `Job` giữ provenance qua `CrawlRun` và `RawJobSnapshot`; `JobChange` chỉ chuyển `missing`/`removed` sau complete-run gates.
 - Raw CV, secrets và PII không được ghi vào log/tracing; external AI không nhận dữ liệu nhạy cảm nếu chưa có explicit privacy configuration.

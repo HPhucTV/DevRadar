@@ -3,41 +3,31 @@
 ## 1. Mục tiêu
 
 Ingestion biến listing URL do owner local chọn thành dataset replayable có provenance mà không yêu cầu viết
-adapter riêng. Runtime hiện hành theo [ADR-026](decisions/0026-accept-owner-overridden-source-recipes.md):
-một generic `SourceRecipe`, deterministic extraction trước, browser fallback có kiểm soát sau và không
-bypass technical access barrier.
+adapter riêng. Runtime hiện hành dùng generic `SourceRecipe` theo
+[ADR-026](decisions/0026-accept-owner-overridden-source-recipes.md), với hard cut technical-only theo
+[ADR-029](decisions/0029-remove-source-terms-acknowledgement-retain-technical-barriers.md): deterministic
+extraction trước, browser fallback có kiểm soát sau và không bypass technical access barrier.
 
 ## 2. Source Recipe onboarding gate
 
 `SourceRecipe` chỉ bật khi deployment là `LOCALHOST_SERVICE` và
-`DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED=true`. Catalog mười nguồn chỉ cung cấp listing hint và evidence cho
-`terms_notice`; catalog không phải approval, permission hoặc source-specific implementation. URL ngoài
-catalog nhận notice `not_reviewed`.
+`DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED=true`. Catalog mười nguồn chỉ cung cấp listing hint; catalog không
+phải approval, permission, legal assessment hoặc source-specific implementation. Lựa chọn nguồn nằm ngoài
+phạm vi đánh giá pháp lý của DevRadar; URL catalog và URL ngoài catalog đi qua cùng technical gate.
 
 Recipe có stable code `RCP-XXXXXXXX` và nullable `last_used_at` để operator đối chiếu cùng một recipe qua
 nhiều run. `DELETE` chỉ retire. Physical purge yêu cầu recipe đã retired, không có preview/run active,
 exact confirmation code và xóa graph theo dependency order trong một transaction; purge không backup/undo.
 
-### 2.1. Terms notice và owner acknowledgement
-
-- `terms_notice` có `not_reviewed`, `no_specific_restriction_found` hoặc `restricted_terms`, cùng version,
-  review date và evidence URL khi có;
-- notice luôn hiển thị. Recipe cần acknowledgement thì chỉ chấp nhận exact current version;
-- khi catalog đổi notice version, recipe luôn yêu cầu owner review/xác nhận exact version mới trước khi
-  preview/enable/run; persisted notice/evidence/review timestamp và Source review date được cập nhật cùng
-  transaction;
-- owner acknowledgement cho phép tiếp tục bounded local preview/crawl nhưng không phải permission hoặc
-  legal certification;
-- CAPTCHA, authentication, paywall, anti-bot, access denial, robots/access control, SSRF và redirect escape
-  không thể được acknowledgement hoặc cấu hình để bypass; DevRadar không bypass các barrier này.
-
-### 2.2. Technical gate
+### 2.1. Technical gate
 
 - URL phải là bounded HTTPS URL, không user-info/custom port/fragment/control character/dot-segment;
   raw/encoded separator, backslash, double slash, invalid/double percent encoding bị reject trước prefix
   matching và trước mọi redirect/pagination request tiếp theo;
 - host/path/query được normalize và persist; tối đa ba host, không nhận URL/config override theo từng run;
 - preview phải trả 3–5 distinct valid jobs hoặc hoàn tất visual mapping trước `enabled`;
+- CAPTCHA, authentication, paywall, anti-bot, access denial, route escape, SSRF, DNS/IP và redirect escape
+  luôn fail-closed; DevRadar không bypass các barrier này;
 - item/page/request/byte/time/rate budgets và concurrency 1 là invariant;
 - schedule chỉ có `manual`, `every_6_hours`, `daily`, `weekly`; không nhận arbitrary cron.
 
@@ -129,8 +119,8 @@ browser work chạy ngoài transaction dài; snapshot, canonical upsert và coun
 Fixed schedule và manual request có idempotency key; nhiều worker dùng row lock `SKIP LOCKED`.
 
 Mỗi pending run bind full recipe config hash gồm URL, host/path, field/pagination mapping, seniority,
-parser/config version, item/page/request/byte/time/rate budget và terms notice version. Reuse manual
-idempotency key sau config change là conflict. Nếu recipe bị pause/retire, notice drift hoặc config đổi
+parser/config version và item/page/request/byte/time/rate budget. Reuse manual
+idempotency key sau config change là conflict. Nếu recipe bị pause/retire hoặc config đổi
 trước claim, worker atomically chuyển run thành `cancelled` với safe code rồi tiếp tục hàng đợi; run không
 vào adapter, không retry và không tác động source health hay missing/removal lifecycle.
 
@@ -285,13 +275,13 @@ Acceptance bắt buộc:
 2. Partial run không tăng missing counter.
 3. Từ V2, hai complete run vắng mặt tạo đúng `missing` rồi `removed`.
 4. Từ V2, Job xuất hiện lại tạo `reactivated` và giữ history.
-5. Recipe chưa preview/current acknowledgement không thể enable hoặc crawl.
+5. Recipe chưa có current successful preview không thể enable hoặc crawl.
 6. Browser/LLM không được gọi khi structured parser đã đủ schema.
-7. Unknown-origin recipe dùng `not_reviewed`; restricted catalog source cần exact-version owner acknowledgement.
+7. Catalog và unknown-origin recipe đi qua cùng technical gate; không có legal/permission state trong runtime.
 8. Challenge/login/paywall/403 fixture đi tới `blocked` và UI không có bypass action.
 9. Generic empty/layout drift, failed hoặc partial run không tạo false removal.
 10. HTML/JSON/CSV import hợp lệ tạo provenance; replay idempotent, changed candidate tạo đúng change.
-11. Import oversized/binary/invalid/challenge/cross-host/stale acknowledgement/retired bị chặn an toàn.
+11. Import oversized/binary/invalid/challenge/cross-host/retired bị chặn an toàn.
 12. Import luôn incomplete, không đổi remote health/lifecycle và không live-fetch URL trong file.
 
 Source-specific adapter/evidence cũ được giữ trong Git history và historical ADR/evidence, không phải runtime

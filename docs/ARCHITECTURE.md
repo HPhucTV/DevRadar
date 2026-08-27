@@ -41,7 +41,7 @@ External actors và trust level:
 
 | Module logic | Trách nhiệm | Bắt đầu | Không sở hữu |
 |---|---|---|---|
-| `source_recipes` | owner-local URL policy, catalog notice, preview/mapping, fixed schedule và generic adapter | V6-020 | public arbitrary fetch, credentials, bypass |
+| `source_recipes` | owner-local URL policy, catalog shortcut, preview/mapping, fixed schedule và generic adapter | V6-025 | public arbitrary fetch, credentials, bypass |
 | `ingestion` | bounded fetch, snapshot, normalization và run result | V1 | public query, AI planning |
 | `catalog` | canonical job, skill và dedup từ V1; lifecycle/change history từ V2 | V1 | network fetch, presentation |
 | `api` | `/api/v1`, validation, pagination, auth boundary | V1 | crawler parsing, scoring logic |
@@ -70,7 +70,7 @@ External actors và trust level:
 
 ```mermaid
 flowchart TD
-    A["SourceRecipe draft + terms_notice"] --> B["Preview 3–5 jobs"]
+    A["SourceRecipe draft + technical route policy"] --> B["Preview 3–5 jobs"]
     B --> C{"Detection confident?"}
     C -- No --> D["Visual mapping with opaque element IDs"]
     C -- Yes --> E["Enable recipe / fixed schedule"]
@@ -179,7 +179,7 @@ Alert CRUD chưa có UI, chỉ dùng protected FastAPI contract.
 | Boundary | Rủi ro chính | Control bắt buộc |
 |---|---|---|
 | Listing URL/redirect/browser subrequest → recipe fetcher | SSRF, redirect escape, oversized/slow response | persisted host/path boundary, DNS/IP/redirect re-validation, request/page/byte/time/rate budget |
-| `terms_notice` → owner acknowledgement | hiểu acknowledgement như permission hoặc bypass | exact notice version/evidence, warning luôn hiển thị; acknowledgement không đổi technical policy |
+| Owner-selected source → recipe runtime | hiểu source choice như permission hoặc legal certification | lựa chọn nguồn nằm ngoài phạm vi đánh giá pháp lý của DevRadar; runtime chỉ áp dụng technical barrier theo [ADR-029](decisions/0029-remove-source-terms-acknowledgement-retain-technical-barriers.md) |
 | HTML/JSON-LD → parser | malformed content, injection, parser bomb | content type/size limit, safe parser, no script execution ở HTTP path, fixtures |
 | Raw content → LLM | prompt injection, PII leak, cost abuse | treat as data, minimal fields, tool deny-by-default, budget, redaction |
 | External model output → extraction validator | schema bypass, hallucinated evidence, secret/raw disclosure | strict extraction schema, deterministic canonicalization/evidence gate, bounded retry và redacted audit |

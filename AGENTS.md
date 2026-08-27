@@ -45,9 +45,9 @@ Không âm thầm chọn một phía khi hai nguồn cùng cấp mâu thuẫn. G
 - Listing URL chỉ được lưu trong owner-local `SourceRecipe`, không được truyền URL override theo từng
   run và không được dùng để tạo arbitrary fetch proxy. `DEVRADAR_SOURCE_RECIPES_LOCAL_ENABLED` mặc
   định `false` và bị cấm trong protected/public deployment.
-- `restricted_terms` hoặc `not_reviewed` là notice có version/evidence; owner có thể xác nhận đúng
-  version để tiếp tục bounded local preview/crawl. Acknowledgement không phải permission hoặc legal
-  certification và không được che nội dung cảnh báo.
+- DevRadar không đánh giá hoặc chứng nhận quyền sử dụng của source; lựa chọn nguồn nằm ngoài phạm vi đánh
+  giá pháp lý của DevRadar. Runtime chỉ thực thi technical policy theo
+  [ADR-029](docs/decisions/0029-remove-source-terms-acknowledgement-retain-technical-barriers.md).
 - Recipe phải qua preview 3–5 job hợp lệ trước `enabled`. HTTP access denial, CAPTCHA/challenge,
   authentication, paywall, anti-bot, SSRF hoặc redirect escape phải chuyển recipe sang `blocked`,
   không retry tự động và không cung cấp action để vượt kiểm soát truy cập.

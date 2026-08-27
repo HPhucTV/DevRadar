@@ -19,7 +19,7 @@ Tài liệu này là ubiquitous language của DevRadar. Tên entity, enum và s
 | Thuật ngữ | Nghĩa chuẩn |
 |---|---|
 | Source | Một nguồn tuyển dụng đã đăng ký cùng policy crawl. |
-| SourceRecipe | Cấu hình owner-local cho một listing URL, terms notice, seniority, mapping và lịch cố định. |
+| SourceRecipe | Cấu hình owner-local cho một listing URL, technical route policy, seniority, mapping và lịch cố định. |
 | SourceRecipePreview | Artifact ngắn hạn để kiểm tra 3–5 candidate/visual mapping trước canonical ingestion. |
 | SourceRecipeDocumentImport | Input request-scoped HTML/JSON/CSV đã validate để tạo canonical run không network. |
 | CrawlRun | Một lần chạy có boundary, metric và kết quả hoàn chỉnh/không hoàn chỉnh rõ ràng. |
@@ -54,7 +54,7 @@ V4 từng thử entity `AgentRun`, nhưng [ADR-013](decisions/0013-remove-unreta
 | `crawl_frequency` | Lịch đã duyệt; V1 có thể chạy on-demand. |
 | `rate_limit_policy` | Request rate/concurrency/timeout/response limit. |
 | `allowed_hosts` | Host và redirect target allow-list. |
-| `terms_reviewed_at`, `robots_reviewed_at` | Bằng chứng review source gate. |
+| `robots_reviewed_at` | Bằng chứng review robots cho source registry approved; owner-local recipe không được nâng thành global approved. |
 | `last_crawled_at`, `last_success_at` | Tình trạng vận hành gần nhất. |
 
 `approval_status` và `health_status` độc lập: source có thể hợp lệ về policy nhưng đang lỗi kỹ thuật.
@@ -312,30 +312,29 @@ V1 dùng hash schema `job-content-v1`: canonical URL; title/company/description;
 | Nhóm field | Ý nghĩa |
 |---|---|
 | Identity | `id`, `owner_user_id`, `name`, immutable normalized `listing_url`, `source_id` sau enable |
-| Policy | `origin`, tối đa ba `allowed_hosts`, bounded path prefixes, versioned `terms_notice`, evidence/review URL |
+| Technical policy | `origin`, tối đa ba `allowed_hosts`, bounded path prefixes, HTTPS/SSRF/redirect/budget constraints |
 | Selection | ordered `seniority_filter`; `all` luôn đứng một mình |
 | Mapping | opaque element IDs cho card/title/company/location/detail/pagination; không lưu arbitrary script |
 | Schedule | `manual`, `every_6_hours`, `daily`, `weekly` cùng timezone/local time/weekday hợp lệ |
 | Budget | page/item/request/byte/time/request-per-minute bounds và cooldown |
 | Lifecycle | `draft`, `previewing`, `preview_ready`, `enabled`, `paused`, `blocked`, `retired` |
 
-Owner acknowledgement lưu exact `terms_notice_version` và timestamp. Nó không phải permission/legal
-certification, không che warning và không override CAPTCHA, authentication, paywall, anti-bot, access
-denial, SSRF hoặc redirect policy.
-
-API resolve notice hiện hành thay vì trình bày metadata persisted đã stale. Notice version drift đưa
-acknowledgement state về chưa đạt và bắt buộc exact-version re-ack; thao tác này cập nhật atomically recipe
-notice/evidence/review/ack metadata cùng `Source.terms_reviewed_at`.
+Source choice không phải domain permission state và nằm ngoài phạm vi đánh giá pháp lý của DevRadar.
+[ADR-029](decisions/0029-remove-source-terms-acknowledgement-retain-technical-barriers.md) loại bỏ toàn bộ
+terms state; CAPTCHA, authentication, paywall, anti-bot, access denial, SSRF, redirect và route policy vẫn
+fail-closed.
 
 `SourceRecipePreview` là artifact non-canonical có wire status `pending|running|succeeded|failed`, 3–5
 bounded candidates, parser/provenance warnings, optional screenshot + opaque element map và expiry.
 `mapping_required` là safe `error_code` của preview failed có visual artifact dùng được;
 `source_unavailable` là failure transient; `layout_unavailable` là block reason khi không thể tạo preview
-hoặc mapper hợp lệ. Preview không tạo `CrawlRun`, `RawJobSnapshot`, `Job` hoặc `JobChange`. Chỉ current
-successful preview và current acknowledgement mới cho phép `enabled`.
+hoặc mapper hợp lệ. Preview không tạo `CrawlRun`, `RawJobSnapshot`, `Job` hoặc `JobChange`. Successful
+preview chuyển recipe trực tiếp sang `PREVIEW_READY`; chỉ current successful preview mới cho phép
+`enabled`.
 
 `SourceRecipeDocumentImport` không phải persisted entity hoặc remote preview. Nó là bounded request-scoped
 artifact gồm canonical candidates, media type và SHA-256 document; file gốc không được giữ sau request.
+Wire response trả server-derived `sourceId` để client mở đúng source-filtered Jobs mà không suy đoán identity.
 Import tạo `CrawlRun(trigger=manual, coverage_status=incomplete)` cùng `RawJobSnapshot → Job/JobChange`,
 nhưng không đổi recipe lifecycle, remote Source health/baseline/timestamp hoặc tạo absence signal. Snapshot
 chỉ giữ canonical candidate JSON, field provenance, media type và document hash.
@@ -351,7 +350,7 @@ layout drift, deadline/budget stop hoặc partial failure luôn `coverage_status
 false `missing`/`removed`. `owner_authorized_local` không đồng nghĩa global approval; visibility chỉ được mở
 trong explicit localhost recipe mode.
 
-Pending manual/scheduled `CrawlRun` giữ full recipe config hash. Nếu hash hoặc notice không còn current hay
-recipe đã `paused|retired`, worker kết thúc run thành `cancelled` với `started_at=finished_at` và safe error
+Pending manual/scheduled `CrawlRun` giữ full recipe config hash. Nếu hash không còn current hoặc recipe đã
+`paused|retired`, worker kết thúc run thành `cancelled` với `started_at=finished_at` và safe error
 code. `cancelled` không phải crawl attempt hoàn tất, không cập nhật source health và không tạo
 missing/removal signal.

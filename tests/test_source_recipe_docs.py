@@ -42,8 +42,28 @@ def test_readme_documents_one_click_local_recipe_workflow_without_stale_metrics(
 
 
 def test_active_contracts_describe_the_recipe_boundary_consistently() -> None:
-    assert "terms_notice" in DOCS["product"]
-    assert "owner acknowledgement" in DOCS["product"].casefold()
+    current = "\n".join(
+        DOCS[name]
+        for name in (
+            "readme",
+            "agents",
+            "product",
+            "architecture",
+            "domain",
+            "ingestion",
+            "api",
+            "operations",
+        )
+    )
+    for removed in (
+        "terms_notice",
+        "owner acknowledgement",
+        "termsAcknowledged",
+        "termsAcknowledgementRequired",
+    ):
+        assert removed.casefold() not in current.casefold()
+    assert "0029-remove-source-terms-acknowledgement-retain-technical-barriers.md" in current
+    assert "lựa chọn nguồn nằm ngoài phạm vi đánh giá pháp lý của DevRadar" in current
     assert "SourceRecipe" in DOCS["architecture"]
     assert "SourceRecipePreview" in DOCS["domain"]
     ingestion = DOCS["ingestion"]
@@ -60,6 +80,16 @@ def test_active_contracts_describe_the_recipe_boundary_consistently() -> None:
     ):
         assert term in ingestion
     assert "không bypass" in ingestion.casefold()
+    for barrier in (
+        "SSRF",
+        "CAPTCHA",
+        "authentication",
+        "paywall",
+        "anti-bot",
+        "access denial",
+        "route escape",
+    ):
+        assert barrier.casefold() in ingestion.casefold()
     assert "pending|running|succeeded|failed" in DOCS["domain"]
     assert "mapping_required" in DOCS["api"]
     assert "source_unavailable" in DOCS["api"]
@@ -73,6 +103,7 @@ def test_active_contracts_describe_the_recipe_boundary_consistently() -> None:
     assert "canonical job URL" in ingestion
     assert "browser subresource" in ingestion
     assert "preview_hosts_confirmation_required" in DOCS["domain"]
+    assert "PREVIEW_READY" in DOCS["domain"]
 
 
 def test_api_and_operator_docs_publish_only_current_recipe_commands() -> None:
@@ -83,8 +114,11 @@ def test_api_and_operator_docs_publish_only_current_recipe_commands() -> None:
         "POST /api/v1/source-recipes/{recipeId}/previews",
         "POST /api/v1/source-recipes/{recipeId}/previews/{previewId}/mapping",
         "GET/POST /api/v1/source-recipes/{recipeId}/crawl-runs",
+        "POST /api/v1/source-recipes/{recipeId}/document-imports",
     ):
         assert route in api
+    assert "sourceId" in api
+    assert "privacy-v3" in api
 
     current = "\n".join(
         DOCS[name]
@@ -122,6 +156,9 @@ def test_current_decision_and_roadmap_preserve_history_without_active_claims() -
     assert "V6-016 historical" in roadmap
     assert "V6-020" in roadmap
     assert "V6-020-no-code-source-recipes.md" in roadmap
+    assert "ADR-029" in roadmap
+    assert "V6-025" in roadmap
+    assert "source-filtered Jobs" in roadmap
 
 
 def test_local_document_import_contract_is_published_without_remote_access_claims() -> None:
@@ -154,6 +191,8 @@ def test_local_document_import_contract_is_published_without_remote_access_claim
     ):
         assert term in ingestion
     assert "SourceRecipeDocumentImport" in domain
+    assert "sourceId" in api
+    assert "/jobs?sourceId=" in readme
     assert "start-devradar.cmd" in readme
     assert "Nhập tệp" in readme
     assert "TopCV/Vieclam24h" in readme

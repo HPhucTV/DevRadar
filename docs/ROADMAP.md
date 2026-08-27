@@ -482,6 +482,16 @@ giữ ResumeProfile/AlertRule cùng graph khác. Full default/PostgreSQL/static/
 concurrency, disposable API replay/purge và four-width browser gates pass. Task không đổi Source Recipe
 local-only/no-bypass policy hoặc các V6 provider/public gate còn mở.
 
+### V6-025 progress (`In Progress`)
+
+[ADR-029](decisions/0029-remove-source-terms-acknowledgement-retain-technical-barriers.md) và
+[thiết kế](superpowers/specs/2026-08-27-source-terms-hard-cut-and-job-visibility-design.md) khóa hard cut
+runtime terms state trong khi giữ nguyên toàn bộ technical barrier. Migration `f1a3c5e7b902`, domain,
+workflow, FastAPI/OpenAPI `privacy-v3` và dashboard đã chuyển sang direct-ready preview; document import trả
+server-derived `sourceId`, còn CTA mở source-filtered Jobs tại `/jobs?sourceId=<uuid>`. PostgreSQL/API/web
+focused gates đã pass; full Compose/browser/secret/supply-chain evidence và local-only client alignment vẫn
+phải hoàn tất trước khi V6-025 chuyển `Done`.
+
 ## 9. Quy tắc cập nhật roadmap
 
 - Chỉ đổi status khi kiểm tra exit criteria và link evidence cụ thể.
