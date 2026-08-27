@@ -58,7 +58,6 @@ SNAPSHOT_CONFIG = SourceConfig(
     policy_review=PolicyReview(
         scope=PolicyScope.APPROVED_LOCAL_NONCOMMERCIAL_SPIKE,
         robots_reviewed_at=date(2026, 8, 24),
-        terms_reviewed_at=date(2026, 8, 24),
         next_review_at=date(2026, 11, 24),
     ),
     config_version="snapshot-fixture-v1",
@@ -103,7 +102,6 @@ def test_persist_raw_snapshot_enforces_policy_provenance_and_transaction_ownersh
                     "concurrency": config.fetch_policy.concurrency,
                 },
                 allowed_hosts=list(config.fetch_policy.allowed_hosts),
-                terms_reviewed_at=reviewed_at,
                 robots_reviewed_at=reviewed_at,
             )
             session.add(source)

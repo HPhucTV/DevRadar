@@ -20,7 +20,6 @@ from devradar.source_recipes.models import (
     RecipeStatus,
     SourceRecipe,
     SourceRecipeError,
-    TermsNotice,
 )
 from devradar.source_recipes.parser import extract_pagination_targets
 
@@ -80,15 +79,12 @@ def _recipe(
         origin="https://example.test",
         allowed_hosts=["example.test"],
         allowed_path_prefixes=["/jobs"],
-        terms_notice=TermsNotice.NOT_REVIEWED,
-        terms_notice_version="a" * 64,
-        terms_acknowledged_at=now,
         field_mapping={},
         pagination_mapping={},
         seniority_filter=selected or ["all"],
         schedule_kind=RecipeScheduleKind.MANUAL,
         timezone="Asia/Ho_Chi_Minh",
-        config_version="recipe-config-v1",
+        config_version="source-recipe-config-v2",
         item_budget=500,
         page_budget=page_budget,
         request_budget=100,

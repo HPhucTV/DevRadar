@@ -41,19 +41,28 @@ def _graph(
     *,
     historical_crawl_run_schema: bool = False,
 ) -> tuple[Job, ResumeProfile]:
-    source = Source(
-        name="V5 fixture",
-        base_url="https://careers.example.test/careers",
-        adapter_key="fixture_adapter",
-        approval_status=SourceApprovalStatus.APPROVED,
-        rate_limit_policy={"requests_per_second": 0.5, "concurrency": 1},
-        allowed_hosts=["careers.example.test"],
-        terms_reviewed_at=now,
-        robots_reviewed_at=now,
-    )
-    session.add(source)
-    session.flush()
     if historical_crawl_run_schema:
+        source_id = uuid4()
+        session.execute(
+            text(
+                "INSERT INTO sources ("
+                "id, name, base_url, adapter_key, approval_status, rate_limit_policy, "
+                "allowed_hosts, terms_reviewed_at, robots_reviewed_at"
+                ") VALUES ("
+                ":id, 'V5 fixture', 'https://careers.example.test/careers', "
+                "'fixture_adapter', 'approved', CAST(:rate_policy AS jsonb), "
+                "CAST(:allowed_hosts AS jsonb), :reviewed_at, :reviewed_at"
+                ")"
+            ),
+            {
+                "id": source_id,
+                "rate_policy": '{"requests_per_second": 0.5, "concurrency": 1}',
+                "allowed_hosts": '["careers.example.test"]',
+                "reviewed_at": now,
+            },
+        )
+        source = session.get(Source, source_id)
+        assert source is not None
         run_id = uuid4()
         session.execute(
             text(
@@ -76,6 +85,17 @@ def _graph(
             },
         )
     else:
+        source = Source(
+            name="V5 fixture",
+            base_url="https://careers.example.test/careers",
+            adapter_key="fixture_adapter",
+            approval_status=SourceApprovalStatus.APPROVED,
+            rate_limit_policy={"requests_per_second": 0.5, "concurrency": 1},
+            allowed_hosts=["careers.example.test"],
+            robots_reviewed_at=now,
+        )
+        session.add(source)
+        session.flush()
         run = CrawlRun(
             source_id=source.id,
             trigger_type=CrawlTriggerType.MANUAL,

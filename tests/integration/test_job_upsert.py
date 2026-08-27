@@ -71,7 +71,6 @@ def _fixture_config(*, key: str, name: str, origin: str, host: str) -> SourceCon
         policy_review=PolicyReview(
             scope=PolicyScope.PERMISSION_REQUIRED,
             robots_reviewed_at=reviewed,
-            terms_reviewed_at=reviewed,
             next_review_at=date(2026, 11, 24),
         ),
         config_version="fixture-v1",
@@ -106,7 +105,6 @@ def _source(config: SourceConfig, now: datetime) -> Source:
         approval_status=SourceApprovalStatus.OWNER_AUTHORIZED_LOCAL,
         rate_limit_policy={"concurrency": 1},
         allowed_hosts=list(config.fetch_policy.allowed_hosts),
-        terms_reviewed_at=now,
         robots_reviewed_at=now,
     )
 

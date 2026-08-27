@@ -36,7 +36,6 @@ def _recipe(session: Session, *, now: datetime) -> SourceRecipe:
         name="Mapped fixture",
         listing_url="https://example.test/jobs",
         seniority_filter=["all"],
-        acknowledged_notice_version=None,
     )
     recipe = SourceRecipe(
         owner_user_id=owner.id,
@@ -46,10 +45,6 @@ def _recipe(session: Session, *, now: datetime) -> SourceRecipe:
         origin=draft.origin,
         allowed_hosts=list(draft.allowed_hosts),
         allowed_path_prefixes=list(draft.allowed_path_prefixes),
-        terms_notice=draft.terms_notice,
-        terms_notice_version=draft.terms_notice_version,
-        terms_evidence_url=draft.terms_evidence_url,
-        terms_reviewed_at=now,
         field_mapping={},
         pagination_mapping={},
         seniority_filter=list(draft.seniority_filter),
@@ -57,7 +52,7 @@ def _recipe(session: Session, *, now: datetime) -> SourceRecipe:
         schedule_local_time=draft.schedule_local_time,
         schedule_weekday=draft.schedule_weekday,
         timezone=draft.timezone,
-        config_version="mapping-config-v1",
+        config_version="source-recipe-config-v2",
         item_budget=draft.item_budget,
         page_budget=draft.page_budget,
         request_budget=draft.request_budget,

@@ -80,7 +80,6 @@ def seeded_job(extraction_engine: Engine) -> UUID:
             approval_status=SourceApprovalStatus.APPROVED,
             rate_limit_policy={"requests_per_second": 1, "concurrency": 1},
             allowed_hosts=["careers.example.test"],
-            terms_reviewed_at=now,
             robots_reviewed_at=now,
         )
         session.add(source)
