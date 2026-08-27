@@ -31,7 +31,6 @@ from devradar.source_recipes.adapter import (
     filter_candidates,
     recipe_source_config,
 )
-from devradar.source_recipes.catalog import resolve_terms_notice
 from devradar.source_recipes.models import RecipeStatus, SourceRecipe, SourceRecipeError
 from devradar.source_recipes.parser import PreviewCandidate, parse_recipe_document
 from devradar.source_recipes.service import ensure_recipe_source, recipe_config_hash
@@ -333,15 +332,6 @@ def import_recipe_document(
     if recipe is None or recipe.status is RecipeStatus.RETIRED:
         session.rollback()
         raise DocumentImportError("document_import_recipe_invalid")
-    notice = resolve_terms_notice(recipe.listing_url)
-    if (
-        recipe.terms_notice_version != notice.version
-        or notice.acknowledgement_required
-        and recipe.terms_acknowledged_at is None
-    ):
-        session.rollback()
-        raise DocumentImportError("document_import_acknowledgement_required")
-
     source = ensure_recipe_source(session, recipe)
     recipe.last_used_at = timestamp
     session.commit()

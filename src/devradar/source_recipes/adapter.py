@@ -107,8 +107,8 @@ def recipe_source_config(recipe: SourceRecipe, source: Source) -> SourceConfig:
     if recipe.source_id is not None and source.id != recipe.source_id:
         raise SourceRecipeError("source_config_mismatch")
     reviewed_on = (
-        recipe.terms_reviewed_at.date()
-        if recipe.terms_reviewed_at is not None
+        source.robots_reviewed_at.date()
+        if source.robots_reviewed_at is not None
         else date(2026, 8, 24)
     )
     return SourceConfig(
@@ -125,7 +125,6 @@ def recipe_source_config(recipe: SourceRecipe, source: Source) -> SourceConfig:
         policy_review=PolicyReview(
             scope=PolicyScope.PERMISSION_REQUIRED,
             robots_reviewed_at=reviewed_on,
-            terms_reviewed_at=reviewed_on,
             next_review_at=reviewed_on + timedelta(days=90),
         ),
         config_version=recipe_config_hash(recipe),

@@ -22,7 +22,6 @@ from devradar.source_recipes.models import (
     RecipeScheduleKind,
     RecipeStatus,
     SourceRecipe,
-    TermsNotice,
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -89,9 +88,6 @@ def test_recipe_ingestion_is_idempotent_and_partial_runs_cannot_remove_jobs(
                 origin="https://example.test",
                 allowed_hosts=["example.test"],
                 allowed_path_prefixes=["/jobs"],
-                terms_notice=TermsNotice.NOT_REVIEWED,
-                terms_notice_version="a" * 64,
-                terms_acknowledged_at=now,
                 field_mapping={},
                 pagination_mapping={},
                 seniority_filter=["all"],

@@ -27,7 +27,6 @@ from devradar.ingestion.models import (
 from devradar.ingestion.runner import _create_run
 from devradar.platform.database import DATABASE_URL_ENV
 from devradar.source_recipes.adapter import recipe_source_config
-from devradar.source_recipes.catalog import resolve_terms_notice
 from devradar.source_recipes.document_import import (
     DocumentImportAdapter,
     DocumentImportError,
@@ -50,7 +49,6 @@ def _recipe(session: Session, *, now: datetime) -> SourceRecipe:
     owner = User(username=f"document-import-{uuid4().hex[:8]}", password_hash="x" * 64)
     session.add(owner)
     session.flush()
-    notice = resolve_terms_notice("https://example.test/jobs")
     recipe = SourceRecipe(
         owner_user_id=owner.id,
         name="Document import fixture",
@@ -59,9 +57,6 @@ def _recipe(session: Session, *, now: datetime) -> SourceRecipe:
         origin="https://example.test",
         allowed_hosts=["example.test"],
         allowed_path_prefixes=["/jobs"],
-        terms_notice=notice.notice,
-        terms_notice_version=notice.version,
-        terms_acknowledged_at=now,
         field_mapping={},
         pagination_mapping={},
         seniority_filter=["all"],

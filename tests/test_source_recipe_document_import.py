@@ -19,7 +19,7 @@ from devradar.source_recipes.document_import import (
     DocumentImportError,
     prepare_document_import,
 )
-from devradar.source_recipes.models import RecipeStatus, SourceRecipe, TermsNotice
+from devradar.source_recipes.models import RecipeStatus, SourceRecipe
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = PROJECT_ROOT / "tests" / "fixtures" / "source_recipes"
@@ -33,8 +33,6 @@ def _recipe() -> SourceRecipe:
         origin="https://example.test",
         allowed_hosts=["example.test"],
         allowed_path_prefixes=["/jobs"],
-        terms_notice=TermsNotice.NOT_REVIEWED,
-        terms_notice_version="a" * 64,
         field_mapping={},
         pagination_mapping={},
         seniority_filter=["all"],

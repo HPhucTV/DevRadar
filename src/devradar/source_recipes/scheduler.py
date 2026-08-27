@@ -13,7 +13,6 @@ from sqlalchemy.orm import Session
 
 from devradar.automation.orchestrator import scheduled_slot
 from devradar.ingestion.models import CoverageStatus, CrawlRun, CrawlRunStatus, CrawlTriggerType
-from devradar.source_recipes.catalog import resolve_terms_notice
 from devradar.source_recipes.models import (
     RecipeScheduleKind,
     RecipeStatus,
@@ -103,10 +102,7 @@ def source_recipe_is_runnable(recipe: SourceRecipe, *, now: datetime) -> bool:
         and recipe.cooldown_until.astimezone(UTC) > utc_now
     ):
         return False
-    current_notice = resolve_terms_notice(recipe.listing_url)
-    if current_notice.version != recipe.terms_notice_version:
-        return False
-    return not current_notice.acknowledgement_required or recipe.terms_acknowledged_at is not None
+    return True
 
 
 def source_recipe_is_schedulable(recipe: SourceRecipe, *, now: datetime) -> bool:

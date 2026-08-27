@@ -14,7 +14,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from devradar.ingestion.models import CoverageStatus, CrawlRun, CrawlRunStatus, CrawlTriggerType
-from devradar.source_recipes.catalog import resolve_terms_notice
 from devradar.source_recipes.models import SourceRecipe
 from devradar.source_recipes.scheduler import source_recipe_is_runnable
 from devradar.source_recipes.service import recipe_config_hash
@@ -82,19 +81,6 @@ def request_source_recipe_run(
     if recipe is None:
         session.rollback()
         raise RunRequestError("recipe_not_found", "Source Recipe was not found.")
-    current_notice = resolve_terms_notice(recipe.listing_url)
-    if current_notice.version != recipe.terms_notice_version:
-        session.rollback()
-        raise RunRequestError(
-            "terms_notice_acknowledgement_stale",
-            "Source terms notice must be reviewed again.",
-        )
-    if current_notice.acknowledgement_required and recipe.terms_acknowledged_at is None:
-        session.rollback()
-        raise RunRequestError(
-            "terms_notice_acknowledgement_required",
-            "Source terms notice must be acknowledged.",
-        )
     if recipe.cooldown_until is not None and recipe.cooldown_until.astimezone(UTC) > utc_now:
         session.rollback()
         raise RunRequestError("recipe_cooldown_active", "Source Recipe is cooling down.")

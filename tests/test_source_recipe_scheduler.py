@@ -5,7 +5,6 @@ from uuid import uuid4
 
 import pytest
 
-from devradar.source_recipes.catalog import resolve_terms_notice
 from devradar.source_recipes.models import (
     RecipeScheduleKind,
     RecipeStatus,
@@ -26,10 +25,8 @@ def _recipe(
     schedule_weekday: int | None = None,
     timezone: str = "Asia/Ho_Chi_Minh",
     status: RecipeStatus = RecipeStatus.ENABLED,
-    acknowledged: bool = True,
 ) -> SourceRecipe:
     now = datetime(2026, 8, 24, tzinfo=UTC)
-    notice = resolve_terms_notice("https://example.test/jobs")
     return SourceRecipe(
         id=uuid4(),
         owner_user_id=uuid4(),
@@ -40,11 +37,6 @@ def _recipe(
         origin="https://example.test",
         allowed_hosts=["example.test"],
         allowed_path_prefixes=["/jobs"],
-        terms_notice=notice.notice,
-        terms_notice_version=notice.version,
-        terms_evidence_url=notice.evidence_url,
-        terms_reviewed_at=None,
-        terms_acknowledged_at=now if acknowledged else None,
         field_mapping={},
         pagination_mapping={},
         seniority_filter=["all"],
@@ -121,7 +113,7 @@ def test_nonexistent_dst_time_resolves_to_one_deterministic_utc_instant() -> Non
         RecipeStatus.RETIRED,
     ],
 )
-def test_only_enabled_current_acknowledgement_without_cooldown_is_schedulable(
+def test_only_enabled_recipe_without_cooldown_is_schedulable(
     status: RecipeStatus,
 ) -> None:
     now = datetime(2026, 8, 24, 10, 0, tzinfo=UTC)
@@ -129,17 +121,12 @@ def test_only_enabled_current_acknowledgement_without_cooldown_is_schedulable(
     assert source_recipe_is_schedulable(_recipe(status=status), now=now) is False
 
 
-def test_manual_cooldown_missing_and_stale_acknowledgement_are_not_schedulable() -> None:
+def test_manual_and_cooldown_recipe_are_not_schedulable() -> None:
     now = datetime(2026, 8, 24, 10, 0, tzinfo=UTC)
     manual = _recipe(schedule_kind=RecipeScheduleKind.MANUAL)
     cooldown = _recipe()
     cooldown.cooldown_until = now + timedelta(minutes=5)
-    missing = _recipe(acknowledged=False)
-    stale = _recipe()
-    stale.terms_notice_version = "f" * 64
 
     assert source_recipe_is_schedulable(manual, now=now) is False
     assert source_recipe_is_schedulable(cooldown, now=now) is False
-    assert source_recipe_is_schedulable(missing, now=now) is False
-    assert source_recipe_is_schedulable(stale, now=now) is False
     assert source_recipe_is_schedulable(_recipe(), now=now) is True

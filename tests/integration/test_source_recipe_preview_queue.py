@@ -52,7 +52,6 @@ def _recipe(
         name="Fixture recipe",
         listing_url=listing_url,
         seniority_filter=["all"],
-        acknowledged_notice_version=None,
     )
     recipe = SourceRecipe(
         owner_user_id=owner.id,
@@ -62,11 +61,6 @@ def _recipe(
         origin=draft.origin,
         allowed_hosts=list(draft.allowed_hosts),
         allowed_path_prefixes=list(draft.allowed_path_prefixes),
-        terms_notice=draft.terms_notice,
-        terms_notice_version=draft.terms_notice_version,
-        terms_evidence_url=draft.terms_evidence_url,
-        terms_reviewed_at=now,
-        terms_acknowledged_at=now if draft.terms_acknowledged else None,
         field_mapping={},
         pagination_mapping={},
         seniority_filter=list(draft.seniority_filter),

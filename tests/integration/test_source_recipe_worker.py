@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
@@ -13,7 +12,6 @@ from alembic.config import Config
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 
-import devradar.source_recipes.scheduler as source_recipe_scheduler
 from devradar.auth.models import User
 from devradar.automation.run_requests import RunRequestError, request_source_recipe_run
 from devradar.automation.worker import work_one_source_recipe
@@ -30,7 +28,6 @@ from devradar.ingestion.safe_http import FetchError, FetchErrorCode
 from devradar.ingestion.source_registry import SourceConfig
 from devradar.platform.database import DATABASE_URL_ENV
 from devradar.source_recipes.adapter import RecipeAdapter
-from devradar.source_recipes.catalog import resolve_terms_notice
 from devradar.source_recipes.models import (
     PreviewStatus,
     RecipeScheduleKind,
@@ -61,7 +58,6 @@ def _enabled_recipe(session: Session, *, now: datetime) -> SourceRecipe:
     owner = User(username=f"recipe-{uuid4().hex[:8]}", password_hash="x" * 64)
     session.add(owner)
     session.flush()
-    notice = resolve_terms_notice("https://example.test/jobs")
     source = Source(
         name=f"Recipe source {uuid4().hex[:8]}",
         base_url="https://example.test",
@@ -81,10 +77,6 @@ def _enabled_recipe(session: Session, *, now: datetime) -> SourceRecipe:
         origin="https://example.test",
         allowed_hosts=["example.test"],
         allowed_path_prefixes=["/jobs"],
-        terms_notice=notice.notice,
-        terms_notice_version=notice.version,
-        terms_evidence_url=notice.evidence_url,
-        terms_acknowledged_at=now,
         field_mapping={},
         pagination_mapping={},
         seniority_filter=["all"],
@@ -308,7 +300,7 @@ def test_worker_cancels_pending_run_when_recipe_is_no_longer_enabled(
 
 
 @pytest.mark.postgresql
-def test_worker_cancels_pending_run_when_terms_notice_drifts(
+def test_worker_cancels_pending_run_when_config_drifts(
     fresh_postgresql_url: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -331,12 +323,8 @@ def test_worker_cancels_pending_run_when_terms_notice_drifts(
                 idempotency_key="recipe-notice-drift",
                 requested_at=now,
             )
-            current = resolve_terms_notice(recipe.listing_url)
-            monkeypatch.setattr(
-                source_recipe_scheduler,
-                "resolve_terms_notice",
-                lambda value: replace(current, version="f" * 64),
-            )
+            recipe.config_version = "recipe-config-v2"
+            session.commit()
 
             assert (
                 work_one_source_recipe(
@@ -350,13 +338,13 @@ def test_worker_cancels_pending_run_when_terms_notice_drifts(
             stale_run = session.get(CrawlRun, queued.crawl_run.id)
             assert stale_run is not None
             assert stale_run.status is CrawlRunStatus.CANCELLED
-            assert stale_run.error_code == "source_recipe_not_runnable"
+            assert stale_run.error_code == "source_recipe_config_mismatch"
     finally:
         engine.dispose()
 
 
 @pytest.mark.postgresql
-def test_manual_recipe_request_rejects_stale_notice_and_cooldown(
+def test_manual_recipe_request_is_direct_ready_and_rejects_cooldown(
     fresh_postgresql_url: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -367,19 +355,15 @@ def test_manual_recipe_request_rejects_stale_notice_and_cooldown(
     try:
         with Session(engine, expire_on_commit=False) as session:
             recipe = _enabled_recipe(session, now=now)
-            recipe.terms_notice_version = "f" * 64
-            session.commit()
-            with pytest.raises(RunRequestError) as stale_notice:
-                request_source_recipe_run(
-                    session,
-                    recipe_id=recipe.id,
-                    owner_user_id=recipe.owner_user_id,
-                    idempotency_key="recipe-run-stale",
-                    requested_at=now,
-                )
-            assert stale_notice.value.code == "terms_notice_acknowledgement_stale"
+            requested = request_source_recipe_run(
+                session,
+                recipe_id=recipe.id,
+                owner_user_id=recipe.owner_user_id,
+                idempotency_key="recipe-run-direct-ready",
+                requested_at=now,
+            )
+            assert requested.crawl_run.status is CrawlRunStatus.PENDING
 
-            recipe.terms_notice_version = resolve_terms_notice(recipe.listing_url).version
             recipe.cooldown_until = now + timedelta(minutes=5)
             session.commit()
             with pytest.raises(RunRequestError) as cooldown:
