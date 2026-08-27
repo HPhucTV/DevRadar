@@ -154,7 +154,9 @@ $result = Invoke-BoundedProcess `
     ElapsedMilliseconds = $stopwatch.ElapsedMilliseconds
 } | ConvertTo-Json -Compress
 """,
-        timeout=4,
+        # The outer watchdog includes a cold PowerShell startup on the CI runner.
+        # The assertion below still enforces the launcher's 1.5-second timeout behavior.
+        timeout=15,
     )
 
     assert completed.returncode == 0, completed.stderr
