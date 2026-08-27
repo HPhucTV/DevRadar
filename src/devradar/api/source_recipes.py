@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import base64
-from datetime import UTC, date, datetime, time
+from datetime import UTC, datetime, time
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
@@ -35,12 +35,7 @@ from devradar.ingestion.models import (
 )
 from devradar.platform.database import get_database_session
 from devradar.platform.security_config import source_recipes_local_enabled
-from devradar.source_recipes.catalog import (
-    CATALOG_SCHEMA_VERSION,
-    SOURCE_CATALOG,
-    ResolvedTermsNotice,
-    resolve_terms_notice,
-)
+from devradar.source_recipes.catalog import CATALOG_SCHEMA_VERSION, SOURCE_CATALOG
 from devradar.source_recipes.identity import recipe_code
 from devradar.source_recipes.models import (
     PreviewStatus,
@@ -50,7 +45,6 @@ from devradar.source_recipes.models import (
     SourceRecipeDraft,
     SourceRecipeError,
     SourceRecipePreview,
-    TermsNotice,
 )
 from devradar.source_recipes.preview import request_preview
 from devradar.source_recipes.purge import RecipePurgeError, purge_source_recipe
@@ -84,9 +78,6 @@ class SourceCatalogEntryData(ApiModel):
     name: str
     origin: str
     listing_hint: str
-    notice: TermsNotice
-    evidence_url: str
-    reviewed_on: date
 
 
 class SourceCatalogData(ApiModel):
@@ -98,7 +89,6 @@ class SourceRecipeCreate(ApiModel):
     name: str = Field(min_length=1, max_length=200)
     listing_url: str = Field(min_length=1, max_length=2048)
     seniority_filter: list[str] = Field(default_factory=lambda: ["all"], min_length=1, max_length=8)
-    acknowledged_notice_version: str | None = Field(default=None, min_length=64, max_length=64)
     schedule_kind: RecipeScheduleKind = RecipeScheduleKind.MANUAL
     schedule_local_time: time | None = None
     schedule_weekday: int | None = Field(default=None, ge=0, le=6)
@@ -117,7 +107,6 @@ class SourceRecipeCreate(ApiModel):
 class SourceRecipePatch(ApiModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     seniority_filter: list[str] | None = Field(default=None, min_length=1, max_length=8)
-    acknowledged_notice_version: str | None = Field(default=None, min_length=64, max_length=64)
     allowed_hosts: list[str] | None = Field(default=None, max_length=4)
     allowed_path_prefixes: list[str] | None = Field(default=None, max_length=11)
     schedule_kind: RecipeScheduleKind | None = None
@@ -137,11 +126,6 @@ class SourceRecipeData(ApiModel):
     origin: str
     allowed_hosts: list[str]
     allowed_path_prefixes: list[str]
-    terms_notice: TermsNotice
-    terms_notice_version: str
-    terms_evidence_url: str | None
-    terms_acknowledgement_required: bool
-    terms_acknowledged: bool
     seniority_filter: list[str]
     schedule_kind: RecipeScheduleKind
     schedule_local_time: time | None
@@ -280,39 +264,7 @@ SourceRecipeCrawlListResponse = ListResponse[SourceRecipeCrawlData]
 SourceRecipePurgeResponse = DataResponse[SourceRecipePurgeData]
 
 
-def _ack_required(recipe: SourceRecipe, notice: ResolvedTermsNotice) -> bool:
-    return recipe.terms_notice_version != notice.version or notice.acknowledgement_required
-
-
-def _terms_acknowledged(recipe: SourceRecipe, notice: ResolvedTermsNotice) -> bool:
-    return recipe.terms_notice_version == notice.version and (
-        not notice.acknowledgement_required or recipe.terms_acknowledged_at is not None
-    )
-
-
-def _reviewed_at(notice: ResolvedTermsNotice) -> datetime | None:
-    return (
-        datetime.combine(notice.reviewed_on, time.min, tzinfo=UTC)
-        if notice.reviewed_on is not None
-        else None
-    )
-
-
-def _persist_notice_acknowledgement(
-    recipe: SourceRecipe,
-    notice: ResolvedTermsNotice,
-    *,
-    acknowledged_at: datetime,
-) -> None:
-    recipe.terms_notice = notice.notice
-    recipe.terms_notice_version = notice.version
-    recipe.terms_evidence_url = notice.evidence_url
-    recipe.terms_reviewed_at = _reviewed_at(notice)
-    recipe.terms_acknowledged_at = acknowledged_at
-
-
 def _recipe_data(recipe: SourceRecipe) -> SourceRecipeData:
-    notice = resolve_terms_notice(recipe.listing_url)
     return SourceRecipeData(
         id=recipe.id,
         recipe_code=recipe_code(recipe.id),
@@ -323,11 +275,6 @@ def _recipe_data(recipe: SourceRecipe) -> SourceRecipeData:
         origin=recipe.origin,
         allowed_hosts=list(recipe.allowed_hosts),
         allowed_path_prefixes=list(recipe.allowed_path_prefixes),
-        terms_notice=notice.notice,
-        terms_notice_version=notice.version,
-        terms_evidence_url=notice.evidence_url,
-        terms_acknowledgement_required=_ack_required(recipe, notice),
-        terms_acknowledged=_terms_acknowledged(recipe, notice),
         seniority_filter=list(recipe.seniority_filter),
         schedule_kind=recipe.schedule_kind,
         schedule_local_time=recipe.schedule_local_time,
@@ -472,8 +419,6 @@ def _domain_error(error: SourceRecipeError) -> ApiContractError:
             "recipe_status_transition_invalid",
             "source_run_active",
             "idempotency_conflict",
-            "terms_notice_acknowledgement_required",
-            "terms_notice_acknowledgement_stale",
         }
         else status.HTTP_422_UNPROCESSABLE_CONTENT
     )
@@ -483,11 +428,6 @@ def _domain_error(error: SourceRecipeError) -> ApiContractError:
 
 
 def _draft_to_recipe(draft: SourceRecipeDraft, *, owner_id: UUID, now: datetime) -> SourceRecipe:
-    reviewed_at = (
-        datetime.combine(draft.terms_reviewed_on, time.min, tzinfo=UTC)
-        if draft.terms_reviewed_on is not None
-        else None
-    )
     return SourceRecipe(
         owner_user_id=owner_id,
         name=draft.name,
@@ -496,11 +436,6 @@ def _draft_to_recipe(draft: SourceRecipeDraft, *, owner_id: UUID, now: datetime)
         origin=draft.origin,
         allowed_hosts=list(draft.allowed_hosts),
         allowed_path_prefixes=list(draft.allowed_path_prefixes),
-        terms_notice=draft.terms_notice,
-        terms_notice_version=draft.terms_notice_version,
-        terms_evidence_url=draft.terms_evidence_url,
-        terms_reviewed_at=reviewed_at,
-        terms_acknowledged_at=now if draft.terms_acknowledged else None,
         field_mapping={},
         pagination_mapping={},
         seniority_filter=list(draft.seniority_filter),
@@ -508,7 +443,7 @@ def _draft_to_recipe(draft: SourceRecipeDraft, *, owner_id: UUID, now: datetime)
         schedule_local_time=draft.schedule_local_time,
         schedule_weekday=draft.schedule_weekday,
         timezone=draft.timezone,
-        config_version="source-recipe-config-v1",
+        config_version="source-recipe-config-v2",
         item_budget=draft.item_budget,
         page_budget=draft.page_budget,
         request_budget=draft.request_budget,
@@ -536,9 +471,6 @@ def get_source_catalog(context: Authenticated) -> SourceCatalogResponse:
                     name=entry.name,
                     origin=entry.origin,
                     listing_hint=entry.listing_hint,
-                    notice=entry.notice,
-                    evidence_url=entry.evidence_url,
-                    reviewed_on=entry.reviewed_on,
                 )
                 for entry in SOURCE_CATALOG
             ],
@@ -614,14 +546,11 @@ def get_source_recipe(
 def _apply_config_patch(
     recipe: SourceRecipe,
     payload: dict[str, Any],
-    *,
-    acknowledged_version: str | None,
 ) -> None:
     draft = SourceRecipeDraft.from_input(
         name=payload.get("name", recipe.name),
         listing_url=recipe.listing_url,
         seniority_filter=payload.get("seniority_filter", list(recipe.seniority_filter)),
-        acknowledged_notice_version=acknowledged_version,
         allowed_hosts=payload.get("allowed_hosts", list(recipe.allowed_hosts)),
         allowed_path_prefixes=payload.get(
             "allowed_path_prefixes", list(recipe.allowed_path_prefixes)
@@ -656,11 +585,6 @@ def _enable_recipe(session: Session, recipe: SourceRecipe, *, now: datetime) -> 
         raise SourceRecipeError("preview_required")
     if preview_requires_route_confirmation(session, recipe):
         raise SourceRecipeError("preview_hosts_confirmation_required")
-    notice = resolve_terms_notice(recipe.listing_url)
-    if recipe.terms_notice_version != notice.version:
-        raise SourceRecipeError("terms_notice_acknowledgement_stale")
-    if not _terms_acknowledged(recipe, notice):
-        raise SourceRecipeError("terms_notice_acknowledgement_required")
     ensure_recipe_source(session, recipe)
     recipe.status = RecipeStatus.ENABLED
     recipe.next_run_at = (
@@ -694,7 +618,6 @@ def patch_source_recipe(
     recipe = _owned_recipe(session, owner_id=context.user.id, recipe_id=recipe_id)
     payload = request.model_dump(exclude_unset=True)
     target_status = payload.pop("status", None)
-    acknowledged_version = payload.pop("acknowledged_notice_version", None)
     now = datetime.now(UTC)
     try:
         has_allowed_hosts = "allowed_hosts" in payload
@@ -705,7 +628,6 @@ def patch_source_recipe(
                 or not has_allowed_paths
                 or len(payload) != 2
                 or target_status is not None
-                or acknowledged_version is not None
             ):
                 raise SourceRecipeError("preview_hosts_confirmation_invalid")
             confirmed = confirm_preview_routes(
@@ -716,15 +638,6 @@ def patch_source_recipe(
                 now=now,
             )
             return SourceRecipeResponse(data=_recipe_data(confirmed))
-        if acknowledged_version is not None:
-            current_notice = resolve_terms_notice(recipe.listing_url)
-            if acknowledged_version != current_notice.version:
-                raise SourceRecipeError("terms_notice_acknowledgement_stale")
-            _persist_notice_acknowledgement(recipe, current_notice, acknowledged_at=now)
-            if recipe.source_id is not None:
-                source = session.get(Source, recipe.source_id)
-                if source is not None:
-                    source.terms_reviewed_at = recipe.terms_reviewed_at
         if payload:
             if recipe.status in {
                 RecipeStatus.ENABLED,
@@ -732,12 +645,7 @@ def patch_source_recipe(
                 RecipeStatus.RETIRED,
             }:
                 raise SourceRecipeError("recipe_status_transition_invalid")
-            effective_ack = (
-                recipe.terms_notice_version
-                if _terms_acknowledged(recipe, resolve_terms_notice(recipe.listing_url))
-                else None
-            )
-            _apply_config_patch(recipe, payload, acknowledged_version=effective_ack)
+            _apply_config_patch(recipe, payload)
         if target_status == "enabled":
             _enable_recipe(session, recipe, now=now)
         elif target_status == "paused":
@@ -849,11 +757,6 @@ def create_source_recipe_preview(
 ) -> SourceRecipePreviewResponse:
     del request
     recipe = _owned_recipe(session, owner_id=context.user.id, recipe_id=recipe_id)
-    notice = resolve_terms_notice(recipe.listing_url)
-    if recipe.terms_notice_version != notice.version:
-        raise _domain_error(SourceRecipeError("terms_notice_acknowledgement_stale"))
-    if not _terms_acknowledged(recipe, notice):
-        raise _domain_error(SourceRecipeError("terms_notice_acknowledgement_required"))
     try:
         preview = request_preview(session, recipe_id=recipe.id, now=datetime.now(UTC))
     except SourceRecipeError as error:

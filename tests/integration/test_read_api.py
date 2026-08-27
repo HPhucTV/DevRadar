@@ -81,7 +81,6 @@ def _source(
         crawl_frequency="on_demand",
         rate_limit_policy={"authorization": "policy-secret-must-not-leak"},
         allowed_hosts=[base_url.removeprefix("https://")],
-        terms_reviewed_at=NOW - timedelta(days=1),
         robots_reviewed_at=NOW - timedelta(days=1),
         last_crawled_at=NOW,
         last_success_at=NOW - timedelta(hours=2),
@@ -587,6 +586,8 @@ def test_read_api_uses_postgresql_and_enforces_public_contract(
     assert source_detail.json()["data"]["baselineItemsFound"] == 78
     assert source_detail.json()["data"]["healthReasonCode"] == "network_timeout"
     assert source_detail.json()["data"]["quarantinedAt"] is None
+    assert "termsReviewedAt" not in source_detail.json()["data"]
+    assert source_detail.json()["data"]["robotsReviewedAt"] is not None
     assert "policy-secret" not in _json(source_detail.json())
     assert "ratelimitpolicy" not in _json(source_detail.json())
     assert "allowedhosts" not in _json(source_detail.json())

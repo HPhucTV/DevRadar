@@ -76,6 +76,7 @@ DOCUMENT_IMPORT_OPENAPI = {
 
 
 class SourceRecipeDocumentImportData(ApiModel):
+    source_id: UUID
     crawl_run_id: UUID
     jobs_found: int
     jobs_new: int
@@ -228,7 +229,6 @@ def _contract_error(error: DocumentImportError) -> ApiContractError:
         if error.code
         in {
             "document_import_recipe_invalid",
-            "document_import_acknowledgement_required",
             "idempotency_conflict",
             "document_import_in_progress",
         }
@@ -290,6 +290,7 @@ def create_source_recipe_document_import(
     )
     return SourceRecipeDocumentImportResponse(
         data=SourceRecipeDocumentImportData(
+            source_id=report.source_id,
             crawl_run_id=report.run_id,
             jobs_found=report.items_found,
             jobs_new=report.items_new,

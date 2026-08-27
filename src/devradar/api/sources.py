@@ -44,7 +44,6 @@ class SourceDetail(SourceSummary):
     crawl_frequency: str | None
     baseline_items_found: int | None
     quarantined_at: datetime | None
-    terms_reviewed_at: datetime | None
     robots_reviewed_at: datetime | None
 
 
@@ -114,7 +113,6 @@ def get_source(
             crawl_frequency=source.crawl_frequency,
             baseline_items_found=source.baseline_items_found,
             quarantined_at=source.quarantined_at,
-            terms_reviewed_at=source.terms_reviewed_at,
             robots_reviewed_at=source.robots_reviewed_at,
         )
     )

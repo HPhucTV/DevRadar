@@ -4,6 +4,16 @@ from fastapi.testclient import TestClient
 
 from devradar.main import app
 
+REMOVED_TERMS_FIELDS = {
+    "acknowledgedNoticeVersion",
+    "termsNotice",
+    "termsNoticeVersion",
+    "termsEvidenceUrl",
+    "termsReviewedAt",
+    "termsAcknowledgementRequired",
+    "termsAcknowledged",
+}
+
 
 def test_source_recipe_openapi_publishes_only_bounded_resource_contracts() -> None:
     with TestClient(app) as client:
@@ -53,6 +63,16 @@ def test_source_recipe_openapi_publishes_only_bounded_resource_contracts() -> No
     recipe_properties = schemas["SourceRecipeData"]["properties"]
     assert recipe_properties["recipeCode"]["type"] == "string"
     assert "lastUsedAt" in recipe_properties
+    assert not REMOVED_TERMS_FIELDS & set(recipe_properties)
+    assert not REMOVED_TERMS_FIELDS & set(schemas["SourceRecipeCreate"]["properties"])
+    assert not REMOVED_TERMS_FIELDS & set(schemas["SourceRecipePatch"]["properties"])
+    assert set(schemas["SourceCatalogEntryData"]["properties"]) == {
+        "name",
+        "origin",
+        "listingHint",
+    }
+    assert "termsReviewedAt" not in schemas["SourceDetail"]["properties"]
+    assert "sourceId" in schemas["SourceRecipeDocumentImportData"]["properties"]
     purge_code = schemas["SourceRecipePurgeRequest"]["properties"]["confirmationCode"]
     assert purge_code["pattern"] == "^RCP-[0-9A-F]{8}$"
 

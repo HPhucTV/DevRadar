@@ -3,8 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Iterator
-from dataclasses import replace
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 from uuid import UUID
@@ -35,14 +34,12 @@ from devradar.ingestion.models import CrawlRun, RawJobSnapshot, Source
 from devradar.main import app
 from devradar.platform.database import DATABASE_URL_ENV, _database_engine
 from devradar.source_recipes.browser_preview import build_browser_artifact
-from devradar.source_recipes.catalog import resolve_terms_notice
 from devradar.source_recipes.models import (
     PreviewStatus,
     RecipeScheduleKind,
     RecipeStatus,
     SourceRecipe,
     SourceRecipePreview,
-    TermsNotice,
 )
 from devradar.source_recipes.service import recipe_config_hash
 
@@ -101,7 +98,7 @@ def _document_payload(*, title: str = "Backend Intern") -> bytes:
     ).encode()
 
 
-def _create_acknowledged_blocked_recipe(
+def _create_blocked_recipe(
     client: TestClient,
     *,
     database_url: str,
@@ -112,13 +109,8 @@ def _create_acknowledged_blocked_recipe(
         json=_payload(),
         headers=_csrf(csrf),
     )
+    assert created.status_code == 201
     data = created.json()["data"]
-    acknowledged = client.patch(
-        f"/api/v1/source-recipes/{data['id']}",
-        json={"acknowledgedNoticeVersion": data["termsNoticeVersion"]},
-        headers=_csrf(csrf),
-    )
-    assert acknowledged.status_code == 200
     with Session(_database_engine(database_url)) as session:
         recipe = session.get(SourceRecipe, UUID(data["id"]))
         assert recipe is not None
@@ -169,7 +161,6 @@ def _seed_successful_preview(
         session.add(preview)
         session.flush()
         recipe.status = RecipeStatus.PREVIEW_READY
-        recipe.terms_acknowledged_at = now
         recipe.latest_successful_preview_id = preview.id
         recipe.latest_successful_preview_hash = "a" * 64
         session.commit()
@@ -248,13 +239,14 @@ def test_source_recipe_feature_is_fail_closed_when_disabled(
 
 
 @pytest.mark.postgresql
-def test_create_acknowledge_and_queue_preview_without_canonical_rows(
+def test_create_and_queue_preview_without_terms_or_canonical_rows(
     source_recipe_api: tuple[TestClient, str, str],
 ) -> None:
     client, database_url, csrf = source_recipe_api
     catalog = client.get("/api/v1/source-catalog")
     assert catalog.status_code == 200
     assert len(catalog.json()["data"]["entries"]) == 10
+    assert set(catalog.json()["data"]["entries"][0]) == {"name", "origin", "listingHint"}
 
     rejected = client.post(
         "/api/v1/source-recipes",
@@ -271,34 +263,29 @@ def test_create_acknowledge_and_queue_preview_without_canonical_rows(
     assert created.status_code == 201
     data = created.json()["data"]
     assert data["listingUrl"] == "https://example.test/jobs?role=backend"
-    assert data["termsNotice"] == "not_reviewed"
-    assert data["termsAcknowledgementRequired"] is True
-    assert data["termsAcknowledged"] is False
+    assert not {
+        "termsNotice",
+        "termsNoticeVersion",
+        "termsEvidenceUrl",
+        "termsAcknowledgementRequired",
+        "termsAcknowledged",
+    } & set(data)
     assert data["cooldownUntil"] is None
     assert "fieldMapping" not in data
     recipe_id = data["id"]
 
-    blocked = client.post(
-        f"/api/v1/source-recipes/{recipe_id}/previews",
-        json={},
+    removed_create_field = client.post(
+        "/api/v1/source-recipes",
+        json={**_payload(), "acknowledgedNoticeVersion": "0" * 64},
         headers=_csrf(csrf),
     )
-    assert blocked.status_code == 409
-    assert blocked.json()["error"]["code"] == "terms_notice_acknowledgement_required"
-
-    stale = client.patch(
+    assert removed_create_field.status_code == 422
+    removed_patch_field = client.patch(
         f"/api/v1/source-recipes/{recipe_id}",
         json={"acknowledgedNoticeVersion": "0" * 64},
         headers=_csrf(csrf),
     )
-    assert stale.status_code == 409
-    acknowledged = client.patch(
-        f"/api/v1/source-recipes/{recipe_id}",
-        json={"acknowledgedNoticeVersion": data["termsNoticeVersion"]},
-        headers=_csrf(csrf),
-    )
-    assert acknowledged.status_code == 200
-    assert acknowledged.json()["data"]["termsAcknowledged"] is True
+    assert removed_patch_field.status_code == 422
 
     queued = client.post(
         f"/api/v1/source-recipes/{recipe_id}/previews",
@@ -316,87 +303,14 @@ def test_create_acknowledge_and_queue_preview_without_canonical_rows(
     assert "<html" not in polled.text.casefold()
 
     with Session(_database_engine(database_url)) as session:
+        recipe = session.get(SourceRecipe, UUID(recipe_id))
+        assert recipe is not None
+        assert recipe.config_version == "source-recipe-config-v2"
         assert session.scalar(select(func.count()).select_from(Source)) == 0
         assert session.scalar(select(func.count()).select_from(CrawlRun)) == 0
         assert session.scalar(select(func.count()).select_from(RawJobSnapshot)) == 0
         assert session.scalar(select(func.count()).select_from(Job)) == 0
         assert session.scalar(select(func.count()).select_from(JobChange)) == 0
-
-
-@pytest.mark.postgresql
-def test_terms_notice_drift_can_be_reviewed_and_reacknowledged(
-    source_recipe_api: tuple[TestClient, str, str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import devradar.api.source_recipes as api_module
-
-    client, database_url, csrf = source_recipe_api
-    listing_url = "https://example.test/jobs?role=backend"
-    created = client.post(
-        "/api/v1/source-recipes",
-        json=_payload(listing_url=listing_url),
-        headers=_csrf(csrf),
-    )
-    recipe_id = created.json()["data"]["id"]
-    _seed_successful_preview(
-        database_url,
-        recipe_id=recipe_id,
-        proposed_hosts=[],
-        proposed_path_prefixes=[],
-    )
-    enabled = client.patch(
-        f"/api/v1/source-recipes/{recipe_id}",
-        json={"status": "enabled"},
-        headers=_csrf(csrf),
-    )
-    assert enabled.status_code == 200
-
-    previous = resolve_terms_notice(listing_url)
-    current = replace(
-        previous,
-        notice=TermsNotice.NO_SPECIFIC_RESTRICTION_FOUND,
-        version="f" * 64,
-        evidence_url="https://example.test/current-terms",
-        reviewed_on=date(2026, 8, 25),
-        acknowledgement_required=False,
-    )
-    monkeypatch.setattr(api_module, "resolve_terms_notice", lambda value: current)
-
-    refreshed = client.get(f"/api/v1/source-recipes/{recipe_id}")
-    assert refreshed.status_code == 200
-    assert refreshed.json()["data"]["termsNoticeVersion"] == current.version
-    assert refreshed.json()["data"]["termsEvidenceUrl"] == current.evidence_url
-    assert refreshed.json()["data"]["termsAcknowledgementRequired"] is True
-    assert refreshed.json()["data"]["termsAcknowledged"] is False
-
-    stale = client.patch(
-        f"/api/v1/source-recipes/{recipe_id}",
-        json={"acknowledgedNoticeVersion": previous.version},
-        headers=_csrf(csrf),
-    )
-    assert stale.status_code == 409
-    assert stale.json()["error"]["code"] == "terms_notice_acknowledgement_stale"
-
-    acknowledged = client.patch(
-        f"/api/v1/source-recipes/{recipe_id}",
-        json={"acknowledgedNoticeVersion": current.version},
-        headers=_csrf(csrf),
-    )
-    assert acknowledged.status_code == 200
-    assert acknowledged.json()["data"]["status"] == "enabled"
-    assert acknowledged.json()["data"]["termsAcknowledgementRequired"] is False
-    assert acknowledged.json()["data"]["termsAcknowledged"] is True
-    with Session(_database_engine(database_url)) as session:
-        recipe = session.get(SourceRecipe, UUID(recipe_id))
-        source = session.get(Source, recipe.source_id) if recipe is not None else None
-        assert recipe is not None and source is not None
-        assert recipe.terms_notice_version == current.version
-        assert recipe.terms_evidence_url == current.evidence_url
-        assert current.reviewed_on is not None
-        assert recipe.terms_reviewed_at == datetime.combine(
-            current.reviewed_on, time.min, tzinfo=UTC
-        )
-        assert source.terms_reviewed_at == recipe.terms_reviewed_at
 
 
 @pytest.mark.postgresql
@@ -799,7 +713,7 @@ def test_document_import_api_is_owner_scoped_idempotent_and_sanitized(
     source_recipe_api: tuple[TestClient, str, str],
 ) -> None:
     client, database_url, csrf = source_recipe_api
-    recipe_id = _create_acknowledged_blocked_recipe(
+    recipe_id = _create_blocked_recipe(
         client,
         database_url=database_url,
         csrf=csrf,
@@ -820,6 +734,11 @@ def test_document_import_api_is_owner_scoped_idempotent_and_sanitized(
 
     assert first.status_code == replay.status_code == 200
     data = first.json()["data"]
+    with Session(_database_engine(database_url)) as session:
+        recipe = session.get(SourceRecipe, UUID(recipe_id))
+        assert recipe is not None and recipe.source_id is not None
+        persisted_source_id = recipe.source_id
+    assert UUID(data["sourceId"]) == persisted_source_id
     assert replay.json()["data"]["crawlRunId"] == data["crawlRunId"]
     assert data["jobsFound"] == data["jobsNew"] == 2
     assert data["jobsUpdated"] == data["jobsUnchanged"] == 0
@@ -889,7 +808,7 @@ def test_document_import_api_rejects_boundary_abuse(
     source_recipe_api: tuple[TestClient, str, str],
 ) -> None:
     client, database_url, csrf = source_recipe_api
-    recipe_id = _create_acknowledged_blocked_recipe(
+    recipe_id = _create_blocked_recipe(
         client,
         database_url=database_url,
         csrf=csrf,
@@ -1004,31 +923,6 @@ def test_document_import_api_rejects_boundary_abuse(
     )
     assert oversized.status_code == 413
     assert oversized.json()["error"]["code"] == "document_import_too_large"
-
-    unacknowledged = client.post(
-        "/api/v1/source-recipes",
-        json={
-            **_payload(listing_url="https://unreviewed.test/jobs"),
-            "name": "Unacknowledged document recipe",
-        },
-        headers=_csrf(csrf),
-    ).json()["data"]
-    acknowledgement_required = client.post(
-        f"/api/v1/source-recipes/{unacknowledged['id']}/document-imports",
-        headers=_document_headers(csrf, "document-import-unacknowledged"),
-        files={
-            "file": (
-                "jobs.csv",
-                b"title,company,url\nA,Example,https://unreviewed.test/jobs/1\n",
-                "text/csv",
-            )
-        },
-    )
-    assert acknowledgement_required.status_code == 409
-    assert (
-        acknowledgement_required.json()["error"]["code"]
-        == "document_import_acknowledgement_required"
-    )
 
     with Session(_database_engine(database_url)) as session:
         recipe = session.get(SourceRecipe, UUID(recipe_id))

@@ -17,9 +17,8 @@ class HealthResponse(BaseModel):
 
 
 class PrivacyData(ApiModel):
-    policy_version: Literal["privacy-v2"]
+    policy_version: Literal["privacy-v3"]
     source_recipes_local_only: Literal[True]
-    terms_warning_owner_override: Literal[True]
     access_control_bypass_allowed: Literal[False]
     raw_cv_file_retained: Literal[False]
     resume_profile_ttl_hours: Literal[24]
@@ -38,9 +37,8 @@ def get_health() -> HealthResponse:
 def get_privacy() -> PrivacyResponse:
     return PrivacyResponse(
         data=PrivacyData(
-            policy_version="privacy-v2",
+            policy_version="privacy-v3",
             source_recipes_local_only=True,
-            terms_warning_owner_override=True,
             access_control_bypass_allowed=False,
             raw_cv_file_retained=False,
             resume_profile_ttl_hours=24,

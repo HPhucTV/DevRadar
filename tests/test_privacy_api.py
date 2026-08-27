@@ -15,9 +15,8 @@ def test_privacy_policy_is_explicit_and_secret_free() -> None:
     assert response.status_code == 200
     assert response.json() == {
         "data": {
-            "policyVersion": "privacy-v2",
+            "policyVersion": "privacy-v3",
             "sourceRecipesLocalOnly": True,
-            "termsWarningOwnerOverride": True,
             "accessControlBypassAllowed": False,
             "rawCvFileRetained": False,
             "resumeProfileTtlHours": 24,
