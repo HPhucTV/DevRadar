@@ -101,6 +101,7 @@ test("source recipe BFF rejects arbitrary fetch and code fields", async () => {
   assert.doesNotMatch(collection, /"allowedHosts"|"allowedPathPrefixes"/);
   assert.match(detail, /"allowedHosts"/);
   assert.match(detail, /"allowedPathPrefixes"/);
+  assert.doesNotMatch(collection + detail, /acknowledgedNoticeVersion/);
   assert.match(preview, /Object\.keys\(body\)\.length/);
   assert.match(mapping, /MAPPING_FIELDS/);
   assert.match(runs, /Object\.keys\(body\)\.length/);
@@ -134,6 +135,7 @@ test("typed document import client preserves multipart boundaries and validates 
   assert.match(client, /typeof init\.body === "string"/);
   assert.match(client, /export type SourceRecipeDocumentImport/);
   assert.match(client, /function isDocumentImport/);
+  assert.match(client, /UUID_PATTERN\.test\(value\.sourceId\)/);
   for (const field of [
     "jobsFound",
     "jobsNew",
@@ -161,9 +163,7 @@ test("sources page exposes the no-code recipe workflow", async () => {
   assert.match(panel, /SENIORITY_OPTIONS/);
   assert.match(panel, /toggleSeniority/);
   assert.match(panel, /value === "all"/);
-  assert.match(panel, /termsNoticeVersion/);
-  assert.match(panel, /acknowledgedNoticeVersion/);
-  assert.match(panel, /termsEvidenceUrl/);
+  assert.doesNotMatch(panel, /termsNotice|termsEvidence|acknowledg/i);
   assert.match(panel, /requestSourcePreview/);
   assert.match(panel, /getSourcePreview/);
   assert.match(panel, /PREVIEW_POLL_WINDOW_MS/);
@@ -172,12 +172,11 @@ test("sources page exposes the no-code recipe workflow", async () => {
 
 test("source recipe editor offers an accessible local document import fallback", async () => {
   const panel = await source("src/components/source-recipe-panel.tsx");
-  const termsStart = panel.indexOf("className={`terms-notice");
   const importStart = panel.indexOf('className="document-import-card"');
   const blockedStart = panel.indexOf('selected?.status === "blocked"');
   const importCard = panel.slice(importStart, blockedStart);
 
-  assert.ok(termsStart >= 0 && termsStart < importStart && importStart < blockedStart);
+  assert.ok(importStart >= 0 && importStart < blockedStart);
   assert.match(panel, /useState<File \| null>/);
   assert.match(panel, /useState<SourceRecipeDocumentImport \| null>/);
   assert.match(panel, /importSourceDocument/);
@@ -185,9 +184,11 @@ test("source recipe editor offers an accessible local document import fallback",
   assert.match(importCard, /accept="\.html,\.htm,\.json,\.csv"/);
   assert.match(importCard, /disabled=\{documentImportDisabled\}/);
   assert.match(panel, /selected\.status === "retired"/);
-  assert.match(panel, /selected\.termsAcknowledgementRequired/);
   assert.match(panel, /busy !== null/);
   assert.equal((importCard.match(/button-primary/g) ?? []).length, 1);
+  assert.match(importCard, /<Link/);
+  assert.match(importCard, /href=\{`\/jobs\?sourceId=\$\{encodeURIComponent\(documentImportResult\.sourceId\)\}`\}/);
+  assert.match(importCard, /copy\.viewImportedJobs/);
   assert.match(importCard, /busy === "document-import"/);
   assert.match(importCard, /aria-live="polite"/);
   assert.match(importCard, /<dl/);
@@ -214,9 +215,8 @@ test("document import errors use localized safe-code copy", async () => {
   assert.match(panel, /function localizeDocumentImportFailure/);
   assert.match(panel, /copy\.documentImportErrors\[error\.code\]/);
   assert.match(panel, /copy\.documentImportFailed/);
-  assert.match(handler, /setError\(localizeDocumentImportFailure\(acknowledgement, copy\)\)/);
   assert.match(handler, /setError\(localizeDocumentImportFailure\(result, copy\)\)/);
-  assert.doesNotMatch(handler, /setError\(acknowledgement\)/);
+  assert.doesNotMatch(handler, /acknowledg/i);
   assert.doesNotMatch(handler, /setError\(result\)/);
 });
 

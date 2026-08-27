@@ -28,9 +28,8 @@ export type SkillFrequency = ListEnvelope<Skill> & { meta: AnalyticsMeta };
 export type TrendBucket = { periodStart: string; denominator: number; analyzedJobs: number; coverage: number; skills: { name: string; jobCount: number; share: number }[] };
 export type SkillTrend = { data: TrendBucket[]; meta: AnalyticsMeta & { from: string; to: string; cohort: string; granularity: string } };
 export type PrivacyPolicy = {
-  policyVersion: "privacy-v2";
+  policyVersion: "privacy-v3";
   sourceRecipesLocalOnly: true;
-  termsWarningOwnerOverride: true;
   accessControlBypassAllowed: false;
   rawCvFileRetained: false;
   resumeProfileTtlHours: 24;
@@ -43,9 +42,8 @@ function isDataEnvelope(value: unknown): value is DataEnvelope<unknown> { return
 function isSkillFrequency(value: unknown): value is SkillFrequency { return isListEnvelope(value) && isRecord((value as Record<string, unknown>).meta) && value.data.every(isRecord); }
 function isPrivacyPolicy(value: unknown): value is PrivacyPolicy {
   return isRecord(value)
-    && value.policyVersion === "privacy-v2"
+    && value.policyVersion === "privacy-v3"
     && value.sourceRecipesLocalOnly === true
-    && value.termsWarningOwnerOverride === true
     && value.accessControlBypassAllowed === false
     && value.rawCvFileRetained === false
     && value.resumeProfileTtlHours === 24

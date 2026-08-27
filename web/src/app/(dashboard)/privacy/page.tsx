@@ -31,7 +31,6 @@ export default async function PrivacyPage() {
         <div className="section-heading"><div><p className="eyebrow">{dictionary.privacy.sourceEyebrow}</p><h2>{dictionary.privacy.localRecipes}</h2></div></div>
         <ul className="policy-list explanation-list">
           <li>{result.value.data.sourceRecipesLocalOnly ? dictionary.privacy.localOnly : dictionary.privacy.localOnlyDisabled}</li>
-          <li>{result.value.data.termsWarningOwnerOverride ? dictionary.privacy.termsOverride : dictionary.privacy.termsOverrideDisabled}</li>
           <li>{result.value.data.accessControlBypassAllowed ? dictionary.privacy.bypassAllowed : dictionary.privacy.noBypass}</li>
         </ul>
       </section>

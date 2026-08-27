@@ -4,7 +4,6 @@ const RECIPE_FIELDS = new Set([
   "name",
   "listingUrl",
   "seniorityFilter",
-  "acknowledgedNoticeVersion",
   "scheduleKind",
   "scheduleLocalTime",
   "scheduleWeekday",

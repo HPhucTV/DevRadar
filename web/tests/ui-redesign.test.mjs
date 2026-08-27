@@ -235,6 +235,6 @@ test("redesign preserves CV, crawler and privacy boundaries", async () => {
   assert.match(crawler, /approvalStatus/);
   assert.match(recipes, /PREVIEW_POLL_WINDOW_MS\s*=\s*45_000/);
   assert.match(privacy, /sourceRecipesLocalOnly/);
-  assert.match(privacy, /termsWarningOwnerOverride/);
+  assert.doesNotMatch(privacy, /termsWarningOwnerOverride|termsOverride/);
   assert.match(privacy, /accessControlBypassAllowed/);
 });

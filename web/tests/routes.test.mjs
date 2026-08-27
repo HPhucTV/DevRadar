@@ -202,7 +202,7 @@ test("privacy route exposes truthful retention, AI and source policy", async () 
   const dictionaries = await readFile(new URL("src/i18n/dictionaries.json", webRoot), "utf8");
   assert.match(page, /resumeProfileTtlHours/);
   assert.match(page, /sourceRecipesLocalOnly/);
-  assert.match(page, /termsWarningOwnerOverride/);
+  assert.doesNotMatch(page, /termsWarningOwnerOverride|termsOverride/);
   assert.match(page, /accessControlBypassAllowed/);
   assert.match(page, /externalAllowed|externalBlocked/);
   assert.doesNotMatch(page, /permissionRequiredSourceKeys|sourceAllowlistOnly/);

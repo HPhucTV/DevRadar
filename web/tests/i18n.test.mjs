@@ -96,6 +96,7 @@ test("source document import has complete Vietnamese and English copy", async ()
     "documentImportUpdated",
     "documentImportUnchanged",
     "documentImportFiltered",
+    "viewImportedJobs",
   ]) {
     assert.equal(typeof messages.vi.sourceRecipes[key], "string", `missing vi.sourceRecipes.${key}`);
     assert.equal(typeof messages.en.sourceRecipes[key], "string", `missing en.sourceRecipes.${key}`);
@@ -105,7 +106,6 @@ test("source document import has complete Vietnamese and English copy", async ()
   for (const code of [
     "document_import_disabled",
     "document_import_recipe_invalid",
-    "document_import_acknowledgement_required",
     "document_import_too_large",
     "document_import_multipart_invalid",
     "document_import_type_unsupported",
@@ -130,6 +130,25 @@ test("source document import has complete Vietnamese and English copy", async ()
       "string",
       `missing en.sourceRecipes.documentImportErrors.${code}`,
     );
+  }
+  for (const locale of ["vi", "en"]) {
+    const sourceCopy = messages[locale].sourceRecipes;
+    const privacyCopy = messages[locale].privacy;
+    for (const key of [
+      "termsTitle",
+      "termsBody",
+      "termsLabels",
+      "termsEvidence",
+      "noTermsEvidence",
+      "acknowledgement",
+      "acknowledged",
+      "acknowledgementRequired",
+    ]) {
+      assert.equal(key in sourceCopy, false, `retired ${locale}.sourceRecipes.${key}`);
+    }
+    assert.equal("document_import_acknowledgement_required" in sourceCopy.documentImportErrors, false);
+    assert.equal("termsOverride" in privacyCopy, false);
+    assert.equal("termsOverrideDisabled" in privacyCopy, false);
   }
 });
 

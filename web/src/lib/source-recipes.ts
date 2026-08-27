@@ -25,11 +25,6 @@ export type SourceRecipe = {
   origin: string;
   allowedHosts: string[];
   allowedPathPrefixes: string[];
-  termsNotice: "not_reviewed" | "no_specific_restriction_found" | "restricted_terms";
-  termsNoticeVersion: string;
-  termsEvidenceUrl: string | null;
-  termsAcknowledgementRequired: boolean;
-  termsAcknowledged: boolean;
   seniorityFilter: string[];
   scheduleKind: "manual" | "every_6_hours" | "daily" | "weekly";
   scheduleLocalTime: string | null;
@@ -53,9 +48,6 @@ export type SourceCatalogEntry = {
   name: string;
   origin: string;
   listingHint: string;
-  notice: SourceRecipe["termsNotice"];
-  evidenceUrl: string;
-  reviewedOn: string;
 };
 
 export type SourceCatalog = {
@@ -67,7 +59,6 @@ export type SourceRecipeInput = {
   name: string;
   listingUrl: string;
   seniorityFilter: string[];
-  acknowledgedNoticeVersion?: string | null;
   scheduleKind: "manual" | "every_6_hours" | "daily" | "weekly";
   scheduleLocalTime?: string | null;
   scheduleWeekday?: number | null;
@@ -121,6 +112,7 @@ export type SourceRecipeCrawlRun = {
 };
 
 export type SourceRecipeDocumentImport = {
+  sourceId: string;
   crawlRunId: string;
   jobsFound: number;
   jobsNew: number;
@@ -158,10 +150,6 @@ function isRecipe(value: unknown): value is SourceRecipe {
     value.allowedHosts.every((item) => typeof item === "string") &&
     Array.isArray(value.allowedPathPrefixes) &&
     value.allowedPathPrefixes.every((item) => typeof item === "string") &&
-    typeof value.termsNoticeVersion === "string" &&
-    (typeof value.termsEvidenceUrl === "string" || value.termsEvidenceUrl === null) &&
-    typeof value.termsAcknowledgementRequired === "boolean" &&
-    typeof value.termsAcknowledged === "boolean" &&
     Array.isArray(value.seniorityFilter) &&
     typeof value.hasMapping === "boolean" &&
     (typeof value.cooldownUntil === "string" || value.cooldownUntil === null)
@@ -174,10 +162,7 @@ function isCatalogEntry(value: unknown): value is SourceCatalogEntry {
     isRecord(value) &&
     typeof value.name === "string" &&
     typeof value.origin === "string" &&
-    typeof value.listingHint === "string" &&
-    typeof value.notice === "string" &&
-    typeof value.evidenceUrl === "string" &&
-    typeof value.reviewedOn === "string"
+    typeof value.listingHint === "string"
   );
 }
 
@@ -258,7 +243,9 @@ function isNonNegativeInteger(value: unknown): value is number {
 function isDocumentImport(value: unknown): value is SourceRecipeDocumentImport {
   return (
     isRecord(value) &&
-    Object.keys(value).length === 8 &&
+    Object.keys(value).length === 9 &&
+    typeof value.sourceId === "string" &&
+    UUID_PATTERN.test(value.sourceId) &&
     typeof value.crawlRunId === "string" &&
     UUID_PATTERN.test(value.crawlRunId) &&
     isNonNegativeInteger(value.jobsFound) &&
