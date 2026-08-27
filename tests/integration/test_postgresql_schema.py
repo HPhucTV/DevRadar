@@ -61,7 +61,6 @@ def _approved_source(name: str, host: str, reviewed_at: datetime) -> Source:
         approval_status=SourceApprovalStatus.APPROVED,
         rate_limit_policy={"requests_per_second": 0.5, "concurrency": 1},
         allowed_hosts=[host],
-        terms_reviewed_at=reviewed_at,
         robots_reviewed_at=reviewed_at,
     )
 
@@ -101,7 +100,7 @@ def test_migration_and_domain_invariants_on_postgresql(
     assert DOMAIN_TABLES <= set(inspector.get_table_names())
 
     expected_checks = {
-        "sources": {"ck_sources_approved_has_policy_reviews", "ck_sources_approval_status"},
+        "sources": {"ck_sources_approved_has_robots_review", "ck_sources_approval_status"},
         "crawl_runs": {
             "ck_crawl_runs_status_time_boundary",
             "ck_crawl_runs_coverage_status",
@@ -157,7 +156,6 @@ def test_migration_and_domain_invariants_on_postgresql(
         },
         "source_recipes": {
             "ck_source_recipes_status",
-            "ck_source_recipes_terms_notice",
             "ck_source_recipes_schedule",
             "ck_source_recipes_budgets",
             "ck_source_recipes_seniority_filter",

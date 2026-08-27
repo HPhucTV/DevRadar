@@ -27,6 +27,16 @@ def test_source_recipe_schema_has_bounded_persistence_contract(
             column["name"]: column for column in inspector.get_columns("source_recipes")
         }
         recipe_columns = set(recipe_columns_by_name)
+        assert (
+            not {
+                "terms_notice",
+                "terms_notice_version",
+                "terms_evidence_url",
+                "terms_reviewed_at",
+                "terms_acknowledged_at",
+            }
+            & recipe_columns
+        )
         assert {
             "id",
             "owner_user_id",
@@ -37,10 +47,6 @@ def test_source_recipe_schema_has_bounded_persistence_contract(
             "origin",
             "allowed_hosts",
             "allowed_path_prefixes",
-            "terms_notice",
-            "terms_notice_version",
-            "terms_evidence_url",
-            "terms_acknowledged_at",
             "seniority_filter",
             "schedule_kind",
             "schedule_local_time",
@@ -93,7 +99,6 @@ def test_source_recipe_schema_has_bounded_persistence_contract(
         }
         assert {
             "ck_source_recipes_status",
-            "ck_source_recipes_terms_notice",
             "ck_source_recipes_schedule",
             "ck_source_recipes_budgets",
             "ck_source_recipes_seniority_filter",
