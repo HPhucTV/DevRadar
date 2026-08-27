@@ -30,9 +30,9 @@ CAPTCHA, authentication, paywall, anti-bot, access denial, route escape, SSRF, D
 
 | Gate | Kết quả |
 |---|---|
-| Python default | `386 passed, 96 skipped` |
-| Python + PostgreSQL integration | `481 passed, 1 skipped` |
-| Ruff | `All checks passed`; `357 files already formatted` |
+| Python default | `385 passed, 96 skipped` |
+| Python + PostgreSQL integration | `480 passed, 1 skipped` |
+| Ruff | `All checks passed`; `358 files already formatted` |
 | mypy | `Success: no issues found in 151 source files` |
 | pip check | `No broken requirements found` |
 | Web | `84 passed`; ESLint, TypeScript và Next.js production build pass |
@@ -42,9 +42,9 @@ CAPTCHA, authentication, paywall, anti-bot, access denial, route escape, SSRF, D
 
 Image được kiểm chứng:
 
-- `devradar-app:local` — `sha256:1a841b40c7fa57b8e0dbc45f7484297964d31271cf18762faa13e28ae3006485`
-- `devradar-crawler:local` — `sha256:5dde6ca4f6a562d0da38d3447ba6ee62b46f83f16ae876fa29d18b4d7d56238e`
-- `devradar-web:local` — `sha256:fa946d3a1260e3151a89bdff9ba90e109e419197c486abb9d749980dbf78737e`
+- `devradar-app:local` — `sha256:2876f0e71653bfb113f6cacda9f6ebcbfd5046937e3a1e728516014c75e64f80`
+- `devradar-crawler:local` — `sha256:41f1dbc0a555b707dd23586f1a00f98bbcb7a90f0bbfe0a04edd64f8a3659a48`
+- `devradar-web:local` — `sha256:5226339aabc772cb0cbf67b97a5fcc072835dd6a3f3930cf8fc3e13ab9b86a55`
 
 ## Disposable vertical acceptance
 
@@ -86,4 +86,5 @@ server-derived source filter, hidden identity field và đúng `9` TopCV rows; k
 - Chrome/Edge sideload thật, live provider/source matrix và public HTTPS deployment không được suy ra từ
   bundled Chromium hoặc local controlled fixtures.
 - Public managed secrets, off-host backup/RPO/RTO và uptime-provider evidence vẫn thuộc các gate V6 khác.
-- V6-025 chỉ chuyển `Done` sau final whole-branch review, repeat completion gates và local-only leak gate.
+- Whole-branch review, repeat completion gates và local-only leak gate đã pass. Closeout V6-025 không đóng
+  các public-provider gate hoặc toàn bộ V6.
