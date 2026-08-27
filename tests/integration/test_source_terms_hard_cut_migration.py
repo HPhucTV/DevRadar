@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ast
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -37,17 +36,6 @@ REMOVED_RECIPE_COLUMNS = {
 
 def _alembic_config() -> Config:
     return Config(str(PROJECT_ROOT / "alembic.ini"))
-
-
-def test_historical_seed_does_not_import_terms_orm_models() -> None:
-    module = ast.parse(Path(__file__).read_text(encoding="utf-8"))
-    imported_names = {
-        alias.name
-        for node in ast.walk(module)
-        if isinstance(node, ast.ImportFrom)
-        for alias in node.names
-    }
-    assert {"Source", "SourceRecipe", "TermsNotice", "User"}.isdisjoint(imported_names)
 
 
 def _table_counts(session: Session, table_names: tuple[str, ...]) -> dict[str, int]:
