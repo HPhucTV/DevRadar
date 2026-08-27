@@ -489,8 +489,9 @@ local-only/no-bypass policy hoặc các V6 provider/public gate còn mở.
 runtime terms state trong khi giữ nguyên toàn bộ technical barrier. Migration `f1a3c5e7b902`, domain,
 workflow, FastAPI/OpenAPI `privacy-v3` và dashboard đã chuyển sang direct-ready preview; document import trả
 server-derived `sourceId`, còn CTA mở source-filtered Jobs tại `/jobs?sourceId=<uuid>`. PostgreSQL/API/web
-focused gates đã pass; full Compose/browser/secret/supply-chain evidence và local-only client alignment vẫn
-phải hoàn tất trước khi V6-025 chuyển `Done`.
+focused gates đã pass; full Compose/browser/secret/supply-chain evidence và local-only client alignment đã
+được ghi tại [V6-025 evidence](evidence/V6-025-source-terms-hard-cut-job-visibility.md). V6-025 giữ
+`In Progress` cho tới final whole-branch review, repeat completion gates và local-only leak gate.
 
 ## 9. Quy tắc cập nhật roadmap
 
