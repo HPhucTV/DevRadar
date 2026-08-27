@@ -11,6 +11,13 @@ export type Job = {
   levels: string[]; status: string; postedAt: string | null; firstSeenAt: string; lastSeenAt: string;
   source: { id: string; name: string; url: string }; relevanceScore: number | null;
 };
+export type JobListQuery = {
+  page?: string | number;
+  pageSize?: number;
+  query?: string;
+  location?: string;
+  sourceId?: string;
+};
 export type JobDetail = Job & { descriptionText: string | null; currentSnapshot: { id: string; sourceUrl: string; fetchedAt: string; httpStatus: number; contentType: string | null; parseStatus: string } };
 export type JobChange = { id: string; jobId: string; crawlRunId: string; changeType: string; fieldName: string; detectedAt: string; oldValue: unknown; newValue: unknown };
 export type Source = { id: string; name: string; baseUrl: string; adapterKey: string; approvalStatus: string; healthStatus: string; consecutiveFailures: number; healthReasonCode: string | null; lastCrawledAt: string | null; lastSuccessAt: string | null };
@@ -57,7 +64,7 @@ async function request<T>(path: string, query: Record<string, string | number | 
     return { kind: "success", value: body };
   } catch { return { kind: "error", status: 503, code: "backend_unavailable", message: "DevRadar API is not reachable." }; }
 }
-export function listJobs(query: Record<string, string | number | undefined> = {}): Promise<ApiResult<ListEnvelope<Job>>> { return request("/jobs", query, (value): value is ListEnvelope<Job> => isListEnvelope(value) && value.data.every(isRecord)); }
+export function listJobs(query: JobListQuery = {}): Promise<ApiResult<ListEnvelope<Job>>> { return request("/jobs", { ...query }, (value): value is ListEnvelope<Job> => isListEnvelope(value) && value.data.every(isRecord)); }
 export function getJob(jobId: string): Promise<ApiResult<DataEnvelope<JobDetail>>> { return request(`/jobs/${encodeURIComponent(jobId)}`, undefined, (value): value is DataEnvelope<JobDetail> => isDataEnvelope(value) && isRecord(value.data)); }
 export function listJobChanges(jobId: string): Promise<ApiResult<ListEnvelope<JobChange>>> { return request(`/jobs/${encodeURIComponent(jobId)}/changes`, { page: 1, pageSize: 20 }, (value): value is ListEnvelope<JobChange> => isListEnvelope(value) && value.data.every(isRecord)); }
 export function listSources(): Promise<ApiResult<ListEnvelope<Source>>> { return request("/sources", { page: 1, pageSize: 100 }, (value): value is ListEnvelope<Source> => isListEnvelope(value) && value.data.every(isRecord)); }

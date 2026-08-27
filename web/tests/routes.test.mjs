@@ -86,6 +86,16 @@ test("sources route owns the complete recipe contract", async () => {
   ]);
 });
 
+test("jobs route forwards and preserves only a bounded source filter", async () => {
+  const page = await readFile(new URL("src/app/(dashboard)/jobs/page.tsx", webRoot), "utf8");
+  const api = await readFile(new URL("src/lib/api.ts", webRoot), "utf8");
+
+  assert.match(page, /parseJobSourceId\(params\.sourceId\)/);
+  assert.match(page, /listJobs\(\{[^}]*sourceId/s);
+  assert.match(page, /type="hidden" name="sourceId" value=\{sourceId\}/);
+  assert.match(api, /sourceId\?: string/);
+});
+
 test("cv match route exposes only protected local matching resources", async () => {
   const source = await readFile(
     new URL("src/app/(dashboard)/cv-match/page.tsx", webRoot),

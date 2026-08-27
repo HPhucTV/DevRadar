@@ -157,6 +157,7 @@ test("core data routes use the approved dense archetypes", async () => {
   assert.match(overview, /<JobList compact/);
   assert.match(jobs, /explorer-toolbar/);
   assert.match(jobs, /data-surface/);
+  assert.match(jobs, /type="hidden" name="sourceId"/);
   assert.match(analytics, /comparison-list/);
   assert.match(analytics, /trend-table/);
 });
