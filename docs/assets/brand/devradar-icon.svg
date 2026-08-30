@@ -1,0 +1,18 @@
+<svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="80" height="80" rx="18" fill="#0F172A"/>
+  <circle cx="40" cy="40" r="34" stroke="#1E293B" stroke-width="1.5" stroke-dasharray="2 3"/>
+  <circle cx="40" cy="40" r="24" stroke="#0EA5E9" stroke-width="1.5" stroke-opacity="0.35"/>
+  <circle cx="40" cy="40" r="15" stroke="#06B6D4" stroke-width="1.5" stroke-opacity="0.7"/>
+  <path d="M40 40 L66 22 A 32 32 0 0 0 40 8 Z" fill="url(#radar-sweep-icon)" opacity="0.45"/>
+  <line x1="40" y1="40" x2="66" y2="22" stroke="#38BDF8" stroke-width="2"/>
+  <circle cx="40" cy="40" r="4" fill="#38BDF8"/>
+  <path d="M32 36L28 40L32 44" stroke="#22D3EE" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M48 36L52 40L48 44" stroke="#22D3EE" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="56" cy="26" r="2.5" fill="#10B981"/>
+  <defs>
+    <radialGradient id="radar-sweep-icon" cx="40" cy="40" r="32" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#38BDF8" stop-opacity="0.75"/>
+      <stop offset="1" stop-color="#0284C7" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+</svg>
