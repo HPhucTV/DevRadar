@@ -40,6 +40,7 @@ dist/
 # Node.js and Next.js
 node_modules/
 .next/
+/.npm-cache/
 out/
 .turbo/
 .vercel/
