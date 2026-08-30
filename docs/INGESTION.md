@@ -91,6 +91,9 @@ tái sử dụng source-scoped normalization, content hash, `Job` và `JobChange
 request terminal trả lại run hiện hữu; request cùng key còn active trả conflict trạng thái
 `document_import_in_progress`; reuse với document/config khác là `idempotency_conflict`. Run kết thúc
 không phải `succeeded` hoặc có item failure trả `document_import_failed`, không bị trình bày như success.
+Với `Job` đã tồn tại, document import thiếu description chỉ có nghĩa field đó không được quan sát trong
+tệp incomplete; canonical description trước đó được giữ nguyên, còn description không rỗng vẫn tham gia
+content hash và change detection bình thường.
 
 Mọi imported run có `coverage=incomplete`: import không tạo `missing` hoặc `removed`, không thay đổi remote source health,
 failure/quarantine/baseline/timestamp và không thay đổi recipe preview/block/enable state.
@@ -175,7 +178,15 @@ Không chạy cả browser và LLM theo mặc định. Mỗi fallback phải ghi
 
 V1 implementation tại [normalization module](../src/devradar/ingestion/normalization.py) giữ `raw/value/warnings`. Location alias chỉ gồm evidence đã có fixture; URL chỉ bỏ query key do caller allow-list; ký hiệu currency mơ hồ, range đảo và input thiếu unit bị reject/warn thay vì đoán. Skill V1 chỉ cleanup raw mention, chưa merge alias hoặc tạo taxonomy trước V3.
 
-Canonical hash schema `job-content-v1` gồm source URL; title/company/description; location raw + structured; salary raw + structured; level raw + ordered levels; experience range. Fetch timestamp, run ID, selector và warning bị loại. Đổi field set/semantics phải tạo version mới và reprocessing plan.
+Canonical hash schema lịch sử `job-content-v1` giữ các dòng có nội dung nhưng loại blank paragraph
+separator khỏi description. Schema hiện hành `job-content-v2` giữ một dòng trống giữa các paragraph
+Markdown trong description; các field còn lại
+vẫn gồm source URL, title/company, location raw + structured, salary raw + structured, level raw + ordered
+levels và experience range. Fetch timestamp, run ID, selector và warning bị loại. Job hiện hữu chuyển sang
+hash v2 khi canonical content có thay đổi theo semantics mới; observation không đổi vẫn chấp nhận digest
+v1 để không tạo update metric hoặc derived-data churn giả. Source Recipe parser v2 buộc recipe không
+retired preview lại trước khi remote crawl tiếp tục, đồng thời pending/running preview/run v1 bị kết thúc
+an toàn bởi migration.
 
 ## 7. Idempotency và deduplication
 

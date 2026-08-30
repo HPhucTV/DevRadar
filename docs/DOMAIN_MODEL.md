@@ -292,7 +292,14 @@ Hai hash có mục đích khác nhau:
 - `raw_content_hash`: cache/replay raw payload;
 - `job_content_hash`: phát hiện thay đổi trên tập canonical field đã định nghĩa, bỏ volatile markup/metadata.
 
-V1 dùng hash schema `job-content-v1`: canonical URL; title/company/description; location raw + normalized; salary raw + structured; level raw + ordered levels; experience range. Fetch/run timestamp, selector và warning không tham gia. Đổi field set hoặc semantics phải tạo hash version mới và reprocessing/migration plan; xem [V1-005 evidence](evidence/V1-005-normalization-and-hashing.md).
+V1 lịch sử dùng hash schema `job-content-v1`. Runtime hiện hành dùng `job-content-v2`: canonical URL;
+title/company; description đã normalize nhưng giữ một paragraph separator; location raw + normalized;
+salary raw + structured; level raw + ordered levels; experience range. Fetch/run timestamp, selector và
+warning không tham gia. Job hiện hữu với digest v1 vẫn replay/observe unchanged idempotently; khi canonical
+content thay đổi theo semantics mới, Job chuyển sang v2. Source Recipe migration nâng parser lên
+`source-recipe-parser-v2`, invalidates preview/config v1 và đưa recipe không retired về
+trạng thái cần preview lại; xem [V1-005 evidence](evidence/V1-005-normalization-and-hashing.md) cho baseline
+v1.
 
 ## 7. Domain invariants
 

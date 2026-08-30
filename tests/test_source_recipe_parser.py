@@ -35,6 +35,7 @@ def test_http_preview_requires_three_distinct_valid_jobs() -> None:
     }
     assert all(job.external_id for job in preview.jobs)
     assert all(job.provenance for job in preview.jobs)
+    assert {job.parser_version for job in preview.jobs} == {"source-recipe-parser-v2"}
 
 
 @pytest.mark.parametrize(

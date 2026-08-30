@@ -78,6 +78,15 @@ def test_recipe_draft_and_config_hash_hard_cut_terms_inputs() -> None:
     assert recipe_config_hash(recipe) != first_hash
 
 
+def test_recipe_parser_version_changes_config_hash() -> None:
+    recipe = _recipe_for_config_hash()
+    version_one_hash = recipe_config_hash(recipe)
+
+    recipe.parser_version = "source-recipe-parser-v2"
+
+    assert recipe_config_hash(recipe) != version_one_hash
+
+
 @pytest.mark.parametrize("seniority", [[], ["all", "senior"], ["unknown"]])
 def test_recipe_draft_rejects_invalid_seniority_combinations(seniority: list[str]) -> None:
     with pytest.raises(ValueError, match="seniority"):

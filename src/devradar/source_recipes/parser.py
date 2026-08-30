@@ -13,9 +13,11 @@ from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
+from devradar.ingestion.adapters.html_text import html_to_text
+from devradar.ingestion.normalization import normalize_multiline_text
 from devradar.source_recipes.models import SourceRecipeError
 
-PARSER_VERSION = "source-recipe-parser-v1"
+PARSER_VERSION = "source-recipe-parser-v2"
 _MAX_DOCUMENT_BYTES = 10_000_000
 _MAX_HTML_NODES = 50_000
 _MAX_HTML_DEPTH = 256
@@ -36,6 +38,22 @@ _CHALLENGE_MARKERS = (
     "subscribe to continue",
 )
 _SPACE_PATTERN = re.compile(r"\s+")
+_STANDARD_HTML_TAGS = (
+    "a|abbr|acronym|address|applet|area|article|aside|audio|b|base|basefont|bdi|bdo|big|"
+    "blockquote|body|br|button|canvas|caption|center|cite|code|col|colgroup|data|datalist|dd|"
+    "del|details|dfn|dialog|dir|div|dl|dt|em|embed|fieldset|figcaption|figure|font|footer|"
+    "form|frame|frameset|h[1-6]|head|header|hgroup|hr|html|i|iframe|img|input|ins|kbd|"
+    "label|legend|li|link|main|map|mark|menu|meta|meter|nav|noframes|noscript|object|ol|"
+    "optgroup|option|output|p|param|picture|plaintext|portal|pre|progress|q|rp|rt|ruby|s|"
+    "samp|script|search|section|select|slot|small|source|span|strike|strong|style|sub|summary|"
+    "sup|svg|table|tbody|td|template|textarea|tfoot|th|thead|time|title|tr|track|tt|u|ul|"
+    "var|video|wbr|xmp"
+)
+_HTML_TAG_PATTERN = re.compile(
+    rf"(?is)</?(?:{_STANDARD_HTML_TAGS})(?=[\s/>])[^>]*>|<!--|<!doctype\s"
+)
+_HTML_CLOSING_TAG_PATTERN = re.compile(r"(?is)</[a-z][a-z0-9:-]*\s*>")
+_SELF_CLOSING_HTML_PATTERN = re.compile(r"(?is)<[a-z][a-z0-9:-]*(?:\s[^<>]*?)?\s*/>")
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,6 +160,19 @@ def _clean(value: object) -> str | None:
     return normalized or None
 
 
+def _clean_multiline(value: object) -> str | None:
+    if not isinstance(value, (str, int, float)) or isinstance(value, bool):
+        return None
+    raw_text = str(value)
+    if (
+        _HTML_TAG_PATTERN.search(raw_text)
+        or _HTML_CLOSING_TAG_PATTERN.search(raw_text)
+        or _SELF_CLOSING_HTML_PATTERN.search(raw_text)
+    ):
+        return html_to_text(raw_text)
+    return normalize_multiline_text(raw_text).value
+
+
 def _nested(record: Mapping[str, object], *keys: str) -> object:
     current: object = record
     for key in keys:
@@ -223,7 +254,7 @@ def _candidate_from_record(
         "external_id": external_id,
         "location": _clean(_location(record)),
         "level_raw": _clean(_record_value(record, "level", "level_raw", "seniority")),
-        "description": _clean(_record_value(record, "description", "description_text")),
+        "description": _clean_multiline(_record_value(record, "description", "description_text")),
         "posted_at": _clean(_record_value(record, "datePosted", "postedAt", "posted_at")),
     }
     required = {"title", "company", "job_url", "external_id"}

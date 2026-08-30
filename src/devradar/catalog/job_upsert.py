@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
@@ -34,7 +34,9 @@ from devradar.ingestion.normalization import (
     SalaryPeriod,
     WorkMode,
     canonical_job_content_hash,
+    canonical_job_content_hash_v1,
     normalize_canonical_url,
+    normalize_multiline_text,
     normalize_text,
 )
 from devradar.ingestion.source_registry import SourceConfig
@@ -55,6 +57,9 @@ class JobUpsertOutcome(StrEnum):
     STALE = "stale"
     REPLAYED = "replayed"
     REACTIVATED = "reactivated"
+
+
+_DOCUMENT_IMPORT_ADAPTER_VERSION = "source-recipe-document-import-v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,7 +140,7 @@ def _canonical_content(parsed_job: ParsedJob, source_config: SourceConfig) -> Ca
             raise ValueError("title normalization mismatch")
         if normalize_text(raw.company_name).value != normalized.company_name:
             raise ValueError("company normalization mismatch")
-        if normalize_text(raw.description).value != normalized.description_text:
+        if normalize_multiline_text(raw.description).value != normalized.description_text:
             raise ValueError("description normalization mismatch")
 
         work_mode = WorkMode(normalized.work_mode) if normalized.work_mode is not None else None
@@ -301,6 +306,7 @@ def upsert_parsed_job(
         )
     content = _canonical_content(parsed_job, source_config)
     content_hash = canonical_job_content_hash(content)
+    legacy_content_hash = canonical_job_content_hash_v1(content)
 
     with session.no_autoflush:
         database_run = session.get(CrawlRun, crawl_run.id, with_for_update=True)
@@ -339,6 +345,18 @@ def upsert_parsed_job(
             canonical_url=content.canonical_url,
         )
 
+    if (
+        job is not None
+        and database_run.adapter_version == _DOCUMENT_IMPORT_ADAPTER_VERSION
+        and content.description_text is None
+        and job.description_text is not None
+    ):
+        # A bounded document import may contain only listing fields. Missing optional
+        # text means "not observed in this partial document", not "delete prior detail".
+        content = replace(content, description_text=job.description_text)
+        content_hash = canonical_job_content_hash(content)
+        legacy_content_hash = canonical_job_content_hash_v1(content)
+
     if database_snapshot.parse_status is ParseStatus.PARSED:
         if job is None:
             raise JobUpsertError(
@@ -348,7 +366,7 @@ def upsert_parsed_job(
         if not (
             (
                 job.current_snapshot_id == database_snapshot.id
-                and job.job_content_hash == content_hash
+                and job.job_content_hash in {content_hash, legacy_content_hash}
             )
             or database_snapshot.fetched_at < job.last_seen_at
         ):
@@ -409,7 +427,7 @@ def upsert_parsed_job(
         if database_snapshot.fetched_at < job.last_seen_at:
             outcome = JobUpsertOutcome.STALE
         elif database_snapshot.fetched_at == job.last_seen_at:
-            if job.job_content_hash != content_hash:
+            if job.job_content_hash not in {content_hash, legacy_content_hash}:
                 raise JobUpsertError(
                     "observation_conflict",
                     "Equal-time observations had different canonical content.",
@@ -419,7 +437,11 @@ def upsert_parsed_job(
             old_status = job.status
             old_snapshot_id = job.current_snapshot_id
             old_state = canonical_change_state(job)
-            content_changed = job.job_content_hash != content_hash
+            legacy_unchanged = (
+                job.job_content_hash == legacy_content_hash
+                and job.description_text == content.description_text
+            )
+            content_changed = job.job_content_hash != content_hash and not legacy_unchanged
             reactivating = old_status is not JobStatus.ACTIVE
             if reactivating and job.consecutive_missing_count < 1:
                 raise JobUpsertError(

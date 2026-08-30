@@ -306,8 +306,8 @@ class SourceRecipe(Base):
     allowed_path_prefixes: Mapped[list[str]] = mapped_column(JSONB)
     parser_version: Mapped[str] = mapped_column(
         String(100),
-        default="source-recipe-parser-v1",
-        server_default=text("'source-recipe-parser-v1'"),
+        default="source-recipe-parser-v2",
+        server_default=text("'source-recipe-parser-v2'"),
     )
     field_mapping: Mapped[dict[str, Any]] = mapped_column(
         JSONB, default=dict, server_default=text("'{}'::jsonb")

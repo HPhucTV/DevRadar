@@ -144,7 +144,7 @@ def _seed_successful_preview(
                     "confidence": 0.94,
                     "provenance": [],
                     "warnings": [],
-                    "parser_version": "source-recipe-parser-v1",
+                    "parser_version": "source-recipe-parser-v2",
                 }
                 for index in range(3)
             ],

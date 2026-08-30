@@ -34,6 +34,7 @@ from devradar.ingestion.models import (
     Source,
     SourceApprovalStatus,
 )
+from devradar.ingestion.normalization import canonical_job_content_hash_v1
 from devradar.ingestion.source_registry import (
     DiscoveryMode,
     FetchPolicy,
@@ -109,13 +110,20 @@ def _source(config: SourceConfig, now: datetime) -> Source:
     )
 
 
-def _run(session: Session, source: Source, config: SourceConfig, now: datetime) -> CrawlRun:
+def _run(
+    session: Session,
+    source: Source,
+    config: SourceConfig,
+    now: datetime,
+    *,
+    adapter_version: str = "fixture-adapter-v1",
+) -> CrawlRun:
     crawl_run = CrawlRun(
         source_id=source.id,
         trigger_type=CrawlTriggerType.MANUAL,
         status=CrawlRunStatus.RUNNING,
         started_at=now,
-        adapter_version="fixture-adapter-v1",
+        adapter_version=adapter_version,
         config_version=config.config_version,
     )
     session.add(crawl_run)
@@ -156,8 +164,8 @@ def _parsed_job(
     canonical_url: str = "https://career.vng.com.vn/tim-kiem-viec-lam/chi-tiet/123-role",
     title: str = "Senior Backend Engineer",
     company_name: str = "VNG",
+    description: str | None = "Build reliable Python services.",
 ) -> ParsedJob:
-    description = "Build reliable Python services."
     return ParsedJob(
         raw=RawJobFields(
             external_id=external_id,
@@ -180,6 +188,231 @@ def _parsed_job(
         evidence=(FieldEvidence(field_name="title", source_path="fixture.title"),),
         parser_version="fixture-parser-v1",
     )
+
+
+@pytest.mark.postgresql
+def test_upsert_preserves_structured_description_paragraphs(
+    fresh_postgresql_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _migrated_engine(fresh_postgresql_url, monkeypatch)
+    now = datetime.now(UTC)
+    try:
+        with Session(engine) as session:
+            source = _source(VNG_CAREERS, now)
+            session.add(source)
+            session.flush()
+            crawl_run = _run(session, source, VNG_CAREERS, now)
+            description = "### Responsibilities\n\n- Build APIs\n- Review code"
+            parsed = _parsed_job(description=description)
+            snapshot = _snapshot(
+                session,
+                crawl_run,
+                external_id=parsed.raw.external_id,
+                source_url=parsed.raw.canonical_url,
+                fetched_at=now,
+                seed="structured-description",
+            )
+
+            result = upsert_parsed_job(
+                session,
+                crawl_run=crawl_run,
+                snapshot=snapshot,
+                parsed_job=parsed,
+                source_config=VNG_CAREERS,
+            )
+
+            assert result.job.description_text == description
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.postgresql
+def test_document_import_missing_description_preserves_existing_detail(
+    fresh_postgresql_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _migrated_engine(fresh_postgresql_url, monkeypatch)
+    now = datetime.now(UTC)
+    try:
+        with Session(engine) as session:
+            source = _source(VNG_CAREERS, now)
+            session.add(source)
+            session.flush()
+            crawl_run = _run(
+                session,
+                source,
+                VNG_CAREERS,
+                now,
+                adapter_version="source-recipe-document-import-v1",
+            )
+            detailed = _parsed_job(description="Full detail retained across listing refreshes.")
+            first_snapshot = _snapshot(
+                session,
+                crawl_run,
+                external_id=detailed.raw.external_id,
+                source_url=detailed.raw.canonical_url,
+                fetched_at=now,
+                seed="document-detail-first",
+            )
+            created = upsert_parsed_job(
+                session,
+                crawl_run=crawl_run,
+                snapshot=first_snapshot,
+                parsed_job=detailed,
+                source_config=VNG_CAREERS,
+            )
+            listing_only = _parsed_job(description=None)
+            listing_snapshot = _snapshot(
+                session,
+                crawl_run,
+                external_id=listing_only.raw.external_id,
+                source_url=listing_only.raw.canonical_url,
+                fetched_at=now + timedelta(minutes=1),
+                seed="document-listing-only-second",
+            )
+
+            refreshed = upsert_parsed_job(
+                session,
+                crawl_run=crawl_run,
+                snapshot=listing_snapshot,
+                parsed_job=listing_only,
+                source_config=VNG_CAREERS,
+            )
+
+            assert refreshed.outcome is JobUpsertOutcome.UNCHANGED
+            assert refreshed.job.description_text == detailed.raw.description
+            assert refreshed.job.current_snapshot_id == listing_snapshot.id
+            assert refreshed.job.job_content_hash == created.job.job_content_hash
+            assert crawl_run.items_updated == 0
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.postgresql
+def test_legacy_v1_hash_replay_and_unchanged_observation_remain_idempotent(
+    fresh_postgresql_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _migrated_engine(fresh_postgresql_url, monkeypatch)
+    now = datetime.now(UTC)
+    try:
+        with Session(engine) as session:
+            source = _source(VNG_CAREERS, now)
+            session.add(source)
+            session.flush()
+            crawl_run = _run(session, source, VNG_CAREERS, now)
+            parsed = _parsed_job()
+            first_snapshot = _snapshot(
+                session,
+                crawl_run,
+                external_id=parsed.raw.external_id,
+                source_url=parsed.raw.canonical_url,
+                fetched_at=now,
+                seed="legacy-hash-first",
+            )
+            created = upsert_parsed_job(
+                session,
+                crawl_run=crawl_run,
+                snapshot=first_snapshot,
+                parsed_job=parsed,
+                source_config=VNG_CAREERS,
+            )
+            legacy_hash = canonical_job_content_hash_v1(
+                job_upsert_module._canonical_content(parsed, VNG_CAREERS)
+            )
+            created.job.job_content_hash = legacy_hash
+            session.flush()
+
+            replayed = upsert_parsed_job(
+                session,
+                crawl_run=crawl_run,
+                snapshot=first_snapshot,
+                parsed_job=parsed,
+                source_config=VNG_CAREERS,
+            )
+            unchanged_snapshot = _snapshot(
+                session,
+                crawl_run,
+                external_id=parsed.raw.external_id,
+                source_url=parsed.raw.canonical_url,
+                fetched_at=now + timedelta(minutes=1),
+                seed="legacy-hash-unchanged",
+            )
+            unchanged = upsert_parsed_job(
+                session,
+                crawl_run=crawl_run,
+                snapshot=unchanged_snapshot,
+                parsed_job=parsed,
+                source_config=VNG_CAREERS,
+            )
+
+            assert replayed.outcome is JobUpsertOutcome.REPLAYED
+            assert unchanged.outcome is JobUpsertOutcome.UNCHANGED
+            assert unchanged.job.job_content_hash == legacy_hash
+            assert crawl_run.items_updated == 0
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.postgresql
+def test_legacy_v1_job_moves_to_v2_for_new_paragraph_structure(
+    fresh_postgresql_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _migrated_engine(fresh_postgresql_url, monkeypatch)
+    now = datetime.now(UTC)
+    try:
+        with Session(engine) as session:
+            source = _source(VNG_CAREERS, now)
+            session.add(source)
+            session.flush()
+            crawl_run = _run(session, source, VNG_CAREERS, now)
+            legacy_parsed = _parsed_job(description="First paragraph\nSecond paragraph")
+            first_snapshot = _snapshot(
+                session,
+                crawl_run,
+                external_id=legacy_parsed.raw.external_id,
+                source_url=legacy_parsed.raw.canonical_url,
+                fetched_at=now,
+                seed="legacy-paragraph-first",
+            )
+            created = upsert_parsed_job(
+                session,
+                crawl_run=crawl_run,
+                snapshot=first_snapshot,
+                parsed_job=legacy_parsed,
+                source_config=VNG_CAREERS,
+            )
+            legacy_hash = canonical_job_content_hash_v1(
+                job_upsert_module._canonical_content(legacy_parsed, VNG_CAREERS)
+            )
+            created.job.job_content_hash = legacy_hash
+            session.flush()
+
+            structured_parsed = _parsed_job(description="First paragraph\n\nSecond paragraph")
+            structured_snapshot = _snapshot(
+                session,
+                crawl_run,
+                external_id=structured_parsed.raw.external_id,
+                source_url=structured_parsed.raw.canonical_url,
+                fetched_at=now + timedelta(minutes=1),
+                seed="structured-paragraph-second",
+            )
+            updated = upsert_parsed_job(
+                session,
+                crawl_run=crawl_run,
+                snapshot=structured_snapshot,
+                parsed_job=structured_parsed,
+                source_config=VNG_CAREERS,
+            )
+
+            assert updated.outcome is JobUpsertOutcome.UPDATED
+            assert updated.job.description_text == structured_parsed.raw.description
+            assert updated.job.job_content_hash != legacy_hash
+            assert crawl_run.items_updated == 1
+    finally:
+        engine.dispose()
 
 
 @pytest.mark.postgresql

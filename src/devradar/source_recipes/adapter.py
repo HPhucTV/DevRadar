@@ -7,7 +7,6 @@ from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 
 from devradar.catalog.models import JobLevel
-from devradar.ingestion.adapters.html_text import html_to_text
 from devradar.ingestion.contracts import (
     DiscoverySummary,
     FetchResult,
@@ -22,7 +21,12 @@ from devradar.ingestion.contracts import (
     RunContext,
 )
 from devradar.ingestion.models import Source, SourceApprovalStatus
-from devradar.ingestion.normalization import normalize_levels, normalize_location, normalize_text
+from devradar.ingestion.normalization import (
+    normalize_levels,
+    normalize_location,
+    normalize_multiline_text,
+    normalize_text,
+)
 from devradar.ingestion.safe_http import (
     FetchError,
     FetchErrorCode,
@@ -159,9 +163,7 @@ def candidate_to_parsed_job(candidate: PreviewCandidate) -> ParsedJob | ParseFai
             stage="recipe_parse",
             safe_summary="Required job fields were blank after normalization.",
         )
-    description = (
-        html_to_text(candidate.description or "") or normalize_text(candidate.description).value
-    )
+    description = normalize_multiline_text(candidate.description).value
     location = normalize_location(candidate.location)
     level_evidence = (
         candidate.level_raw

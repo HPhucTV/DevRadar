@@ -38,6 +38,28 @@ def normalize_text(raw: str | None) -> NormalizedValue[str]:
     return NormalizedValue(raw=raw, value=value)
 
 
+def normalize_multiline_text(raw: str | None) -> NormalizedValue[str]:
+    """Normalize text while preserving one blank line between paragraphs."""
+
+    if raw is None:
+        return NormalizedValue(raw=None, value=None)
+
+    unicode_normalized = unicodedata.normalize("NFC", raw).translate(_ZERO_WIDTH_CHARACTERS)
+    lines: list[str] = []
+    blank_pending = False
+    for line in unicode_normalized.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        collapsed = " ".join(line.split())
+        if collapsed:
+            if blank_pending and lines:
+                lines.append("")
+            lines.append(collapsed)
+            blank_pending = False
+        elif lines:
+            blank_pending = True
+    value = "\n".join(lines) or None
+    return NormalizedValue(raw=raw, value=value)
+
+
 def normalize_canonical_url(
     raw: str,
     *,
@@ -408,23 +430,28 @@ class CanonicalJobContent:
             raise ValueError("levels must use canonical order")
 
 
-CANONICAL_HASH_VERSION = "job-content-v1"
+CANONICAL_HASH_VERSION = "job-content-v2"
 
 
 def _decimal_text(value: Decimal | None) -> str | None:
     return format(value.normalize(), "f") if value is not None else None
 
 
-def canonical_job_content_hash(content: CanonicalJobContent) -> str:
+def _canonical_job_content_hash(
+    content: CanonicalJobContent,
+    *,
+    version: str,
+    description_text: str | None,
+) -> str:
     location = content.location
     salary = content.salary
     experience = content.experience
     payload = {
-        "version": CANONICAL_HASH_VERSION,
+        "version": version,
         "canonical_url": content.canonical_url,
         "title": normalize_text(content.title).value,
         "company_name": normalize_text(content.company_name).value,
-        "description_text": normalize_text(content.description_text).value,
+        "description_text": description_text,
         "location_raw": normalize_text(content.location_raw).value,
         "location_city": location.city if location else None,
         "location_province": location.province if location else None,
@@ -441,3 +468,21 @@ def canonical_job_content_hash(content: CanonicalJobContent) -> str:
     }
     serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
     return sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def canonical_job_content_hash(content: CanonicalJobContent) -> str:
+    return _canonical_job_content_hash(
+        content,
+        version=CANONICAL_HASH_VERSION,
+        description_text=normalize_multiline_text(content.description_text).value,
+    )
+
+
+def canonical_job_content_hash_v1(content: CanonicalJobContent) -> str:
+    """Return the legacy digest for replay compatibility during v2 adoption."""
+
+    return _canonical_job_content_hash(
+        content,
+        version="job-content-v1",
+        description_text=normalize_text(content.description_text).value,
+    )

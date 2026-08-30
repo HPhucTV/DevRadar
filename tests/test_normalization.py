@@ -16,10 +16,12 @@ from devradar.ingestion.normalization import (
     SalaryPeriod,
     WorkMode,
     canonical_job_content_hash,
+    canonical_job_content_hash_v1,
     normalize_canonical_url,
     normalize_experience,
     normalize_levels,
     normalize_location,
+    normalize_multiline_text,
     normalize_salary,
     normalize_skill_mentions,
     normalize_text,
@@ -34,6 +36,12 @@ def test_text_normalization(case: dict[str, Any]) -> None:
     result = normalize_text(case["raw"])
     assert result.raw == case["raw"]
     assert result.value == case["expected"]
+
+
+def test_multiline_text_normalization_preserves_one_paragraph_separator() -> None:
+    result = normalize_multiline_text("  First paragraph  \r\n\r\n\r\n Second   paragraph \n")
+
+    assert result.value == "First paragraph\n\nSecond paragraph"
 
 
 @pytest.mark.parametrize("case", CASES["url"])
@@ -154,3 +162,17 @@ def test_canonical_hash_ignores_whitespace_but_changes_with_meaningful_content()
 
     assert canonical_job_content_hash(first) == canonical_job_content_hash(whitespace_only)
     assert canonical_job_content_hash(first) != canonical_job_content_hash(salary_changed)
+
+
+def test_canonical_hash_distinguishes_paragraph_boundaries() -> None:
+    paragraph = _canonical_content(
+        title="Senior Backend Engineer", salary_maximum=Decimal("50000000")
+    )
+    flattened = _canonical_content(
+        title="Senior Backend Engineer", salary_maximum=Decimal("50000000")
+    )
+    object.__setattr__(paragraph, "description_text", "First\n\nSecond")
+    object.__setattr__(flattened, "description_text", "First\nSecond")
+
+    assert canonical_job_content_hash(paragraph) != canonical_job_content_hash(flattened)
+    assert canonical_job_content_hash_v1(paragraph) == canonical_job_content_hash_v1(flattened)
