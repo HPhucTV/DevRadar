@@ -1,18 +1,23 @@
 <div align="center">
 
-# DevRadar
+<a href="https://github.com/HPhucTV/DevRadar">
+  <img src="docs/assets/brand/devradar-logo.svg" alt="DevRadar Logo" width="340" />
+</a>
 
-**Job Market Intelligence có provenance cho thị trường tuyển dụng IT Việt Nam.**
+<br />
+
+### **Job Market Intelligence có Provenance cho thị trường tuyển dụng IT Việt Nam**
 
 DevRadar biến job posting công khai thành dữ liệu có thể tìm kiếm, phân tích và đối chiếu — từ ingestion an toàn đến semantic search, CV matching và dashboard Việt/Anh.
 
-![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.141.1-009688?logo=fastapi&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white)
-![Next.js](https://img.shields.io/badge/Next.js-16.3.2-111111?logo=nextdotjs&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+[![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.141.1-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18%20%2B%20pgvector-4169E1?style=flat-square&logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
+[![Next.js](https://img.shields.io/badge/Next.js-16.3.2-111111?style=flat-square&logo=nextdotjs&logoColor=white)](https://nextjs.org/)
+[![Chrome Extension](https://img.shields.io/badge/Chrome%20Extension-MV3-0F766E?style=flat-square&logo=googlechrome&logoColor=white)](#why-devradar)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/)
 
-[Khám phá sản phẩm](#product-showcase) · [Kiến trúc](#architecture-at-a-glance) · [Chạy local](#quick-start) · [Tài liệu](#documentation)
+[Khám phá sản phẩm](#product-showcase) · [Tính năng nổi bật](#why-devradar) · [Kiến trúc](#architecture-at-a-glance) · [Chạy local 1-Click](#quick-start) · [Tài liệu](#documentation)
 
 </div>
 
